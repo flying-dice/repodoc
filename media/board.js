@@ -794,16 +794,41 @@
     }
     var list = ph.parentElement;
     var colId = list.dataset.colId;
-    var index = 0;
+    // The DOM only shows cards passing the active search/agent filter, so a
+    // DOM position is not a valid index into the column's full card list.
+    // Translate: find the first visible card after the placeholder and anchor
+    // on its position among ALL of the column's cards (minus the dragged one).
+    var nextCardId = null;
+    var seenPh = false;
     var kids = list.children;
     for (var i = 0; i < kids.length; i++) {
       var child = kids[i];
       if (child === ph) {
+        seenPh = true;
+        continue;
+      }
+      if (seenPh && child.classList.contains('card') && child !== drag.el) {
+        nextCardId = child.dataset.cardId;
         break;
       }
-      if (child.classList.contains('card') && child !== drag.el) {
-        index++;
+    }
+    var index = 0;
+    var b = board();
+    var targetCol = null;
+    if (b) {
+      for (var c = 0; c < b.columns.length; c++) {
+        if (b.columns[c].id === colId) {
+          targetCol = b.columns[c];
+          break;
+        }
       }
+    }
+    if (targetCol) {
+      var remaining = targetCol.cardIds.filter(function (id) {
+        return id !== drag.cardId;
+      });
+      var anchor = nextCardId ? remaining.indexOf(nextCardId) : -1;
+      index = anchor >= 0 ? anchor : remaining.length;
     }
     var cardId = drag.cardId;
     cleanupDrag();

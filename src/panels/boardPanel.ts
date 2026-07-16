@@ -155,8 +155,13 @@ export class BoardPanel {
       void vscode.window.showWarningMessage(`RepoDoc: no workspace open for "${relPath}".`);
       return;
     }
+    const abs = path.resolve(root, relPath);
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+      void vscode.window.showWarningMessage(`RepoDoc: "${relPath}" is outside the workspace.`);
+      return;
+    }
     try {
-      const uri = vscode.Uri.file(path.join(root, relPath));
+      const uri = vscode.Uri.file(abs);
       const doc = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(doc);
     } catch {

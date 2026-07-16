@@ -58,8 +58,10 @@ export function activate(context: vscode.ExtensionContext): void {
       MarkdownPanel.showDecision(context.extensionUri, store, id);
     }),
 
-    vscode.commands.registerCommand('repodoc.openDoc', (relPath: string) => {
-      MarkdownPanel.showDoc(context.extensionUri, store, relPath);
+    vscode.commands.registerCommand('repodoc.openDoc', (relPath: unknown) => {
+      if (typeof relPath === 'string' && relPath.length > 0) {
+        MarkdownPanel.showDoc(context.extensionUri, store, relPath);
+      }
     }),
 
     vscode.commands.registerCommand('repodoc.newBoard', async () => {
