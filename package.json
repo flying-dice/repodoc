@@ -2,7 +2,7 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Documentation, decision records, and kanban boards living inside your repo",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "flying-dice",
   "license": "MIT",
   "repository": {
@@ -76,7 +76,8 @@
       {
         "command": "repodoc.openBoard",
         "title": "Open Board",
-        "category": "RepoDoc"
+        "category": "RepoDoc",
+        "icon": "$(open-preview)"
       },
       {
         "command": "repodoc.openDecision",
@@ -136,6 +137,13 @@
         {
           "command": "repodoc.openDoc",
           "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "repodoc.openBoard",
+          "when": "view == repodoc.boards && viewItem == repodoc.board",
+          "group": "inline"
         }
       ]
     }

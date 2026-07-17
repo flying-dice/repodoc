@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.3.3] — 2026-07-17
+
+- Board overflow is discoverable: a plain mouse wheel now scrolls the board horizontally (column card lists still scroll vertically when they can), and the horizontal scrollbar is always visible.
+- Removed the last design-mock leftovers: the header participant chips and the footer "N agents active" counter are gone (the footer keeps the card count and board path), the seeded starter board no longer fakes a live agent, and new boards default to a single `claude` agent entry.
+- Boards can be opened directly from the tree via an inline open button on the board row (clicking the row still expands its columns).
+
 ## [0.3.2] — 2026-07-17
 
 - Moved to the `flying-dice` organization: repository is now github.com/flying-dice/repodoc and the extension publisher is `flying-dice`.

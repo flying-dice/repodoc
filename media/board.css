@@ -63,28 +63,21 @@ input::placeholder {
   width: 150px;
   font-family: inherit;
 }
-.chips {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-left: 4px;
-}
-.chip {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  /* Contrast text on a user-supplied (data) avatar colour. */
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.12s;
-}
 
 /* ---- Board canvas ---- */
+/* Keep the horizontal scrollbar visible so board overflow is discoverable. */
+.canvas::-webkit-scrollbar {
+  height: 12px;
+}
+.canvas::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  border-radius: 6px;
+}
+.canvas::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+  background-clip: content-box;
+}
+
 .canvas {
   flex: 1;
   min-height: 0;
@@ -419,17 +412,6 @@ input::placeholder {
   gap: 16px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
-}
-.status-live {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.status-live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--vscode-charts-green);
 }
 .status-spacer {
   flex: 1;

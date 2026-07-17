@@ -8,7 +8,6 @@
   var state = {
     data: null, // { boardId, board, config, boardPath }
     query: '',
-    filterAgent: null,
     addingCol: null, // column id currently showing the composer
     openCardId: null,
     blocked: null, // {cardId, toColumn, results:[{id,label,satisfied,reason}]} for the blocked-move dialog
@@ -74,6 +73,7 @@
     onDragOver: 'dragover',
     onDrop: 'drop',
     onMouseDown: 'mousedown',
+    onWheel: 'wheel',
   };
 
   /**
@@ -188,9 +188,6 @@
   function matches(card) {
     var q = state.query.trim().toLowerCase();
     if (q && card.title.toLowerCase().indexOf(q) === -1) {
-      return false;
-    }
-    if (state.filterAgent && card.agent !== state.filterAgent) {
       return false;
     }
     return true;
@@ -438,46 +435,7 @@
     });
     var search = h('div', { class: 'search' }, [icon(ICON.search), searchInput]);
 
-    var chips = [];
-    var agents = cfg.agents || {};
-    Object.keys(agents).forEach(function (key) {
-      var a = agents[key];
-      // Repo .config.json is untrusted (hand-editable); skip malformed entries.
-      if (!a || typeof a.color !== 'string' || typeof a.initials !== 'string') {
-        return;
-      }
-      var on = state.filterAgent === key;
-      var style =
-        'background:' +
-        a.color +
-        ';opacity:' +
-        (state.filterAgent && !on ? '0.35' : '1') +
-        ';box-shadow:' +
-        (on
-          ? '0 0 0 2px var(--vscode-editor-background), 0 0 0 4px ' + a.color
-          : 'none') +
-        ';';
-      chips.push(
-        h(
-          'div',
-          {
-            class: 'chip',
-            style: style,
-            title: a.name,
-            onClick: function () {
-              state.filterAgent = on ? null : key;
-              render();
-            },
-          },
-          a.initials,
-        ),
-      );
-    });
-
-    var right = h('div', { class: 'topbar-right' }, [
-      search,
-      h('div', { class: 'chips' }, chips),
-    ]);
+    var right = h('div', { class: 'topbar-right' }, [search]);
 
     return h('div', { class: 'topbar' }, [crumb, h('div', { class: 'topbar-spacer' }), right]);
   }
@@ -787,32 +745,43 @@
       ),
     ]);
     var inner = h('div', { class: 'canvas-inner' }, cols.concat([addList]));
-    return h('div', { class: 'canvas' }, [inner]);
+    return h('div', { class: 'canvas', onWheel: onCanvasWheel }, [inner]);
+  }
+
+  // Plain vertical wheel scrolls the board horizontally (shift+wheel already
+  // does natively) — unless the pointer is over a column's card list that can
+  // still scroll vertically itself.
+  function onCanvasWheel(e) {
+    if (e.shiftKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) {
+      return;
+    }
+    var list = e.target && e.target.closest ? e.target.closest('.card-list') : null;
+    if (list && list.scrollHeight > list.clientHeight + 1) {
+      var atTop = list.scrollTop <= 0 && e.deltaY < 0;
+      var atBottom =
+        list.scrollTop + list.clientHeight >= list.scrollHeight - 1 && e.deltaY > 0;
+      if (!atTop && !atBottom) {
+        return; // the column list consumes the scroll
+      }
+    }
+    e.currentTarget.scrollLeft += e.deltaY;
+    e.preventDefault();
   }
 
   /* ---- Status bar ---- */
   function buildStatusBar() {
     var b = board();
-    var live = 0;
     var total = 0;
     (b.columns || []).forEach(function (col) {
       col.cardIds.forEach(function (id) {
-        var c = b.cards[id];
-        if (c) {
+        if (b.cards[id]) {
           total++;
-          if (c.live) {
-            live++;
-          }
         }
       });
     });
     var boardPath = (state.data && state.data.boardPath) || '';
     return h('div', { class: 'statusbar' }, [
-      h('span', { class: 'status-live' }, [
-        h('span', { class: 'status-live-dot' }),
-        live + ' agents active',
-      ]),
-      h('span', {}, total + ' cards'),
+      h('span', {}, total + (total === 1 ? ' card' : ' cards')),
       h('div', { class: 'status-spacer' }),
       h('span', { class: 'status-datadir' }, boardPath),
     ]);
@@ -1588,10 +1557,6 @@
 
   function applyData(payload) {
     state.data = payload;
-    // Drop filter for an agent that no longer exists.
-    if (state.filterAgent && !agentDef(state.filterAgent)) {
-      state.filterAgent = null;
-    }
     render();
   }
 

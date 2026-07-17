@@ -118,8 +118,18 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       refreshTrees();
     }),
 
-    vscode.commands.registerCommand('repodoc.openBoard', (boardId: string) => {
-      BoardPanel.createOrShow(context.extensionUri, store, boardId);
+    vscode.commands.registerCommand('repodoc.openBoard', (arg: unknown) => {
+      // Invoked with a board id (tree item command / API) or with the tree
+      // node itself (inline action / context menu).
+      const boardId =
+        typeof arg === 'string'
+          ? arg
+          : ((arg as { kind?: string; ref?: { id?: string } } | undefined)?.kind === 'board'
+              ? (arg as { ref: { id: string } }).ref.id
+              : undefined);
+      if (boardId) {
+        BoardPanel.createOrShow(context.extensionUri, store, boardId);
+      }
     }),
 
     // Internal (not contributed to the palette): open a card's detail modal in

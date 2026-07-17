@@ -73,8 +73,6 @@ export const DEFAULT_LABELS: Record<string, LabelDef> = {
 
 export const DEFAULT_AGENTS: Record<string, AgentDef> = {
   claude: { name: 'Claude', color: '#d97757', initials: 'CL' },
-  cursor: { name: 'Cursor', color: '#4c8bf5', initials: 'CU' },
-  copilot: { name: 'Copilot', color: '#a371f7', initials: 'CP' },
 };
 
 /** The 5 default board columns, matching the design mock. */

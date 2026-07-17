@@ -50,7 +50,6 @@ export function seedCards(stamp: string): Array<{ name: string; content: string 
       name: '04-assign-a-card-to-an-agent.md',
       content:
         `---\ncolumn: doing\nlabels: [backend, infra]\npriority: high\nagent: claude\n` +
-        `live: true\nstatus: editing src/core/store.ts\nprogress: 62\n` +
         `files: [src/core/store.ts]\nupdatedAt: ${stamp}\n---\n` +
         `# Assign a card to a coding agent\n\n` +
         `Agents pick up assigned cards, report live status, and list the files they touch.\n\n` +
