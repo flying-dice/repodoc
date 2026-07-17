@@ -99,6 +99,9 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   context.subscriptions.push(
     vscode.commands.registerCommand('repodoc.plantUmlMenu', () => plantUmlStatus.menu()),
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('repodoc.plantUmlRenderer')) {
+        void enforceDockerRendererValidity(plantUmlStatus);
+      }
       if (e.affectsConfiguration('repodoc')) {
         MarkdownPanel.refreshAll();
         BoardPanel.refreshAll();
@@ -271,6 +274,28 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   );
 
   return { store };
+}
+
+/**
+ * Selecting the docker renderer must leave a VALID configuration: if Docker is
+ * not available the setting is reverted to `server` with a warning, so the
+ * user is never silently stuck with a renderer that cannot run.
+ */
+async function enforceDockerRendererValidity(status: PlantUmlStatus): Promise<void> {
+  const config = vscode.workspace.getConfiguration('repodoc');
+  if (config.get<string>('plantUmlRenderer') !== 'docker') {
+    return;
+  }
+  const docker = MarkdownPanel.plantUmlDocker();
+  if (await docker.dockerAvailable()) {
+    return;
+  }
+  await config.update('plantUmlRenderer', 'server', vscode.ConfigurationTarget.Global);
+  void vscode.window.showWarningMessage(
+    'RepoDoc: Docker is not available, so the PlantUML renderer was reverted to "server". ' +
+      'Install/start Docker and select docker again.',
+  );
+  void status.refresh();
 }
 
 export function deactivate(): void {

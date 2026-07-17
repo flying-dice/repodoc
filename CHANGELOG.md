@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.6.1] — 2026-07-17
+
+- Selecting the `docker` PlantUML renderer now enforces a valid configuration: if Docker is unavailable the setting reverts to `server` with a warning, and invalid image/port values fall back to safe defaults.
+
 ## [0.6.0] — 2026-07-17
 
 - **PlantUML renderer status indicator** — with the Docker renderer selected, a PlantUML item appears in the status bar showing live state (running / stopped / Docker unavailable, refreshed every 15s). Clicking it opens a management menu: Start, Stop, Restart (reload), and a jump to the PlantUML settings; open reading views re-render after lifecycle actions.

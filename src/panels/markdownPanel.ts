@@ -25,8 +25,11 @@ export class MarkdownPanel {
   /** Shared managed-container handle (recreated when settings change). */
   public static plantUmlDocker(): PlantUmlDocker {
     const config = vscode.workspace.getConfiguration('repodoc');
-    const image = config.get<string>('plantUmlDockerImage') ?? 'plantuml/plantuml-server:jetty';
-    const port = config.get<number>('plantUmlDockerPort') ?? 8792;
+    const rawImage = (config.get<string>('plantUmlDockerImage') ?? '').trim();
+    const image = rawImage || 'plantuml/plantuml-server:jetty';
+    const rawPort = Number(config.get<number>('plantUmlDockerPort'));
+    const port =
+      Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535 ? rawPort : 8792;
     const current = MarkdownPanel.dockerInstance;
     if (!current || current.localUrl() !== `http://localhost:${port}`) {
       MarkdownPanel.dockerInstance = new PlantUmlDocker(image, port);
