@@ -124,6 +124,13 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       refreshTrees();
     }),
 
+    vscode.commands.registerCommand('repodoc.openSettings', () => {
+      void vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        '@ext:flying-dice.repodoc',
+      );
+    }),
+
     vscode.commands.registerCommand('repodoc.openBoard', (arg: unknown) => {
       // Invoked with a board id (tree item command / API) or with the tree
       // node itself (inline action / context menu).

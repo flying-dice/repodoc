@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.5.2] — 2026-07-17
+
+- A gear icon at the top of the RepoDoc sidebar opens the extension's settings (filtered to RepoDoc) in one click.
+
 ## [0.5.1] — 2026-07-17
 
 - `repodoc.readingWidth` now governs ALL reading surfaces — the card modal follows it too (640px narrow / 900px wide / near-full). The options are renamed **narrow** | **wide** | **full** (a stored legacy `normal` still reads as narrow), and changes apply live to open boards and reading views.

@@ -2,7 +2,7 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Documentation, decision records, and kanban boards living inside your repo",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "flying-dice",
   "license": "MIT",
   "repository": {
@@ -116,10 +116,21 @@
         "command": "repodoc.plantUmlStop",
         "title": "Stop PlantUML Renderer (Docker)",
         "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.openSettings",
+        "title": "RepoDoc Settings",
+        "category": "RepoDoc",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "repodoc.openSettings",
+          "when": "view == repodoc.boards",
+          "group": "navigation@8"
+        },
         {
           "command": "repodoc.newBoard",
           "when": "view == repodoc.boards",
