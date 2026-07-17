@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { RepoDocApi } from '../../extension';
 
-const EXTENSION_ID = 'jonathanturnock.repodoc';
+const EXTENSION_ID = 'flying-dice.repodoc';
 
 /** Absolute path of the (single) fixture workspace folder. */
 function workspaceRoot(): string {

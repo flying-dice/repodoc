@@ -2,12 +2,12 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Documentation, decision records, and kanban boards living inside your repo",
-  "version": "0.3.1",
-  "publisher": "jonathanturnock",
+  "version": "0.3.2",
+  "publisher": "flying-dice",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/JonathanTurnock/repodoc"
+    "url": "https://github.com/flying-dice/repodoc"
   },
   "engines": {
     "vscode": "^1.100.0"

@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.3.2] — 2026-07-17
+
+- Moved to the `flying-dice` organization: repository is now github.com/flying-dice/repodoc and the extension publisher is `flying-dice`.
+
 ## [0.3.1] — 2026-07-17
 
 - No person-attribution fields: peer sign-off is an anonymous boolean field (`peer-reviewed`) checked by a field gate — who did what lives in the journal and git history, not in card fields. Skill, docs, and examples updated.
