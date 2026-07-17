@@ -1,31 +1,69 @@
-# RepoDoc
+# RepoDoc — run your project from inside the repo
 
-Act as PM/Tech-lead inside your repo. RepoDoc gives VS Code a kanban board, decision records, and a documentation site — all stored as plain files in the repository, so coding agents can update docs, document decisions, and flow tickets across the board while you steer.
+**Be the PM and tech lead of your codebase while coding agents do the work.** RepoDoc gives VS Code a kanban board, decision records, and a documentation site — all stored as plain markdown and JSON in your repository, so the agents working in your repo can pick up tickets, report live progress, record decisions, and keep the docs current. You review, prioritize, and steer.
 
-## Data layout
+![RepoDoc — boards, cards, decisions, and docs](images/repodoc.gif)
 
-Everything lives at the workspace root as human- and agent-editable files:
+## Why files in the repo?
+
+Because that's where your agents already are. There's no server, no account, no sync — a card is a markdown file, a decision is a markdown file, the board is a folder. Anything that can edit files (Claude Code, Cursor, Copilot, or you with `vim`) can move work forward, and every change is versioned with the code it describes.
+
+- **Diffable & reviewable** — planning changes show up in pull requests.
+- **Agent-native** — assigning a ticket is telling your agent to edit a file.
+- **Portable** — clone the repo, get the whole project brain.
+
+## The board
+
+Trello-style columns with drag & drop, WIP limits, labels, priorities, search, and per-agent filters. Cards assigned to an agent show a **live status line and progress bar** while the agent works.
+
+![Kanban board with live agent progress](images/board.png)
+
+Click a card for the full picture — assignee, priority, description, checklist, and the files it touches (click one to jump into the editor):
+
+![Card detail with checklist and files touched](images/card.png)
+
+## Decision records
+
+Capture the *why* behind architectural choices as numbered markdown records with a status lifecycle (Proposed → Accepted → Superseded). Agents read them before touching related code.
+
+![A rendered decision record](images/decision.png)
+
+## Docs
+
+A Docusaurus-style handbook rendered from your `docs/` tree. Add a folder, drop in a `.md` file, and it shows up in the sidebar — numeric prefixes control the order.
+
+![Rendered documentation page](images/docs.png)
+
+## Getting started
+
+1. Install RepoDoc and open your repository.
+2. Click the RepoDoc icon in the activity bar and hit **Initialize RepoDoc** — you get a starter board, a first decision record, and a docs page.
+3. Open the board, add cards, and point your coding agent at the repo.
+
+Everything lives in four places:
 
 | Path | Contents |
 | --- | --- |
-| `docs/NN-slug.md`, `docs/<subfolder>/NN-slug.md` | Documentation tree (numeric prefix orders the sidebar) |
-| `decisions/NN-slug.md` | Decision records (ADRs) with `**Status:** …` lines |
-| `boards/<board-id>/NN-slug.md` | One card per file — frontmatter holds column, labels, priority, agent |
+| `boards/<board-id>/NN-slug.md` | One card per file — frontmatter holds column, labels, priority, agent, live status |
 | `boards/<board-id>/.config.json` | Board name, columns, WIP limits, labels, agents |
+| `decisions/NN-slug.md` | Decision records with `**Status:** …` lines |
+| `docs/NN-slug.md` | Documentation tree (numeric prefix orders the sidebar) |
 
-## Features
+## Working with agents
 
-- **Native navigation** — Boards, Decisions, and Docs tree views in a RepoDoc activity-bar container.
-- **Board view** — Trello-style columns with drag & drop, WIP limits, search, agent filters, and live agent progress on cards.
-- **Card view** — labels, priority, assignee, checklist, and touched files in a detail modal.
-- **Decisions & Docs** — rendered markdown views styled for reading.
+Tell your agent the conventions once (or drop them in your agent instructions file):
+
+- Pick up a card by setting `agent: <you>` and `column: doing` in its frontmatter.
+- Report progress with `live: true`, `status: <one-liner>`, `progress: 0-100`.
+- Tick checklist items (`- [x]`) as you complete them; list touched files under `files:`.
+- Made a significant choice? Add the next `decisions/NN-*.md` and link it from the card.
+
+RepoDoc watches the files and updates the board live.
 
 ## Development
 
-- `npm install` — install dependencies
-- Press `F5` in VS Code to launch an Extension Development Host
-- `npm run compile` — type-check, lint, and bundle
-- `npm run watch` — rebuild on change
-- `npm test` — unit + extension e2e tests
+`npm install`, then `F5` for an Extension Development Host. `npm run compile` type-checks, lints, and bundles; `npm test` runs the unit suite (on an in-memory filesystem) and the e2e suite (driving the real extension). Releases are cut by tagging `v*` — CI packages the VSIX and attaches it to the GitHub release.
 
-Releases are built by GitHub Actions: pushing a `v*` tag packages the VSIX and attaches it to a GitHub release.
+## License
+
+[MIT](LICENSE)
