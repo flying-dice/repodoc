@@ -2,23 +2,6 @@
    Shared base rules (fonts, scrollbar, top-bar breadcrumb) live in base.css,
    which is linked before this stylesheet. */
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  background: #181a1e;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  font-family: var(--font-sans);
-  color: #c7ccd4;
-}
-
 /* ---- Page shell ---- */
 
 .page {
@@ -39,7 +22,7 @@ body {
   background: #181a1e;
 }
 
-.column {
+.reading-column {
   max-width: 760px;
   margin: 0 auto;
   padding: 46px 56px 90px;

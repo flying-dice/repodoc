@@ -8,6 +8,23 @@
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: #181a1e;
+  color: #c7ccd4;
+  font-family: var(--font-sans);
+}
+
 ::-webkit-scrollbar {
   width: 11px;
   height: 11px;

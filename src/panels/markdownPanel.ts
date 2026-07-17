@@ -181,7 +181,7 @@ export class MarkdownPanel {
       </div>
     </div>
     <div class="content">
-      <div class="column">
+      <div class="reading-column">
         <div class="filecrumb">${escapeHtml(fileCrumb)}</div>
         <div class="adr-md">${bodyHtml}</div>
       </div>

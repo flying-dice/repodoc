@@ -1,6 +1,6 @@
 import { ClockPort, Disposable, FileSystemPort } from './ports';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
-import { markdownTitle, numPrefix, pad, slugFromFileName, slugify, titleCase } from './naming';
+import { pad, slugFromFileName, slugify, titleCase } from './naming';
 import {
   BoardConfig,
   DEFAULT_AGENTS,
@@ -9,6 +9,7 @@ import {
   normalizeBoardConfig,
 } from './boardConfig';
 import { computeCardOrder } from './ordering';
+import { CardEntry, findChecklist, parseCard } from './cardParse';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
 import { seedBoardConfig, seedCards, seedDecision, seedIntroDoc } from './seed';
@@ -16,22 +17,11 @@ import {
   BoardData,
   BoardRef,
   Card,
-  ChecklistItem,
   Column,
   DecisionRecord,
   DocNode,
-  Priority,
   RepoDocConfig,
 } from './types';
-
-/** One card file parsed from disk, with the metadata needed to order/bucket it. */
-interface CardEntry {
-  fileName: string;
-  slug: string;
-  num: number | undefined;
-  column: string;
-  card: Card;
-}
 
 /**
  * RepoDoc's data store, built on the new on-disk layout. It talks to the
@@ -93,7 +83,7 @@ export class RepoDocStore {
   init(): void {
     const boardConfig = this.configPath('project-backlog');
     if (!this.fs.exists(boardConfig)) {
-      this.fs.writeFile(boardConfig, jsonStringify(seedBoardConfig()));
+      this.fs.writeFile(boardConfig, jsonFileContent(seedBoardConfig()));
       const stamp = this.now();
       for (const seed of seedCards(stamp)) {
         this.fs.writeFile(`boards/project-backlog/${seed.name}`, seed.content);
@@ -129,7 +119,7 @@ export class RepoDocStore {
 
   /** Writes a board config and notifies listeners. */
   private writeConfig(boardId: string, config: BoardConfig): void {
-    this.fs.writeFile(this.configPath(boardId), jsonStringify(config));
+    this.fs.writeFile(this.configPath(boardId), jsonFileContent(config));
     this.fire();
   }
 
@@ -424,130 +414,7 @@ export class RepoDocStore {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Pure card parsing helpers
-// ---------------------------------------------------------------------------
-
-function parseCard(fileName: string, content: string): CardEntry | undefined {
-  const { data, body } = parseFrontmatter(content);
-  const slug = slugFromFileName(fileName);
-  const title = markdownTitle(body, slug);
-
-  const card: Card = { id: slug, title };
-
-  const desc = extractDescription(body);
-  if (desc) {
-    card.desc = desc;
-  }
-  const { items } = findChecklist(body);
-  if (items.length) {
-    card.checklist = items;
-  }
-  const labels = asStringArray(data.labels);
-  if (labels && labels.length) {
-    card.labels = labels;
-  }
-  const priority = asPriority(data.priority);
-  if (priority) {
-    card.priority = priority;
-  }
-  const agent = asString(data.agent);
-  if (agent) {
-    card.agent = agent;
-  }
-  if (data.live === true) {
-    card.live = true;
-  }
-  const status = asString(data.status);
-  if (status) {
-    card.status = status;
-  }
-  const progress = asNumber(data.progress);
-  if (progress !== undefined) {
-    card.progress = progress;
-  }
-  const files = asStringArray(data.files);
-  if (files && files.length) {
-    card.files = files;
-  }
-  const comments = asNumber(data.comments);
-  if (comments !== undefined) {
-    card.comments = comments;
-  }
-  const updatedAt = asString(data.updatedAt);
-  if (updatedAt) {
-    card.updatedAt = updatedAt;
-  }
-
-  return {
-    fileName,
-    slug,
-    num: numPrefix(fileName),
-    column: asString(data.column) ?? '',
-    card,
-  };
-}
-
-/** Body text between the title heading and the `## Checklist` heading. */
-function extractDescription(body: string): string {
-  const lines = body.split('\n');
-  const headingIdx = lines.findIndex((l) => /^#\s+/.test(l));
-  const start = headingIdx === -1 ? 0 : headingIdx + 1;
-  let end = lines.length;
-  for (let i = start; i < lines.length; i++) {
-    if (/^##\s+checklist\s*$/i.test(lines[i])) {
-      end = i;
-      break;
-    }
-  }
-  return lines.slice(start, end).join('\n').trim();
-}
-
-/** Task-list items under `## Checklist`, with their body line indices. */
-function findChecklist(body: string): { items: ChecklistItem[]; indices: number[] } {
-  const lines = body.split('\n');
-  const items: ChecklistItem[] = [];
-  const indices: number[] = [];
-  let inSection = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^##\s+checklist\s*$/i.test(line)) {
-      inSection = true;
-      continue;
-    }
-    if (inSection && /^#{1,6}\s+/.test(line)) {
-      break; // next heading ends the section
-    }
-    if (inSection) {
-      const m = /^\s*-\s+\[([ xX])\]\s+(.*)$/.exec(line);
-      if (m) {
-        items.push({ text: m[2].trim(), done: m[1].toLowerCase() === 'x' });
-        indices.push(i);
-      }
-    }
-  }
-  return { items, indices };
-}
-
-function asString(v: unknown): string | undefined {
-  return typeof v === 'string' ? v : undefined;
-}
-
-function asNumber(v: unknown): number | undefined {
-  return typeof v === 'number' && !Number.isNaN(v) ? v : undefined;
-}
-
-function asStringArray(v: unknown): string[] | undefined {
-  if (Array.isArray(v)) {
-    return v.filter((x): x is string => typeof x === 'string');
-  }
-  return undefined;
-}
-
-function asPriority(v: unknown): Priority | undefined {
-  return v === 'high' || v === 'med' || v === 'low' ? v : undefined;
-}
-
-function jsonStringify(value: unknown): string {
+/** Formats a value as the on-disk JSON file content (pretty, trailing newline). */
+function jsonFileContent(value: unknown): string {
   return JSON.stringify(value, null, 2) + '\n';
 }

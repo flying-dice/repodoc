@@ -23,7 +23,6 @@ export interface DataMessage {
   boardPath: string;
 }
 
-export type HostToWebviewMessage = DataMessage;
 
 /** Messages sent from the webview up to the extension host. */
 export interface ReadyMessage {

@@ -2,21 +2,7 @@
    Shared base rules (fonts, scrollbar, top-bar breadcrumb) live in base.css,
    which is linked before this stylesheet. */
 
-* {
-  box-sizing: border-box;
-}
-
-html,
 body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
-
-body {
-  background: #181a1e;
-  color: #c7ccd4;
-  font-family: var(--font-sans);
   font-size: 13px;
 }
 
