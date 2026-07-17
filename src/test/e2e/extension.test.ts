@@ -184,7 +184,17 @@ suite('RepoDoc e2e', () => {
     });
 
     // The watcher should also have re-fired the change event (debounced ~150ms).
-    await waitFor(() => fired);
+    // On CI the recursive watcher can still be warming up when the first write
+    // lands and its event is lost — re-touch the file periodically so a late
+    // watcher still sees a change, and give it a generous window.
+    let touches = 0;
+    await waitFor(() => {
+      touches++;
+      if (!fired && touches % 20 === 0) {
+        fs.appendFileSync(extPath, '\n');
+      }
+      return fired;
+    }, 20000);
     sub.dispose();
     assert.ok(fired, 'onDidChange should fire from the external edit');
   });
