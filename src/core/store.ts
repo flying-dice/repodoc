@@ -515,7 +515,9 @@ export class RepoDocStore {
     return this.docs.tree();
   }
 
-  readDoc(relPath: string): { title: string; body: string } | undefined {
+  readDoc(
+    relPath: string,
+  ): { title: string; body: string; frontmatter?: Record<string, unknown> } | undefined {
     return this.docs.read(relPath);
   }
 

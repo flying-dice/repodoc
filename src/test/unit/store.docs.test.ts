@@ -81,3 +81,20 @@ suite('store.readDoc', () => {
     assert.strictEqual(store.readDoc('docs/nope.md'), undefined);
   });
 });
+
+suite('store.readDoc — frontmatter', () => {
+  test('frontmatter is parsed out of the body and returned separately', () => {
+    const { store } = makeStore({
+      'docs/01-a.md': '---\nauthor: sam\ntags: [intro, setup]\ndraft: true\n---\n# A\n\nBody.\n',
+    });
+    const doc = store.readDoc('docs/01-a.md')!;
+    assert.deepStrictEqual(doc.frontmatter, { author: 'sam', tags: ['intro', 'setup'], draft: true });
+    assert.ok(doc.body.startsWith('# A'));
+    assert.ok(!doc.body.includes('author:'));
+  });
+
+  test('docs without frontmatter have no frontmatter key', () => {
+    const { store } = makeStore({ 'docs/01-a.md': '# A\n\nBody.\n' });
+    assert.strictEqual(store.readDoc('docs/01-a.md')!.frontmatter, undefined);
+  });
+});

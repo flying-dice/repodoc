@@ -107,3 +107,17 @@ suite('store.createDecision', () => {
     assert.ok(fs.readFile(`decisions/${id}.md`)!.includes('Untitled decision'));
   });
 });
+
+suite('store decisions — frontmatter exposure', () => {
+  test('all frontmatter keys are exposed for the reading-view table', () => {
+    const { store } = makeStore({
+      'decisions/01-a.md': '---\nstatus: Accepted\ndate: 2026-07-17\nsupersedes: none\n---\n# ADR-1 — A\n',
+    });
+    const rec = store.listDecisions()[0];
+    assert.deepStrictEqual(rec.frontmatter, {
+      status: 'Accepted',
+      date: '2026-07-17',
+      supersedes: 'none',
+    });
+  });
+});

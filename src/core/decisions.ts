@@ -25,7 +25,11 @@ export function parseDecisionText(fileName: string, content: string): DecisionRe
 
   const date = typeof data.date === 'string' && data.date.trim() ? data.date.trim() : undefined;
 
-  return { id, num, file: fileName, title, status, date, body };
+  const record: DecisionRecord = { id, num, file: fileName, title, status, date, body };
+  if (Object.keys(data).length > 0) {
+    record.frontmatter = data;
+  }
+  return record;
 }
 
 export class DecisionStore {

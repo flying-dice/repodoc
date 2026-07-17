@@ -136,12 +136,8 @@ export class MarkdownPanel {
       // Record disappeared — leave the panel as-is.
       return;
     }
-    // Status (and date) live in frontmatter — surface them as a meta line
-    // between the title heading and the rest of the record.
-    const meta =
-      `<p><strong>Status:</strong> ${escapeHtml(decision.status)}` +
-      (decision.date ? ` &nbsp;·&nbsp; <strong>Date:</strong> ${escapeHtml(decision.date)}` : '') +
-      `</p>`;
+    // Frontmatter renders as a meta table between the title and the record.
+    const meta = frontmatterTable(decision.frontmatter ?? { status: decision.status });
     let bodyHtml = marked.parse(decision.body) as string;
     const headingEnd = bodyHtml.indexOf('</h1>');
     bodyHtml =
@@ -167,7 +163,15 @@ export class MarkdownPanel {
       // Record disappeared — leave the panel as-is.
       return;
     }
-    const bodyHtml = marked.parse(doc.body) as string;
+    const meta = doc.frontmatter ? frontmatterTable(doc.frontmatter) : '';
+    let bodyHtml = marked.parse(doc.body) as string;
+    if (meta) {
+      const headingEnd = bodyHtml.indexOf('</h1>');
+      bodyHtml =
+        headingEnd === -1
+          ? meta + bodyHtml
+          : bodyHtml.slice(0, headingEnd + 5) + meta + bodyHtml.slice(headingEnd + 5);
+    }
     this.panel.title = MarkdownPanel.truncate(doc.title, 60);
     this.panel.webview.html = this.wrap(
       'Docs',
@@ -215,4 +219,24 @@ export class MarkdownPanel {
     }
     return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
   }
+}
+
+/** Renders frontmatter as a compact key/value table for the reading view. */
+function frontmatterTable(data: Record<string, unknown>): string {
+  const rows = Object.entries(data)
+    .map(([key, value]) => {
+      const rendered = Array.isArray(value)
+        ? value.map((v) => escapeHtml(String(v))).join(', ')
+        : typeof value === 'boolean'
+          ? value
+            ? 'yes'
+            : 'no'
+          : escapeHtml(String(value));
+      return `<tr><th>${escapeHtml(key)}</th><td>${rendered}</td></tr>`;
+    })
+    .join('');
+  if (!rows) {
+    return '';
+  }
+  return `<table class="fm-table"><tbody>${rows}</tbody></table>`;
 }

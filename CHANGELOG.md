@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.3.5] — 2026-07-17
+
+- Markdown files with YAML frontmatter render it as a tidy key/value meta table in the reading views. Decisions show their full frontmatter (status, date, and any extra keys) as the table under the title; docs pages do the same when they carry frontmatter (which no longer leaks into the rendered body as raw `---` text).
+
 ## [0.3.4] — 2026-07-17
 
 - Added the extension icon (kanban columns on the dark panel, in the board's column colours) shown in the Marketplace and the extensions view.

@@ -166,8 +166,10 @@ export interface DecisionRecord {
   status: string;
   /** Decision date (frontmatter `date:`), verbatim. */
   date?: string;
-  /** Full markdown body. */
+  /** Full markdown body (frontmatter excluded). */
   body: string;
+  /** All frontmatter keys, verbatim — rendered as a table in the reading view. */
+  frontmatter?: Record<string, unknown>;
 }
 
 export interface DocNode {

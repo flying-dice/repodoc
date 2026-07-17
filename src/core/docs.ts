@@ -5,6 +5,7 @@
  */
 
 import { FileSystemPort } from './ports';
+import { parseFrontmatter } from './frontmatter';
 import { markdownTitle, numPrefix, slugFromFileName, stripNumPrefix, titleCase } from './naming';
 import { DocNode } from './types';
 
@@ -18,17 +19,27 @@ export class DocStore {
     return this.walk('docs');
   }
 
-  read(relPath: string): { title: string; body: string } | undefined {
+  read(
+    relPath: string,
+  ): { title: string; body: string; frontmatter?: Record<string, unknown> } | undefined {
     if (isAbsolute(relPath) || relPath.split('/').includes('..')) {
       return undefined;
     }
-    const body = this.fs.readFile(relPath);
-    if (body === undefined) {
+    const content = this.fs.readFile(relPath);
+    if (content === undefined) {
       return undefined;
     }
+    const { data, body } = parseFrontmatter(content);
     const base = relPath.split('/').pop() ?? relPath;
     const title = markdownTitle(body, slugFromFileName(base));
-    return { title, body };
+    const result: { title: string; body: string; frontmatter?: Record<string, unknown> } = {
+      title,
+      body,
+    };
+    if (Object.keys(data).length > 0) {
+      result.frontmatter = data;
+    }
+    return result;
   }
 
   private walk(relDir: string): DocNode[] {

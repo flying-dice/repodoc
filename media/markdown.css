@@ -165,3 +165,34 @@
   border-top: 1px solid var(--vscode-panel-border);
   margin: 26px 0;
 }
+
+/* ---- Frontmatter meta table ---- */
+.fm-table {
+  border-collapse: collapse;
+  margin: 4px 0 26px;
+  font-size: 13px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+}
+.fm-table th,
+.fm-table td {
+  text-align: left;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.fm-table tr:last-child th,
+.fm-table tr:last-child td {
+  border-bottom: none;
+}
+.fm-table th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding-right: 22px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+}
+.fm-table td {
+  color: var(--vscode-editor-foreground);
+}
