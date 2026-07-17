@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { PlantUmlDocker } from './plantUmlDocker';
 import { RepoDocStore } from '../core/store';
 import { buildWebviewHtml, escapeHtml } from './webviewHtml';
 
@@ -19,6 +20,19 @@ interface PanelState {
 export class MarkdownPanel {
   private static decisionPanel: MarkdownPanel | undefined;
   private static docPanel: MarkdownPanel | undefined;
+  private static dockerInstance: PlantUmlDocker | undefined;
+
+  /** Shared managed-container handle (recreated when settings change). */
+  public static plantUmlDocker(): PlantUmlDocker {
+    const config = vscode.workspace.getConfiguration('repodoc');
+    const image = config.get<string>('plantUmlDockerImage') ?? 'plantuml/plantuml-server:jetty';
+    const port = config.get<number>('plantUmlDockerPort') ?? 8792;
+    const current = MarkdownPanel.dockerInstance;
+    if (!current || current.localUrl() !== `http://localhost:${port}`) {
+      MarkdownPanel.dockerInstance = new PlantUmlDocker(image, port);
+    }
+    return MarkdownPanel.dockerInstance!;
+  }
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
@@ -218,7 +232,7 @@ export class MarkdownPanel {
       bodyHtml: body,
       stylesheets: ['base.css', 'markdown.css'],
       extraScripts: hasMermaid ? ['mermaid.min.js', 'mermaid-init.js'] : undefined,
-      extraImgSrc: ['https:', 'data:'],
+      extraImgSrc: ['https:', 'data:', 'http://localhost:*', 'http://127.0.0.1:*'],
     });
   }
 
@@ -256,7 +270,24 @@ function readingWidth(): string {
   return value === 'normal' || value === 'full' ? value : 'wide';
 }
 
-/** The configured PlantUML server URL ('' disables PlantUML rendering). */
+/**
+ * The active PlantUML renderer URL. Docker mode wins: the managed local
+ * container's URL is used (kicking off a lazy start + re-render when it is
+ * not up yet); otherwise the configured server ('' disables rendering).
+ */
 function plantUmlServer(): string {
-  return vscode.workspace.getConfiguration('repodoc').get<string>('plantUmlServer') ?? '';
+  const config = vscode.workspace.getConfiguration('repodoc');
+  if (config.get<boolean>('plantUmlDocker')) {
+    const docker = MarkdownPanel.plantUmlDocker();
+    void docker.ensureStarted().then((up) => {
+      if (up && !dockerReady) {
+        dockerReady = true;
+        MarkdownPanel.refreshAll(); // reload the now-renderable images
+      }
+    });
+    return docker.localUrl();
+  }
+  return config.get<string>('plantUmlServer') ?? '';
 }
+
+let dockerReady = false;

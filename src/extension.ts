@@ -196,6 +196,31 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       }
     }),
 
+    vscode.commands.registerCommand('repodoc.plantUmlStart', async () => {
+      const docker = MarkdownPanel.plantUmlDocker();
+      if (!(await docker.dockerAvailable())) {
+        void vscode.window.showWarningMessage(
+          'RepoDoc: Docker is not available — install/start Docker to run the local PlantUML renderer.',
+        );
+        return;
+      }
+      void vscode.window.showInformationMessage('RepoDoc: starting the PlantUML renderer…');
+      const up = await docker.ensureStarted();
+      void vscode.window.showInformationMessage(
+        up
+          ? `RepoDoc: PlantUML renderer running at ${docker.localUrl()}`
+          : 'RepoDoc: the PlantUML container failed to start (see Docker logs).',
+      );
+      MarkdownPanel.refreshAll();
+    }),
+
+    vscode.commands.registerCommand('repodoc.plantUmlStop', async () => {
+      const stopped = await MarkdownPanel.plantUmlDocker().stop();
+      void vscode.window.showInformationMessage(
+        stopped ? 'RepoDoc: PlantUML renderer stopped.' : 'RepoDoc: no PlantUML container to stop.',
+      );
+    }),
+
     vscode.commands.registerCommand('repodoc.installAgentSkill', async () => {
       if (!root) {
         void vscode.window.showWarningMessage(
@@ -231,4 +256,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   return { store };
 }
 
-export function deactivate(): void {}
+export function deactivate(): void {
+  // Best-effort: tear down a PlantUML container this session started.
+  MarkdownPanel.plantUmlDocker().stopIfStartedByUs();
+}

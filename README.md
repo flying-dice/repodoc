@@ -51,7 +51,7 @@ Capture the *why* behind architectural choices as numbered markdown records with
 
 ## Docs
 
-A Docusaurus-style handbook rendered from your `docs/` tree. Add a folder, drop in a `.md` file, and it shows up in the sidebar — numeric prefixes control the order. Pages render YAML frontmatter as a meta table, ```mermaid fences as native diagrams, and ```plantuml fences via a configurable renderer server (`repodoc.plantUmlServer`).
+A Docusaurus-style handbook rendered from your `docs/` tree. Add a folder, drop in a `.md` file, and it shows up in the sidebar — numeric prefixes control the order. Pages render YAML frontmatter as a meta table, ```mermaid fences as native diagrams, and ```plantuml fences via a configurable renderer — either a server URL (`repodoc.plantUmlServer`) or a **local Docker container the extension manages for you** (`repodoc.plantUmlDocker`), so diagram source never leaves your machine.
 
 ![Rendered documentation page](images/docs.png)
 

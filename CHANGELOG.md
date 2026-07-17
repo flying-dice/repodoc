@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.4.0] — 2026-07-17
+
+- **Managed local PlantUML renderer** — enable `repodoc.plantUmlDocker` and the extension runs `plantuml/plantuml-server` in a local Docker container (`repodoc-plantuml`) so diagram source never leaves your machine: lazy auto-start when a PlantUML fence renders (views refresh when it's up), `RepoDoc: Start/Stop PlantUML Renderer (Docker)` commands, best-effort stop on deactivate. Image and port are configurable (`repodoc.plantUmlDockerImage`, `repodoc.plantUmlDockerPort`).
+
 ## [0.3.9] — 2026-07-17
 
 - **Diagrams in Docs and Decisions** — ```mermaid fences render natively (mermaid is bundled with the extension, theme-aware, no CDN), and ```plantuml / ```puml fences render through a configurable server (`repodoc.plantUmlServer`, defaults to the public plantuml.com; point it at a self-hosted instance for private diagrams or clear it to disable).

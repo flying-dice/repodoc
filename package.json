@@ -2,7 +2,7 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Documentation, decision records, and kanban boards living inside your repo",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "publisher": "flying-dice",
   "license": "MIT",
   "repository": {
@@ -106,6 +106,16 @@
         "command": "repodoc.installAgentSkill",
         "title": "Install Agent Skill",
         "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.plantUmlStart",
+        "title": "Start PlantUML Renderer (Docker)",
+        "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.plantUmlStop",
+        "title": "Stop PlantUML Renderer (Docker)",
+        "category": "RepoDoc"
       }
     ],
     "menus": {
@@ -170,6 +180,21 @@
           "type": "string",
           "default": "https://www.plantuml.com/plantuml",
           "markdownDescription": "PlantUML server used to render ```plantuml fences in Docs and Decisions (diagram source is sent to this server). Point it at a self-hosted instance for private diagrams, or set it empty to show PlantUML fences as plain code."
+        },
+        "repodoc.plantUmlDocker": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Render PlantUML through a **local Docker container** (`repodoc-plantuml`) managed by the extension, instead of the configured server \u2014 no diagram source leaves the machine. Requires Docker. The container starts on demand and stops when VS Code closes (or via *RepoDoc: Stop PlantUML Renderer*)."
+        },
+        "repodoc.plantUmlDockerImage": {
+          "type": "string",
+          "default": "plantuml/plantuml-server:jetty",
+          "description": "Docker image used for the local PlantUML renderer."
+        },
+        "repodoc.plantUmlDockerPort": {
+          "type": "number",
+          "default": 8792,
+          "description": "Local port the managed PlantUML container listens on."
         }
       }
     }
