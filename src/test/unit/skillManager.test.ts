@@ -84,3 +84,21 @@ suite('skillContent', () => {
     assert.ok(SKILL_MD.includes('boards/, decisions/, or docs/'));
   });
 });
+
+suite('SkillManager.outdated', () => {
+  test('reports stale installed files without touching them', () => {
+    const fs = new MemFileSystemAdapter();
+    fs.seed({ [SKILL_TARGETS.claude]: 'old content' });
+    const manager = new SkillManager(fs);
+    assert.deepStrictEqual(manager.outdated(), ['claude']);
+    assert.strictEqual(fs.readFile(SKILL_TARGETS.claude), 'old content');
+  });
+
+  test('empty when installed files are current or nothing is installed', () => {
+    const fs = new MemFileSystemAdapter();
+    const manager = new SkillManager(fs);
+    assert.deepStrictEqual(manager.outdated(), []);
+    manager.install('opencode');
+    assert.deepStrictEqual(manager.outdated(), []);
+  });
+});

@@ -29,6 +29,16 @@ export class SkillManager {
   }
 
   /**
+   * The installed skill files whose content has drifted from the canonical
+   * {@link SKILL_MD}. Read-only — used to offer the user a sync.
+   */
+  outdated(): AgentKind[] {
+    return this.installed().filter(
+      (kind) => this.fs.readFile(SKILL_TARGETS[kind]) !== SKILL_MD,
+    );
+  }
+
+  /**
    * Rewrites any installed skill file whose content has drifted from the
    * canonical {@link SKILL_MD}. Returns the kinds that were updated; files that
    * are already current (or not installed) are left untouched.

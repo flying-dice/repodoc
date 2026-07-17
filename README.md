@@ -68,7 +68,7 @@ RepoDoc watches the files and updates the board live.
 
 ### Teach your agent (skill files)
 
-Run **RepoDoc: Install Agent Skill** from the command palette to drop a `repodoc-workflow` skill into `.claude/skills/` (Claude Code) or `.opencode/skill/` (OpenCode). It teaches the agent the whole workflow above — claiming cards, reporting live progress, recording decisions, and keeping docs current. The extension treats installed skill files as managed: it rewrites them to the latest bundled version on activation, so don't hand-edit them (local changes are overwritten).
+Run **RepoDoc: Install Agent Skill** from the command palette to drop a `repodoc-workflow` skill into `.claude/skills/` (Claude Code) or `.opencode/skill/` (OpenCode). It teaches the agent the whole workflow above — claiming cards, reporting live progress, recording decisions, and keeping docs current. Installed skill files are managed: when RepoDoc ships a newer version, the extension shows a notice with an **Update** button — nothing is rewritten without your say-so (updating replaces any local edits).
 
 ## Development
 

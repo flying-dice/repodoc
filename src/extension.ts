@@ -21,13 +21,23 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   const skillManager = new SkillManager(fileSystem);
 
   if (root) {
-    // Keep any already-installed agent skill files in step with the extension's
-    // bundled canonical content, so upgrading RepoDoc refreshes them silently.
-    const synced = skillManager.syncInstalled();
-    if (synced.length > 0) {
-      void vscode.window.showInformationMessage(
-        `RepoDoc: updated ${synced.length} agent skill file(s).`,
-      );
+    // Installed agent skill files are managed, but never rewritten silently:
+    // when the bundled content is newer, offer a sync instead.
+    const stale = skillManager.outdated();
+    if (stale.length > 0) {
+      void vscode.window
+        .showInformationMessage(
+          `RepoDoc: ${stale.length} installed agent skill file(s) are out of date.`,
+          'Update',
+        )
+        .then((choice) => {
+          if (choice === 'Update') {
+            const synced = skillManager.syncInstalled();
+            void vscode.window.showInformationMessage(
+              `RepoDoc: updated ${synced.length} agent skill file(s).`,
+            );
+          }
+        });
     }
   }
 

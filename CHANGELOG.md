@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Skill files are no longer rewritten silently on activation — a notice with an **Update** button offers the sync instead.
 - **Decision frontmatter** — decision records now carry `status:` and `date:` in YAML frontmatter (the rendered view shows them under the title); the legacy body `**Status:**` line is no longer parsed.
 - All webview styles use VS Code theme tokens directly — the design-hex `var()` fallbacks are gone (prerelease, no legacy surface to support).
 
