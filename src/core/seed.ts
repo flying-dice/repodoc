@@ -79,8 +79,8 @@ export function seedCards(stamp: string): Array<{ name: string; content: string 
 
 export function seedDecision(date: string): string {
   return (
-    `# Decision 0001 — Record architecture decisions\n\n` +
-    `**Status:** Accepted &nbsp;·&nbsp; **Date:** ${date}\n\n` +
+    `---\nstatus: Accepted\ndate: ${date}\n---\n` +
+    `# Decision 01 — Record architecture decisions\n\n` +
     `## Context\n\n` +
     `We make architecturally significant decisions on this project regularly, but the ` +
     `reasoning tends to live in scattered chat threads and pull-request comments. New ` +

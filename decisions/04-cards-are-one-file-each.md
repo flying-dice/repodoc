@@ -1,6 +1,9 @@
+---
+status: Accepted
+date: 2026-07-16
+---
 # Decision 04 — Cards are one markdown file each, ordered by numeric prefix
 
-**Status:** Accepted &nbsp;·&nbsp; **Date:** 2026-07-16
 
 ## Context
 

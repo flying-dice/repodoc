@@ -2,8 +2,8 @@
    Shared base rules (fonts, scrollbar, top-bar breadcrumb) live in base.css,
    which is linked before this stylesheet.
 
-   THEME-NATIVE: chrome colours resolve from `--vscode-*` variables, with the
-   design hex kept as the var() fallback. */
+   THEME-NATIVE: chrome colours resolve from `--vscode-*` variables so the
+   view follows the user's theme. */
 
 /* ---- Page shell ---- */
 
@@ -13,8 +13,8 @@
   height: 100vh;
   width: 100%;
   overflow: hidden;
-  background: var(--vscode-editor-background, #181a1e);
-  color: var(--vscode-editor-foreground, #c7ccd4);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
 }
 
 /* Scrollable content area */
@@ -22,7 +22,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background: var(--vscode-editor-background, #181a1e);
+  background: var(--vscode-editor-background);
 }
 
 .reading-column {
@@ -34,7 +34,7 @@
 /* Mono crumb line above the rendered markdown */
 .filecrumb {
   font-size: 11px;
-  color: var(--vscode-descriptionForeground, #6d727c);
+  color: var(--vscode-descriptionForeground);
   letter-spacing: .03em;
   margin-bottom: 18px;
   font-family: var(--font-mono);
@@ -43,7 +43,7 @@
 /* ---- Rendered markdown typography (verbatim from the design mock) ---- */
 
 .adr-md {
-  color: var(--vscode-editor-foreground, #c7ccd4);
+  color: var(--vscode-editor-foreground);
   font-size: 15px;
   line-height: 1.75;
   font-family: var(--font-sans);
@@ -53,7 +53,7 @@
   font-size: 30px;
   line-height: 1.2;
   margin: 0 0 8px;
-  color: var(--vscode-foreground, #f0f2f5);
+  color: var(--vscode-foreground);
   letter-spacing: -.02em;
   font-weight: 650;
 }
@@ -61,16 +61,16 @@
 .adr-md h2 {
   font-size: 19px;
   margin: 34px 0 12px;
-  color: var(--vscode-foreground, #eceef2);
+  color: var(--vscode-foreground);
   font-weight: 620;
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, .08));
+  border-bottom: 1px solid var(--vscode-panel-border);
   padding-bottom: 8px;
 }
 
 .adr-md h3 {
   font-size: 15px;
   margin: 24px 0 8px;
-  color: var(--vscode-foreground, #e2e5ea);
+  color: var(--vscode-foreground);
   font-weight: 620;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -91,32 +91,32 @@
 }
 
 .adr-md a {
-  color: var(--vscode-textLink-foreground, #6ea8ff);
+  color: var(--vscode-textLink-foreground);
   text-decoration: none;
 }
 
 .adr-md a:hover {
-  color: var(--vscode-textLink-activeForeground, #6ea8ff);
+  color: var(--vscode-textLink-activeForeground);
   text-decoration: underline;
 }
 
 .adr-md strong {
-  color: var(--vscode-foreground, #f0f2f5);
+  color: var(--vscode-foreground);
   font-weight: 640;
 }
 
 .adr-md code {
-  background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, .07));
+  background: var(--vscode-textCodeBlock-background);
   padding: 2px 6px;
   border-radius: 5px;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--vscode-textPreformat-foreground, #e6b673);
+  color: var(--vscode-textPreformat-foreground);
 }
 
 .adr-md pre {
-  background: var(--vscode-textCodeBlock-background, #111316);
-  border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, .07));
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-panel-border);
   border-radius: 10px;
   padding: 16px 18px;
   overflow: auto;
@@ -127,7 +127,7 @@
   background: none;
   padding: 0;
   /* Block code stays neutral body text (not the inline-code accent). */
-  color: var(--vscode-editor-foreground, #c7ccd4);
+  color: var(--vscode-editor-foreground);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -135,9 +135,9 @@
 .adr-md blockquote {
   margin: 0 0 16px;
   padding: 2px 16px;
-  border-left: 3px solid var(--vscode-textBlockQuote-border, #4c8bf5);
-  background: var(--vscode-textBlockQuote-background, transparent);
-  color: var(--vscode-descriptionForeground, #9aa0aa);
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  background: var(--vscode-textBlockQuote-background);
+  color: var(--vscode-descriptionForeground);
 }
 
 .adr-md table {
@@ -149,19 +149,19 @@
 
 .adr-md th,
 .adr-md td {
-  border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, .1));
+  border: 1px solid var(--vscode-panel-border);
   padding: 8px 12px;
   text-align: left;
 }
 
 .adr-md th {
-  background: var(--vscode-keybindingTable-headerBackground, color-mix(in srgb, var(--vscode-foreground, #e2e5ea) 4%, transparent));
-  color: var(--vscode-foreground, #e2e5ea);
+  background: var(--vscode-keybindingTable-headerBackground);
+  color: var(--vscode-foreground);
   font-weight: 620;
 }
 
 .adr-md hr {
   border: none;
-  border-top: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, .09));
+  border-top: 1px solid var(--vscode-panel-border);
   margin: 26px 0;
 }

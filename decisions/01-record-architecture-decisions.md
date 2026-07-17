@@ -1,6 +1,9 @@
+---
+status: Accepted
+date: 2026-07-15
+---
 # Decision 01 — Record architecture decisions
 
-**Status:** Accepted &nbsp;·&nbsp; **Date:** 2026-07-15
 
 ## Context
 
@@ -15,7 +18,7 @@ the system is shaped the way it is.
 We will keep a collection of Architecture Decision Records under `decisions/`.
 Each record is a numbered markdown file (`NN-slug.md`) describing one decision,
 its context, and its consequences. The `# Decision NN — Title` heading and the
-`**Status:**` line are the format the extension parses to render and badge each
+frontmatter `status:` are the format the extension parses to render and badge each
 record.
 
 - Records are numbered sequentially and never renumbered.

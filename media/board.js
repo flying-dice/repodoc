@@ -39,11 +39,11 @@
   /* ---- Priority mappings (single source of truth) ---- */
   // Priority accents are UI chrome, so they follow the theme's chart colours
   // (red/amber for high/med, muted foreground for low). Each entry pairs the
-  // `--vscode-*` token with the original design hex kept as the CSS fallback.
+  // `--vscode-*` token.
   var PRIORITY_VARS = {
-    high: { token: '--vscode-charts-red', hex: '#e5534b' },
-    med: { token: '--vscode-charts-yellow', hex: '#d99a30' },
-    low: { token: '--vscode-descriptionForeground', hex: '#7d828b' },
+    high: { token: '--vscode-charts-red' },
+    med: { token: '--vscode-charts-yellow' },
+    low: { token: '--vscode-descriptionForeground' },
   };
   var PRIORITY_LABELS = { high: 'High', med: 'Medium', low: 'Low' };
 
@@ -165,9 +165,9 @@
 
   // Theme-aware equivalent of tintStyle for CHROME accents that resolve from a
   // `--vscode-*` token. color-mix reproduces the 0x22 (~13%) fill and 0x44
-  // (~27%) border alphas against the resolved variable (hex kept as fallback).
-  function tintVar(token, hex) {
-    var c = 'var(' + token + ', ' + hex + ')';
+  // (~27%) border alphas against the resolved variable.
+  function tintVar(token) {
+    var c = 'var(' + token + ')';
     return (
       'color:' +
       c +
@@ -256,7 +256,7 @@
         (state.filterAgent && !on ? '0.35' : '1') +
         ';box-shadow:' +
         (on
-          ? '0 0 0 2px var(--vscode-editor-background, #181a1e), 0 0 0 4px ' + a.color
+          ? '0 0 0 2px var(--vscode-editor-background), 0 0 0 4px ' + a.color
           : 'none') +
         ';';
       chips.push(
@@ -307,7 +307,7 @@
     var titleRow = [];
     if (card.priority === 'high' || card.priority === 'med') {
       var pv = PRIORITY_VARS[card.priority];
-      var pColor = 'var(' + pv.token + ', ' + pv.hex + ')';
+      var pColor = 'var(' + pv.token + ')';
       var pGlowAlpha = card.priority === 'high' ? '18%' : '16%';
       var pGlow = 'color-mix(in srgb, ' + pColor + ' ' + pGlowAlpha + ', transparent)';
       titleRow.push(
@@ -597,7 +597,7 @@
   function modalMeta(card) {
     var prV = PRIORITY_VARS[card.priority] || PRIORITY_VARS.low;
     var prL = PRIORITY_LABELS[card.priority] || PRIORITY_LABELS.med;
-    var priorityPill = h('span', { class: 'priority-pill', style: tintVar(prV.token, prV.hex) }, prL);
+    var priorityPill = h('span', { class: 'priority-pill', style: tintVar(prV.token) }, prL);
     return h('div', { class: 'modal-cols' }, [
       h('div', {}, [h('div', { class: 'field-label' }, 'Priority'), priorityPill]),
     ]);

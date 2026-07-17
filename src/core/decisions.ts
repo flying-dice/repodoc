@@ -5,6 +5,7 @@
  */
 
 import { FileSystemPort } from './ports';
+import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { markdownTitle, pad, slugify, stripNumPrefix } from './naming';
 import { DecisionRecord } from './types';
 
@@ -14,13 +15,17 @@ export function parseDecisionText(fileName: string, content: string): DecisionRe
   const numMatch = /^(\d+)/.exec(fileName);
   const num = numMatch ? numMatch[1] : '0000';
 
-  let title = markdownTitle(content, stripNumPrefix(id));
+  const { data, body } = parseFrontmatter(content);
+
+  let title = markdownTitle(body, stripNumPrefix(id));
   title = title.replace(/^(?:Decision\s+\d+|ADR-?\d+)\s*[—–-]\s*/i, '').trim();
 
-  const statusMatch = /\*\*Status:\*\*\s*([A-Za-z]+)/.exec(content);
-  const status = statusMatch ? statusMatch[1] : 'Proposed';
+  const status =
+    typeof data.status === 'string' && data.status.trim() ? data.status.trim() : 'Proposed';
 
-  return { id, num, file: fileName, title, status, body: content };
+  const date = typeof data.date === 'string' && data.date.trim() ? data.date.trim() : undefined;
+
+  return { id, num, file: fileName, title, status, date, body };
 }
 
 export class DecisionStore {
@@ -63,14 +68,16 @@ export class DecisionStore {
     const file = `${id}.md`;
     const body =
       `# Decision ${num} — ${cleanTitle}\n\n` +
-      `**Status:** Proposed &nbsp;·&nbsp; **Date:** ${today}\n\n` +
       `## Context\n\n` +
       `_What is the issue that motivates this decision?_\n\n` +
       `## Decision\n\n` +
       `_What is the change that we're proposing or doing?_\n\n` +
       `## Consequences\n\n` +
       `_What becomes easier or harder because of this change?_\n`;
-    this.fs.writeFile(`decisions/${file}`, body);
+    this.fs.writeFile(
+      `decisions/${file}`,
+      serializeFrontmatter({ status: 'Proposed', date: today }, body),
+    );
     return id;
   }
 }

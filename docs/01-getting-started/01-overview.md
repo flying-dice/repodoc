@@ -26,7 +26,7 @@ parses through the exact same core the shipped extension uses.
 | --- | --- |
 | `boards/<board-id>/NN-slug.md` | One card per file — frontmatter holds column, labels, priority, agent, live status |
 | `boards/<board-id>/.config.json` | Board name, columns, WIP limits, labels, agents |
-| `decisions/NN-slug.md` | Decision records with `**Status:** …` lines |
+| `decisions/NN-slug.md` | Decision records with frontmatter `status:`/`date:` |
 | `docs/NN-folder/NN-slug.md` | Documentation tree — numeric prefixes order the sidebar |
 
 ## Where to go next

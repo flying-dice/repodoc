@@ -52,7 +52,7 @@ Everything lives in four places:
 | --- | --- |
 | `boards/<board-id>/NN-slug.md` | One card per file — frontmatter holds column, labels, priority, agent, live status |
 | `boards/<board-id>/.config.json` | Board name, columns, WIP limits, labels, agents |
-| `decisions/NN-slug.md` | Decision records with `**Status:** …` lines |
+| `decisions/NN-slug.md` | Decision records — frontmatter `status:` and `date:` |
 | `docs/NN-slug.md` | Documentation tree (numeric prefix orders the sidebar) |
 
 ## Working with agents

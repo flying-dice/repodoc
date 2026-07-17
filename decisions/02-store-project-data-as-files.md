@@ -1,6 +1,9 @@
+---
+status: Accepted
+date: 2026-07-15
+---
 # Decision 02 — Store all project data as plain files in the repository
 
-**Status:** Accepted &nbsp;·&nbsp; **Date:** 2026-07-15
 
 ## Context
 

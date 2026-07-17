@@ -87,6 +87,8 @@ export interface DecisionRecord {
   title: string;
   /** "Accepted" | "Proposed" | "Superseded" (free-form, from the markdown). */
   status: string;
+  /** Decision date (frontmatter `date:`), verbatim. */
+  date?: string;
   /** Full markdown body. */
   body: string;
 }

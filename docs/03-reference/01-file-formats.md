@@ -64,8 +64,6 @@ A sentence or two of description.
 ```md
 # Decision NN — Title
 
-**Status:** Accepted &nbsp;·&nbsp; **Date:** 2026-07-17
-
 ## Context
 
 ## Decision
@@ -73,7 +71,7 @@ A sentence or two of description.
 ## Consequences
 ```
 
-The `**Status:**` line drives the badge (`Proposed` | `Accepted` | `Superseded`).
+Frontmatter `status:` drives the badge (`Proposed` | `Accepted` | `Superseded`); `date:` is shown in the rendered view.
 Records are ordered by their numeric prefix.
 
 ## Docs — `docs/NN-folder/NN-slug.md`

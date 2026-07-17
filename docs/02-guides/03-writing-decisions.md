@@ -20,8 +20,6 @@ two-digit number. The format the extension parses is:
 ```md
 # Decision NN — Title
 
-**Status:** Proposed &nbsp;·&nbsp; **Date:** YYYY-MM-DD
-
 ## Context
 
 Why this decision is needed.
@@ -36,7 +34,7 @@ What becomes easier or harder as a result.
 ```
 
 The `# Decision NN — Title` heading provides the title (the `Decision NN —`
-prefix is stripped for display), and the `**Status:**` line drives the lifecycle
+prefix is stripped for display), and the frontmatter `status:` drives the lifecycle
 badge.
 
 ## Numbering and lifecycle

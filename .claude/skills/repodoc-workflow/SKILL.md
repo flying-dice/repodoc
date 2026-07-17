@@ -15,7 +15,8 @@ extension watches them and updates its UI live — you never reload anything.
   card's global position on the board.
 - `boards/<board-id>/.config.json` — board `name`, `columns`, WIP limits,
   `labels`, and `agents` (the keys you may assign yourself to).
-- `decisions/NN-slug.md` — decision records, ordered by prefix.
+- `decisions/NN-slug.md` — decision records, ordered by prefix. Frontmatter
+  carries `status` (Proposed | Accepted | Superseded) and `date`.
 - `docs/NN-slug.md` (and subfolders) — the documentation tree; the numeric
   prefix orders the sidebar.
 
@@ -83,9 +84,11 @@ yourself. To add a card, use the next free `NN` and a fresh slug.
 When a significant choice is made, record it. Add `decisions/<next-NN>-slug.md`:
 
 ```markdown
+---
+status: Proposed
+date: YYYY-MM-DD
+---
 # Decision NN — Title
-
-**Status:** Proposed
 
 ## Context
 

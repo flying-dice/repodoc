@@ -1,5 +1,10 @@
 # Change Log
 
+## [Unreleased]
+
+- **Decision frontmatter** — decision records now carry `status:` and `date:` in YAML frontmatter (the rendered view shows them under the title); the legacy body `**Status:**` line is no longer parsed.
+- All webview styles use VS Code theme tokens directly — the design-hex `var()` fallbacks are gone (prerelease, no legacy surface to support).
+
 ## [0.2.0] — 2026-07-17
 
 - **Theme-native UI** — every webview surface now follows the active VS Code color theme (light, dark, custom) via `--vscode-*` tokens; label/agent/column colors remain user-defined data.

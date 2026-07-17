@@ -1,6 +1,9 @@
+---
+status: Accepted
+date: 2026-07-16
+---
 # Decision 03 — Ports & Adapters around all file IO
 
-**Status:** Accepted &nbsp;·&nbsp; **Date:** 2026-07-16
 
 ## Context
 

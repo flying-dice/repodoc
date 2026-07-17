@@ -136,7 +136,18 @@ export class MarkdownPanel {
       // Record disappeared — leave the panel as-is.
       return;
     }
-    const bodyHtml = marked.parse(decision.body) as string;
+    // Status (and date) live in frontmatter — surface them as a meta line
+    // between the title heading and the rest of the record.
+    const meta =
+      `<p><strong>Status:</strong> ${escapeHtml(decision.status)}` +
+      (decision.date ? ` &nbsp;·&nbsp; <strong>Date:</strong> ${escapeHtml(decision.date)}` : '') +
+      `</p>`;
+    let bodyHtml = marked.parse(decision.body) as string;
+    const headingEnd = bodyHtml.indexOf('</h1>');
+    bodyHtml =
+      headingEnd === -1
+        ? meta + bodyHtml
+        : bodyHtml.slice(0, headingEnd + 5) + meta + bodyHtml.slice(headingEnd + 5);
     const fileCrumb = `decisions/${decision.file}`;
     this.panel.title = MarkdownPanel.truncate(
       `ADR-${decision.num} — ${decision.title}`,

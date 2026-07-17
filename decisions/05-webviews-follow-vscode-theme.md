@@ -1,6 +1,9 @@
+---
+status: Accepted
+date: 2026-07-17
+---
 # Decision 05 — Webviews follow VS Code theme tokens
 
-**Status:** Accepted &nbsp;·&nbsp; **Date:** 2026-07-17
 
 ## Context
 
