@@ -1,8 +1,8 @@
 ---
 column: done
 labels: [core, webview]
-priority: high
 agent: claude
+priority: high
 release: v0.3.0
 effort: L
 live: false

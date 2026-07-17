@@ -21,11 +21,12 @@ renumbers the card files on disk so the `NN-` prefixes stay contiguous.
   `testing`. Pick the one or two that fit.
 - **Priority** is `high`, `med`, or `low` — set it honestly so the board reads at
   a glance.
-- **Assigning to an agent**: set `agent: claude` (the one agent configured in
-  this board's `.config.json`) and move the card to `doing`.
-- **Live progress**: while an agent is actively working a card it may set
-  `live: true`, a one-line `status:`, and `progress: 0-100`. Nothing in the
-  committed repo is left `live: true` — that flag is for an in-flight run only.
+- **Claiming a card**: move it to `doing`, set `live: true` and a one-line
+  `status:`, and note who you are in the card's `## Comments` journal. There is
+  no assignee field — the journal is the record of who worked the card.
+- **Live progress**: while actively working a card, keep `live: true`, a one-line
+  `status:`, and `progress: 0-100`. Nothing in the committed repo is left
+  `live: true` — that flag is for an in-flight run only.
 - **Checklists**: break a card into `- [ ]` / `- [x]` sub-steps under a
   `## Checklist` heading; tick them off as you go.
 

@@ -9,7 +9,7 @@
 Because that's where your agents already are. There's no server, no account, no sync — a card is a markdown file, a decision is a markdown file, the board is a folder. Anything that can edit files (Claude Code, Cursor, Copilot, or you with `vim`) can move work forward, and every change is versioned with the code it describes.
 
 - **Diffable & reviewable** — planning changes show up in pull requests.
-- **Agent-native** — assigning a ticket is telling your agent to edit a file.
+- **Agent-native** — moving work forward is just editing a file your agent already sees.
 - **Portable** — clone the repo, get the whole project brain.
 
 ## Native to your editor
@@ -20,7 +20,7 @@ RepoDoc looks and feels like part of VS Code, not an app in a webview. Navigatio
 
 ## The board
 
-Trello-style columns with drag & drop, WIP limits, labels, priorities, search, and per-agent filters. Cards assigned to an agent show a **live status line and progress bar** while the agent works.
+Trello-style columns with drag & drop, WIP limits, labels, priorities, and search. A card being actively worked shows a **live status line and progress bar**.
 
 ![Kanban board with live agent progress](images/board.png)
 
@@ -58,15 +58,15 @@ A Docusaurus-style handbook rendered from your `docs/` tree. Add a folder, drop 
 ## Getting started
 
 1. Install RepoDoc and open your repository.
-2. Click the RepoDoc icon in the activity bar and hit **Initialize RepoDoc** — you get a starter board, a first decision record, and a docs page.
+2. Click the RepoDoc icon in the activity bar and hit **Initialize RepoDoc** — it creates a starter board config. Your cards, decisions, and docs are yours to add.
 3. Open the board, add cards, and point your coding agent at the repo.
 
 Everything lives in four places:
 
 | Path | Contents |
 | --- | --- |
-| `boards/<board-id>/NN-slug.md` | One card per file — frontmatter holds column, labels, priority, agent, live status |
-| `boards/<board-id>/.config.json` | Board name, columns (with WIP limits and gates), labels, agents, custom fields |
+| `boards/<board-id>/NN-slug.md` | One card per file — frontmatter holds column, labels, priority, live status |
+| `boards/<board-id>/.config.json` | Board name, columns (with WIP limits and gates), labels, custom fields |
 | `decisions/NN-slug.md` | Decision records — frontmatter `status:` and `date:` |
 | `docs/NN-slug.md` | Documentation tree (numeric prefix orders the sidebar) |
 
@@ -74,7 +74,7 @@ Everything lives in four places:
 
 Tell your agent the conventions once (or drop them in your agent instructions file):
 
-- Pick up a card by setting `agent: <you>` and `column: doing` in its frontmatter.
+- Pick up a card by setting `column: doing` in its frontmatter and noting who you are in its `## Comments` journal — there is no assignee field.
 - Report progress with `live: true`, `status: <one-liner>`, `progress: 0-100`.
 - Tick checklist items (`- [x]`) as you complete them.
 - Set any **custom fields** the board defines (e.g. `release: v0.2.0`, `estimate: 5`) as flat frontmatter keys.

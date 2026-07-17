@@ -3,7 +3,7 @@
    which is linked before this stylesheet.
 
    THEME-NATIVE: chrome colours resolve from `--vscode-*` variables. DATA
-   colours (labels/agents/column dots) come from the board .config.json and are
+   colours (labels/column dots) come from the board .config.json and are
    applied inline in board.js. */
 
 body {
@@ -282,14 +282,11 @@ input::placeholder {
 .meta-spacer {
   flex: 1;
 }
-.meta-updated {
-  color: var(--vscode-descriptionForeground);
-}
 .meta-avatar {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  /* Contrast text on a user-supplied (data) avatar colour. */
+  /* Contrast text on the derived (hashed) avatar colour. */
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -299,6 +296,9 @@ input::placeholder {
   flex: none;
 }
 
+.meta-updated {
+  color: var(--vscode-descriptionForeground);
+}
 /* ---- Add-card composer ---- */
 .composer {
   padding: 6px 10px 11px;

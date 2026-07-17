@@ -15,9 +15,6 @@ the extension's core parses — the parsers live in `src/core/` (`frontmatter.ts
   ],
   "labels": {
     "core": { "name": "core", "color": "#3fb27f" }
-  },
-  "agents": {
-    "claude": { "name": "Claude", "color": "#d97757", "initials": "CL" }
   }
 }
 ```
@@ -25,8 +22,8 @@ the extension's core parses — the parsers live in `src/core/` (`frontmatter.ts
 - `columns` is an ordered list; each needs an `id`, and may set `name`, `color`,
   an optional `wip` limit, and `enter`/`exit` gates (see below). A column with no
   `name` falls back to a title-cased `id`.
-- `labels` and `agents` are keyed maps. An entry that is null or carries no
-  string field is dropped, so a stray `"claude": null` never reaches the UI.
+- `labels` is a keyed map. An entry that is null or carries no string field is
+  dropped, so a stray `"core": null` never reaches the UI.
 - `fields` is an ordered list of custom card-field definitions (see below).
 
 ### Custom fields — `fields`
@@ -91,7 +88,6 @@ sets, checked with `= <name>`. The `check` mini-syntax:
 column: doing
 labels: [core, webview]
 priority: high
-agent: claude
 updatedAt: 2026-07-17T12:00:00.000Z
 ---
 # Card title
@@ -105,7 +101,7 @@ A sentence or two of description.
 ```
 
 - Only `column` is required. Optional frontmatter: `labels` (inline array),
-  `priority` (`high` | `med` | `low`), `agent`, `live` (boolean), `status`,
+  `priority` (`high` | `med` | `low`), `live` (boolean), `status`,
   `progress` (number), `updatedAt` (ISO string). There is no `comments`
   frontmatter key — comments are a `## Comments` body section (below), and the
   count badge is derived from its entries.

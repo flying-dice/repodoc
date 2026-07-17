@@ -1,8 +1,8 @@
 ---
 column: done
 labels: [docs]
-priority: med
 agent: claude
+priority: med
 release: v0.2.0
 effort: M
 updatedAt: 2026-07-17T04:15:00.000Z

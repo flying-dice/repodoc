@@ -210,10 +210,10 @@ function resolveFieldValue(card: Card, fieldId: string): CustomFieldValue | unde
     return card.custom[fieldId];
   }
   switch (fieldId) {
-    case 'priority':
-      return card.priority;
     case 'agent':
       return card.agent;
+    case 'priority':
+      return card.priority;
     case 'labels':
       return card.labels;
     case 'live':

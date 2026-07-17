@@ -2,7 +2,7 @@
  * Shared data model for RepoDoc.
  *
  * All data lives inside the repository:
- *  - `boards/<id>/.config.json`   — board name, columns, labels, agents
+ *  - `boards/<id>/.config.json`   — board name, columns, labels
  *  - `boards/<id>/NN-slug.md`     — one card per file (frontmatter + markdown)
  *  - `decisions/NN-slug.md`       — decision records (markdown)
  *  - `docs/**`                    — documentation tree (plain markdown)
@@ -14,12 +14,6 @@
 export interface LabelDef {
   name: string;
   color: string;
-}
-
-export interface AgentDef {
-  name: string;
-  color: string;
-  initials: string;
 }
 
 export type CustomFieldType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect';
@@ -90,7 +84,6 @@ export interface GateResult {
 
 export interface RepoDocConfig {
   labels: Record<string, LabelDef>;
-  agents: Record<string, AgentDef>;
   /** Board-defined card fields, in display order. */
   fields: CustomFieldDef[];
 }
@@ -107,7 +100,10 @@ export interface Card {
   title: string;
   labels?: string[];
   priority?: Priority;
-  /** Key into RepoDocConfig.agents — the agent assigned to this card. */
+  /**
+   * Free text naming who is working the card (e.g. "claude"). Renders as a
+   * derived avatar — there is no roster; any writer may add themselves.
+   */
   agent?: string;
   /** True while an agent is actively working the card. */
   live?: boolean;

@@ -185,6 +185,23 @@
     );
   }
 
+  // Derived identity for a free-text agent value: initials + a stable color
+  // from a string hash. No roster — whoever writes agent: renders.
+  function agentAvatar(name) {
+    var words = String(name).trim().split(/\s+/).slice(0, 2);
+    var initials = words
+      .map(function (w) {
+        return w.charAt(0);
+      })
+      .join('')
+      .toUpperCase() || '?';
+    var hash = 0;
+    for (var i = 0; i < name.length; i++) {
+      hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+    }
+    return { initials: initials, color: 'hsl(' + (hash % 360) + ', 45%, 45%)' };
+  }
+
   function matches(card) {
     var q = state.query.trim().toLowerCase();
     if (q && card.title.toLowerCase().indexOf(q) === -1) {
@@ -197,7 +214,7 @@
     return state.data ? state.data.board : null;
   }
   function config() {
-    return state.data ? state.data.config : { labels: {}, agents: {}, fields: [] };
+    return state.data ? state.data.config : { labels: {}, fields: [] };
   }
   function fieldDefs() {
     var f = config().fields;
@@ -229,7 +246,7 @@
   }
 
   // Resolve a gate's target field value: board custom fields first, then the
-  // reserved card keys (e.g. `priority`, `agent`) for reserved-id gates.
+  // reserved card keys (e.g. `priority`, `status`) for reserved-id gates.
   function fieldValue(card, fieldId) {
     var custom = card.custom || {};
     if (Object.prototype.hasOwnProperty.call(custom, fieldId)) {
@@ -390,10 +407,6 @@
       return 'to be empty';
     }
     return expr;
-  }
-  function agentDef(key) {
-    var agents = config().agents || {};
-    return key && agents[key] ? agents[key] : null;
   }
   function labelDef(key) {
     var labels = config().labels || {};
@@ -565,13 +578,13 @@
     });
     meta.push(h('div', { class: 'meta-spacer' }));
     meta.push(h('span', { class: 'meta-updated' }, humanizeTime(card.updatedAt)));
-    var ag = agentDef(card.agent);
-    if (ag) {
+    if (card.agent) {
+      var av = agentAvatar(card.agent);
       meta.push(
         h(
           'span',
-          { class: 'meta-avatar', style: 'background:' + ag.color + ';', title: ag.name },
-          ag.initials,
+          { class: 'meta-avatar', title: card.agent, style: 'background:' + av.color + ';' },
+          av.initials,
         ),
       );
     }
@@ -810,7 +823,6 @@
     if (!card.live) {
       return null;
     }
-    var ag = agentDef(card.agent);
     return h('div', { class: 'modal-live' }, [
       h('span', { class: 'modal-live-dot' }),
       h('div', { class: 'modal-live-main' }, [
@@ -818,7 +830,7 @@
         h(
           'div',
           { class: 'modal-live-sub' },
-          (ag ? ag.name : 'Agent') + ' · ' + (card.progress || 0) + '% complete',
+          (card.agent ? card.agent + ' · ' : '') + (card.progress || 0) + '% complete',
         ),
       ]),
     ]);
@@ -1391,7 +1403,7 @@
     highlightColumn(colEl);
   }
 
-  // The DOM only shows cards passing the active search/agent filter, so a DOM
+  // The DOM only shows cards passing the active search filter, so a DOM
   // position is not a valid index into the column's full card list. Anchor the
   // drop on the first visible card after the placeholder, then find its slot
   // among ALL of the column's cards (minus the dragged one).

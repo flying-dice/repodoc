@@ -17,21 +17,14 @@ function cardMd(column: string, title: string): string {
 }
 
 suite('store.init', () => {
-  test('seeds the expected files', () => {
+  test('creates ONLY the starter board config — never content', () => {
     const { fs, store } = makeStore();
     store.init();
     const keys = Object.keys(fs.snapshot()).sort();
-    assert.deepStrictEqual(keys, [
-      'boards/project-backlog/.config.json',
-      'boards/project-backlog/01-try-dragging-this-card.md',
-      'boards/project-backlog/02-add-a-card-or-let-an-agent.md',
-      'boards/project-backlog/03-write-your-first-decision.md',
-      'boards/project-backlog/04-assign-a-card-to-an-agent.md',
-      'boards/project-backlog/05-review-before-done.md',
-      'boards/project-backlog/06-initialize-repodoc.md',
-      'decisions/01-record-architecture-decisions.md',
-      'docs/getting-started/01-introduction.md',
-    ]);
+    assert.deepStrictEqual(keys, ['boards/project-backlog/.config.json']);
+    const config = JSON.parse(fs.readFile('boards/project-backlog/.config.json')!);
+    assert.strictEqual(config.name, 'Project Backlog');
+    assert.strictEqual(config.columns.length, 5);
   });
 
   test('is idempotent — a second init does not overwrite existing files', () => {
@@ -141,27 +134,24 @@ suite('store.getBoardConfig', () => {
         name: 'B',
         columns: [],
         labels: { bug: { name: 'bug', color: '#f00' } },
-        agents: { claude: { name: 'Claude', color: '#d97757', initials: 'CL' } },
       }),
     });
     const config = store.getBoardConfig('b');
     assert.deepStrictEqual(Object.keys(config.labels), ['bug']);
-    assert.deepStrictEqual(Object.keys(config.agents), ['claude']);
   });
 
-  test('falls back to empty labels/agents when absent', () => {
+  test('falls back to empty labels when absent', () => {
     const { store } = makeStore({
       'boards/b/.config.json': JSON.stringify({ name: 'B', columns: [] }),
     });
     const config = store.getBoardConfig('b');
     assert.deepStrictEqual(config.labels, {});
-    assert.deepStrictEqual(config.agents, {});
   });
 
-  test('falls back to empty labels/agents when config file is missing', () => {
+  test('falls back to empty labels when config file is missing', () => {
     const { store } = makeStore();
     const config = store.getBoardConfig('ghost');
     assert.deepStrictEqual(config.labels, {});
-    assert.deepStrictEqual(config.agents, {});
+    assert.deepStrictEqual(config.fields, []);
   });
 });

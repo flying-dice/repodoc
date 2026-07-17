@@ -131,12 +131,5 @@
       "name": "testing",
       "color": "#c9a227"
     }
-  },
-  "agents": {
-    "claude": {
-      "name": "Claude",
-      "color": "#d97757",
-      "initials": "CL"
-    }
   }
 }

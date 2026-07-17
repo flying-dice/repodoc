@@ -95,25 +95,32 @@ suite('RepoDoc e2e', () => {
     assert.ok(!fs.existsSync(path.join(root, '.opencode', 'skill')));
   });
 
-  test('repodoc.init seeds boards, decisions and docs on the real FS', async () => {
+  test('repodoc.init creates ONLY the board config — no content', async () => {
     await vscode.commands.executeCommand('repodoc.init');
 
     assert.ok(fs.existsSync(path.join(root, 'boards', 'project-backlog', '.config.json')));
-    assert.strictEqual(boardCardFiles(root).length, 6);
-    assert.ok(
-      fs.existsSync(path.join(root, 'decisions', '01-record-architecture-decisions.md')),
-    );
-    assert.ok(
-      fs.existsSync(path.join(root, 'docs', 'getting-started', '01-introduction.md')),
-    );
+    assert.strictEqual(boardCardFiles(root).length, 0);
+    assert.ok(!fs.existsSync(path.join(root, 'decisions')), 'init must not create decisions/');
+    assert.ok(!fs.existsSync(path.join(root, 'docs')), 'init must not create docs/');
   });
 
-  test('the store exposes the seeded board, decisions and docs', () => {
+  test('the store exposes user-authored decisions and docs', () => {
     const boards = api.store.listBoards();
     assert.ok(boards.some((b) => b.id === 'project-backlog'));
 
+    fs.mkdirSync(path.join(root, 'decisions'), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, 'decisions', '01-first-decision.md'),
+      '---\nstatus: Accepted\ndate: 2026-07-17\n---\n# Decision 01 — First decision\n\nBody.\n',
+    );
+    fs.mkdirSync(path.join(root, 'docs', 'getting-started'), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, 'docs', 'getting-started', '01-introduction.md'),
+      '# Introduction\n\nHello.\n',
+    );
+
     const decisions = api.store.listDecisions();
-    assert.ok(decisions.some((d) => d.id === '01-record-architecture-decisions'));
+    assert.ok(decisions.some((d) => d.id === '01-first-decision'));
 
     const docs = api.store.getDocsTree();
     assert.ok(docs.some((n) => n.name === 'getting-started'));
@@ -130,10 +137,7 @@ suite('RepoDoc e2e', () => {
   });
 
   test('repodoc.openDecision and repodoc.openDoc open webview tabs', async () => {
-    await vscode.commands.executeCommand(
-      'repodoc.openDecision',
-      '01-record-architecture-decisions',
-    );
+    await vscode.commands.executeCommand('repodoc.openDecision', '01-first-decision');
     const adrTab = await waitFor(() =>
       findTab((t) => t.input instanceof vscode.TabInputWebview && t.label.startsWith('ADR-01')),
     );
@@ -150,24 +154,27 @@ suite('RepoDoc e2e', () => {
   });
 
   test('mutating through the store rewrites card files on disk (add + renumber)', async () => {
+    api.store.addCard('project-backlog', 'backlog', 'Backlog Card');
+    api.store.addCard('project-backlog', 'todo', 'First Card');
     api.store.addCard('project-backlog', 'todo', 'E2E Card');
     assert.ok(
-      fs.existsSync(path.join(root, 'boards', 'project-backlog', '07-e2e-card.md')),
-      'new card should be appended as 07-e2e-card.md',
+      fs.existsSync(path.join(root, 'boards', 'project-backlog', '03-e2e-card.md')),
+      'new card should be appended as 03-e2e-card.md',
     );
 
     // Move it to the top of backlog — this renumbers files contiguously.
     api.store.moveCard('project-backlog', 'e2e-card', 'backlog', 0);
 
     const files = boardCardFiles(root);
-    assert.strictEqual(files.length, 7);
-    // Contiguous 01..07, no gaps.
+    assert.strictEqual(files.length, 3);
+    // Contiguous 01..03, no gaps.
     assert.deepStrictEqual(
       files.map((f) => parseInt(f.slice(0, f.indexOf('-')), 10)),
-      [1, 2, 3, 4, 5, 6, 7],
+      [1, 2, 3],
     );
-    // e2e-card was renumbered off 07 to the front of the backlog column.
-    assert.ok(!fs.existsSync(path.join(root, 'boards', 'project-backlog', '07-e2e-card.md')));
+    // e2e-card was renumbered off 03 — it now sits before the backlog card.
+    assert.ok(!fs.existsSync(path.join(root, 'boards', 'project-backlog', '03-e2e-card.md')));
+    assert.ok(fs.existsSync(path.join(root, 'boards', 'project-backlog', '01-e2e-card.md')));
     const movedFile = files.find((f) => f.endsWith('-e2e-card.md'))!;
     const content = fs.readFileSync(
       path.join(root, 'boards', 'project-backlog', movedFile),

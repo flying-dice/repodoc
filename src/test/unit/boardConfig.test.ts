@@ -7,7 +7,6 @@ suite('boardConfig.normalizeBoardConfig — fallbacks', () => {
       name: 'My Board',
       columns: [],
       labels: {},
-      agents: {},
       fields: [],
     });
   });
@@ -18,7 +17,6 @@ suite('boardConfig.normalizeBoardConfig — fallbacks', () => {
         name: 'B',
         columns: [],
         labels: {},
-        agents: {},
         fields: [],
       });
     }
@@ -52,19 +50,13 @@ suite('boardConfig.normalizeBoardConfig — columns', () => {
   });
 });
 
-suite('boardConfig.normalizeBoardConfig — label/agent hygiene', () => {
-  test('drops null entries inside the agents map', () => {
+suite('boardConfig.normalizeBoardConfig — label hygiene', () => {
+  test('an agents map in config is ignored (no roster concept)', () => {
     const config = normalizeBoardConfig(
-      {
-        name: 'B',
-        agents: {
-          claude: null,
-          cursor: { name: 'Cursor', color: '#4c8bf5', initials: 'CU' },
-        },
-      },
+      { name: 'B', agents: { claude: { name: 'Claude' } } },
       'b',
     );
-    assert.deepStrictEqual(Object.keys(config.agents), ['cursor']);
+    assert.ok(!('agents' in config));
   });
 
   test('drops non-object and empty-shell entries from labels', () => {
@@ -84,10 +76,9 @@ suite('boardConfig.normalizeBoardConfig — label/agent hygiene', () => {
     assert.deepStrictEqual(Object.keys(config.labels), ['bug']);
   });
 
-  test('a whole non-object labels/agents value degrades to {}', () => {
-    const config = normalizeBoardConfig({ name: 'B', labels: 'x', agents: 7 }, 'b');
+  test('a whole non-object labels value degrades to {}', () => {
+    const config = normalizeBoardConfig({ name: 'B', labels: 'x' }, 'b');
     assert.deepStrictEqual(config.labels, {});
-    assert.deepStrictEqual(config.agents, {});
   });
 });
 

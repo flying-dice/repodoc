@@ -3,7 +3,6 @@ import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { pad, slugFromFileName, slugify, titleCase } from './naming';
 import {
   BoardConfig,
-  DEFAULT_AGENTS,
   DEFAULT_LABELS,
   defaultColumns,
   normalizeBoardConfig,
@@ -13,7 +12,7 @@ import { CardEntry, findChecklist, parseCard } from './cardParse';
 import { evaluateTransition } from './gates';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
-import { seedBoardConfig, seedCards, seedDecision, seedIntroDoc } from './seed';
+import { seedBoardConfig } from './seed';
 import {
   BoardData,
   BoardRef,
@@ -84,25 +83,17 @@ export class RepoDocStore {
     return this.fs.exists('boards') || this.fs.exists('decisions');
   }
 
+  /**
+   * Bootstrap: writes ONLY the starter board config when it is absent — never
+   * seed cards, decisions, or docs. Initializing on an existing repo must never
+   * risk touching user content. Idempotent: a second init leaves everything as
+   * is. Always fires so listeners refresh.
+   */
   init(): void {
     const boardConfig = this.configPath('project-backlog');
     if (!this.fs.exists(boardConfig)) {
       this.fs.writeFile(boardConfig, jsonFileContent(seedBoardConfig()));
-      const stamp = this.now();
-      for (const seed of seedCards(stamp)) {
-        this.fs.writeFile(`boards/project-backlog/${seed.name}`, seed.content);
-      }
     }
-
-    const adr = 'decisions/01-record-architecture-decisions.md';
-    if (!this.fs.exists(adr)) {
-      this.fs.writeFile(adr, seedDecision(this.today()));
-    }
-
-    if (!this.fs.exists('docs')) {
-      this.fs.writeFile('docs/getting-started/01-introduction.md', seedIntroDoc());
-    }
-
     this.fire();
   }
 
@@ -110,7 +101,7 @@ export class RepoDocStore {
 
   getBoardConfig(boardId: string): RepoDocConfig {
     const config = this.readConfig(boardId);
-    return { labels: config.labels, agents: config.agents, fields: config.fields };
+    return { labels: config.labels, fields: config.fields };
   }
 
   displayPath(boardId: string): string {
@@ -194,7 +185,6 @@ export class RepoDocStore {
       name: name.trim() || titleCase(id),
       columns: defaultColumns(),
       labels: { ...DEFAULT_LABELS },
-      agents: { ...DEFAULT_AGENTS },
       fields: [],
     };
     this.writeConfig(id, config);

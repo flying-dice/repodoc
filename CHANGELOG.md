@@ -1,5 +1,10 @@
 # Change Log
 
+## [0.5.0] — 2026-07-17
+
+- **Bootstrap is config-only** — *Initialize RepoDoc* now creates just the starter board config (`boards/project-backlog/.config.json`); it never seeds cards, decisions, or docs, so initializing an existing repo can't touch your content.
+- **No roster, no assignee — but free-text attribution stays** — the `agents` map in board config is gone. The card `agent:` frontmatter key is free text: whoever works a card writes their own name, which renders as a derived avatar (initials + stable hashed colour) on the card and in the live banner. No participant lists anywhere.
+
 ## [0.4.2] — 2026-07-17
 
 - Board wheel behavior: inside a column stack the wheel now scrolls strictly vertically (no more surprise horizontal panning when a column's list hits its end); the board background still pans horizontally with a plain wheel.

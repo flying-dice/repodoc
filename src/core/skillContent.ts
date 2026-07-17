@@ -26,7 +26,7 @@ extension watches them and updates its UI live — you never reload anything.
 - \`boards/<board-id>/NN-slug.md\` — one card per file. The \`NN\` prefix is the
   card's global position on the board.
 - \`boards/<board-id>/.config.json\` — board \`name\`, \`columns\`, WIP limits,
-  \`labels\`, and \`agents\` (the keys you may assign yourself to).
+  and \`labels\`.
 - \`decisions/NN-slug.md\` — decision records, ordered by prefix. Frontmatter
   carries \`status\` (Proposed | Accepted | Superseded) and \`date\`.
 - \`docs/NN-slug.md\` (and subfolders) — the documentation tree; the numeric
@@ -40,7 +40,7 @@ Frontmatter keys (all optional except \`column\`):
   \`review\`, \`done\`).
 - \`labels\` — a list, e.g. \`[bug, backend]\`.
 - \`priority\` — \`high\` | \`med\` | \`low\`.
-- \`agent\` — the agent key working the card (from \`.config.json\` \`agents\`).
+- \`agent\` — free text naming who is working the card (no roster; add yourself).
 - \`live\` — \`true\` while you are actively working, else \`false\`/absent.
 - \`status\` — a one-line human summary of what you are doing right now.
 - \`progress\` — an integer 0-100.
@@ -62,7 +62,6 @@ Example card (\`boards/project-backlog/03-add-csv-export.md\`):
 column: doing
 labels: [feature, backend]
 priority: high
-agent: claude
 live: true
 status: Wiring the export endpoint
 progress: 40
@@ -98,7 +97,7 @@ Each entry is a single task-less bullet:
 \`\`\`markdown
 ## Comments
 
-- **<your-agent-key>** (<ISO time>): <what you did and why>
+- **<your-name>** (<ISO time>): <what you did and why>
 \`\`\`
 
 Reference every file you touched inline as \`path:line\` or \`path:start-end\`,
@@ -133,8 +132,10 @@ them, and preserve any existing value you do not recognise rather than dropping 
 
 ## Working a card
 
-1. Claim it: set \`agent: <your-key>\` and \`column: doing\`.
-2. While working: set \`live: true\`, a one-line \`status\`, and \`progress\`.
+1. Claim it: set \`column: doing\`, \`live: true\`, a one-line \`status\`, and put
+   your name in \`agent:\` (free text — e.g. \`agent: claude\`; it renders as an
+   avatar on the card). Journal who you are in \`## Comments\` too.
+2. While working: keep \`live: true\`, a current \`status\`, and \`progress\`.
 3. Tick checklist items \`- [x]\` as you finish them, and journal meaningful
    progress to \`## Comments\` (see "Journal your work").
 4. When done: set \`column: review\` (a human moves it to \`done\`), set
@@ -159,7 +160,7 @@ command yourself; ONLY when it exits 0, record an evidence line under the card's
 - [x] tests-passing — npm test green, 130 unit + 9 e2e (claude, 2026-07-17T02:30:00Z)
 \`\`\`
 
-Format: \`- [x] <gateId> — <one-line result> (<your-agent-key>, <ISO time>)\`.
+Format: \`- [x] <gateId> — <one-line result> (<your-name>, <ISO time>)\`.
 Never record a line for a run that did not pass.
 
 **field gates** (\`field\` is set) — a live check against a card field. Satisfy it

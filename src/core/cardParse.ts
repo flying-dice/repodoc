@@ -59,10 +59,6 @@ export function parseCard(
   if (priority) {
     card.priority = priority;
   }
-  const agent = asString(data.agent);
-  if (agent) {
-    card.agent = agent;
-  }
   if (data.live === true) {
     card.live = true;
   }

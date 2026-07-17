@@ -5,7 +5,6 @@
  */
 
 import {
-  AgentDef,
   CustomFieldDef,
   CustomFieldType,
   GateDef,
@@ -29,7 +28,6 @@ export interface BoardConfig {
   name: string;
   columns: ConfigColumn[];
   labels: Record<string, LabelDef>;
-  agents: Record<string, AgentDef>;
   /** Board-defined card fields, in declaration order. */
   fields: CustomFieldDef[];
 }
@@ -43,6 +41,8 @@ export const RESERVED_CARD_KEYS: ReadonlySet<string> = new Set<string>([
   'column',
   'labels',
   'priority',
+  // 'agent' is legacy/reserved — the assignee concept was removed, but the key
+  // stays reserved so a custom field can never claim it.
   'agent',
   'live',
   'status',
@@ -71,10 +71,6 @@ export const DEFAULT_LABELS: Record<string, LabelDef> = {
   perf: { name: 'perf', color: '#c9a227' },
 };
 
-export const DEFAULT_AGENTS: Record<string, AgentDef> = {
-  claude: { name: 'Claude', color: '#d97757', initials: 'CL' },
-};
-
 /** The 5 default board columns, matching the design mock. */
 export function defaultColumns(): ConfigColumn[] {
   return [
@@ -88,16 +84,15 @@ export function defaultColumns(): ConfigColumn[] {
 
 /**
  * Coerces arbitrary parsed JSON into a {@link BoardConfig}. Missing or malformed
- * input falls back to a board named after `boardId` with no columns and empty
- * label/agent maps. Column entries without a string `id` are dropped, and
- * label/agent entries that are null, non-objects, or carry no usable string
- * fields are dropped too — so a stray `"agents": { "claude": null }` never
- * reaches the UI.
+ * input falls back to a board named after `boardId` with no columns and an empty
+ * label map. Column entries without a string `id` are dropped, and label entries
+ * that are null, non-objects, or carry no usable string fields are dropped too —
+ * so a stray `"labels": { "bug": null }` never reaches the UI.
  */
 export function normalizeBoardConfig(parsed: unknown, boardId: string): BoardConfig {
   const fallbackName = titleCase(boardId);
   if (!parsed || typeof parsed !== 'object') {
-    return { name: fallbackName, columns: [], labels: {}, agents: {}, fields: [] };
+    return { name: fallbackName, columns: [], labels: {}, fields: [] };
   }
   const p = parsed as Record<string, unknown>;
   return {
@@ -109,7 +104,6 @@ export function normalizeBoardConfig(parsed: unknown, boardId: string): BoardCon
           .filter((c): c is ConfigColumn => c !== undefined)
       : [],
     labels: cleanDefMap<LabelDef>(p.labels),
-    agents: cleanDefMap<AgentDef>(p.agents),
     fields: normalizeFields(p.fields),
   };
 }
