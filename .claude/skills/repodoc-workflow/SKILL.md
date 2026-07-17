@@ -31,10 +31,9 @@ Frontmatter keys (all optional except `column`):
 - `live` — `true` while you are actively working, else `false`/absent.
 - `status` — a one-line human summary of what you are doing right now.
 - `progress` — an integer 0-100.
-- `files` — repo paths you have touched, INLINE list only: `[src/a.ts, src/b.ts]`.
-  Block-style YAML lists (`- item` on their own lines) are NOT parsed — always
-  use the inline `[a, b]` form for `files` and `labels`.
 - `comments` — a NUMBER (the comment-count badge), not freeform text.
+  Note: list values (`labels`) must use the INLINE form `[a, b]` — block-style
+  YAML lists (`- item` on their own lines) are NOT parsed.
 - `updatedAt` — ISO timestamp; bump it on every edit.
 
 Body: a `# Title` heading, a short description, then a `## Checklist` of
@@ -51,7 +50,6 @@ agent: claude
 live: true
 status: Wiring the export endpoint
 progress: 40
-files: [src/export/csv.ts, src/routes/export.ts]
 updatedAt: 2026-07-17T10:32:00.000Z
 ---
 # Add CSV export
@@ -70,10 +68,9 @@ Let users download their report data as CSV. See decisions/04-export-format.md.
 1. Claim it: set `agent: <your-key>` and `column: doing`.
 2. While working: set `live: true`, a one-line `status`, and `progress`.
 3. Tick checklist items `- [x]` as you finish them.
-4. Record every file you touch under `files:`.
-5. When done: set `column: review` (a human moves it to `done`), set
+4. When done: set `column: review` (a human moves it to `done`), set
    `live: false`, and remove `status`/`progress`.
-6. Always bump `updatedAt` on every change.
+5. Always bump `updatedAt` on every change.
 
 ## Ordering
 

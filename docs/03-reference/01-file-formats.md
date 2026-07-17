@@ -36,7 +36,6 @@ column: doing
 labels: [core, webview]
 priority: high
 agent: claude
-files: [src/core/store.ts]
 updatedAt: 2026-07-17T12:00:00.000Z
 ---
 # Card title
@@ -51,7 +50,7 @@ A sentence or two of description.
 
 - Only `column` is required. Optional frontmatter: `labels` (inline array),
   `priority` (`high` | `med` | `low`), `agent`, `live` (boolean), `status`,
-  `progress` (number), `files` (inline array), `comments` (number), `updatedAt`
+  `progress` (number), `comments` (number), `updatedAt`
   (ISO string).
 - The body's first `# ` heading is the title. Everything between the title and a
   `## Checklist` heading is the description. Checklist items are `- [ ]` /

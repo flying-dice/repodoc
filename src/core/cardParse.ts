@@ -50,10 +50,6 @@ export function parseCard(fileName: string, content: string): CardEntry {
   if (progress !== undefined) {
     card.progress = progress;
   }
-  const files = asStringArray(data.files);
-  if (files && files.length) {
-    card.files = files;
-  }
   const comments = asNumber(data.comments);
   if (comments !== undefined) {
     card.comments = comments;

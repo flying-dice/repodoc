@@ -283,18 +283,6 @@ input::placeholder {
   align-items: center;
   gap: 4px;
 }
-.meta-file {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--vscode-descriptionForeground, #8a8f98);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
-}
-.meta-file svg {
-  flex: none;
-}
 .meta-spacer {
   flex: 1;
 }
@@ -602,20 +590,30 @@ input::placeholder {
 .check-item {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   cursor: pointer;
   padding: 4px 2px;
+  border-radius: 6px;
+}
+.check-item:hover .check-box:not(.done) {
+  border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.45));
 }
 .check-box {
   width: 18px;
   height: 18px;
-  border-radius: 5px;
+  box-sizing: border-box;
+  border-radius: 4px;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1.5px solid var(--vscode-checkbox-border, rgba(255, 255, 255, 0.25));
-  background: transparent;
+  line-height: 0;
+  border: 1px solid var(--vscode-checkbox-border, rgba(255, 255, 255, 0.3));
+  background: var(--vscode-checkbox-background, transparent);
+  transition: background 0.1s, border-color 0.1s;
+}
+.check-box svg {
+  display: block;
 }
 .check-box.done {
   border-color: var(--vscode-checkbox-selectBorder, var(--vscode-widget-border, #3d6fd6));
@@ -624,35 +622,10 @@ input::placeholder {
 }
 .check-text {
   font-size: 13.5px;
+  line-height: 18px;
   color: var(--vscode-editor-foreground, #c7ccd4);
 }
 .check-text.done {
   color: var(--vscode-descriptionForeground, #6d727c);
   text-decoration: line-through;
-}
-.files-list {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.file-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--vscode-editor-foreground, #a9b2be);
-  background: color-mix(in srgb, var(--vscode-foreground, #ffffff) 3%, transparent);
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
-  border-radius: 7px;
-  padding: 6px 10px;
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-}
-.file-chip:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-}
-.file-chip svg {
-  flex: none;
 }

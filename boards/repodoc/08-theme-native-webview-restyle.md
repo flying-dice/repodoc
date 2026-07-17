@@ -2,7 +2,6 @@
 column: done
 labels: [webview]
 priority: med
-files: [media/base.css, media/board.css, media/markdown.css]
 updatedAt: 2026-07-17T09:25:00.000Z
 ---
 # Restyle webviews to follow VS Code theme tokens

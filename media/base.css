@@ -24,6 +24,17 @@
   box-sizing: border-box;
 }
 
+/* Inline SVG icon wrapper — flex kills the baseline gap that mis-aligns icons. */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.icon svg {
+  display: block;
+}
+
 html,
 body {
   margin: 0;

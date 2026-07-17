@@ -2,7 +2,6 @@
 column: done
 labels: [ci]
 priority: med
-files: [.github/workflows/ci.yml, .github/workflows/release.yml]
 updatedAt: 2026-07-16T18:30:00.000Z
 ---
 # CI and tag-triggered release pipeline

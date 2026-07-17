@@ -2,7 +2,6 @@
 column: done
 labels: [core]
 priority: med
-files: [src/trees.ts]
 updatedAt: 2026-07-17T10:05:00.000Z
 ---
 # Rich boards navigation tree

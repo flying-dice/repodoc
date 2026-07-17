@@ -3,7 +3,6 @@ column: review
 labels: [core]
 priority: high
 agent: claude
-files: [src/core/skillManager.ts, src/core/skillContent.ts]
 updatedAt: 2026-07-17T01:40:00.000Z
 ---
 # Agent skill manager

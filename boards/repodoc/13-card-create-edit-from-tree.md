@@ -2,7 +2,6 @@
 column: todo
 labels: [webview]
 priority: med
-files: [src/trees.ts, src/core/store.ts]
 updatedAt: 2026-07-17T12:10:00.000Z
 ---
 # Create and edit cards from the tree view

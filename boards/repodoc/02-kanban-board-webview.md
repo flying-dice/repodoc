@@ -2,7 +2,6 @@
 column: done
 labels: [webview]
 priority: high
-files: [src/panels/boardPanel.ts, media/board.js, media/board.css]
 updatedAt: 2026-07-16T11:40:00.000Z
 ---
 # Kanban board webview with drag & drop

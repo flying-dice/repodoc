@@ -2,7 +2,6 @@
 column: done
 labels: [webview, docs]
 priority: med
-files: [src/panels/markdownPanel.ts, media/markdown.css]
 updatedAt: 2026-07-16T13:05:00.000Z
 ---
 # Decision & docs rendered reading views

@@ -2,7 +2,6 @@
 column: done
 labels: [testing]
 priority: high
-files: [src/test/unit, src/test/e2e/extension.test.ts]
 updatedAt: 2026-07-16T17:45:00.000Z
 ---
 # Unit and end-to-end test suites

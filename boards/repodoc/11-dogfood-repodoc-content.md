@@ -3,7 +3,6 @@ column: review
 labels: [docs]
 priority: med
 agent: claude
-files: [boards/repodoc, decisions, docs]
 updatedAt: 2026-07-17T01:40:00.000Z
 ---
 # Dogfood RepoDoc on its own repository

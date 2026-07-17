@@ -60,15 +60,9 @@ export interface ToggleCheckMessage {
   index: number;
 }
 
-export interface OpenFileMessage {
-  type: 'openFile';
-  path: string;
-}
-
 export type WebviewToHostMessage =
   | ReadyMessage
   | MoveCardMessage
   | AddCardMessage
   | AddColumnMessage
-  | ToggleCheckMessage
-  | OpenFileMessage;
+  | ToggleCheckMessage;

@@ -47,8 +47,6 @@ export interface Card {
   status?: string;
   /** Live progress 0-100. */
   progress?: number;
-  /** Repo-relative files this card touches. */
-  files?: string[];
   comments?: number;
   desc?: string;
   checklist?: ChecklistItem[];

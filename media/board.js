@@ -30,12 +30,8 @@
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>',
     checklist:
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
-    fileMeta:
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M13 2v7h7"></path></svg>',
     comment:
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
-    fileModal:
-      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M13 2v7h7"></path></svg>',
     check:
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>',
   };
@@ -159,12 +155,6 @@
     return Math.floor(days / 7) + 'w';
   }
 
-  function basename(p) {
-    return String(p || '')
-      .replace(/\/+$/, '')
-      .split('/')
-      .pop();
-  }
 
   // Tinted chip/pill style: solid text, translucent fill + border in the same hue.
   // Used for DATA colours (labels) supplied verbatim from the board .config.json,
@@ -354,14 +344,6 @@
         h('span', { class: 'meta-item' }, [
           icon(ICON.checklist, 'icon'),
           sub.done + '/' + sub.total,
-        ]),
-      );
-    }
-    if (card.files && card.files.length) {
-      meta.push(
-        h('span', { class: 'meta-item meta-file' }, [
-          icon(ICON.fileMeta, 'icon'),
-          basename(card.files[0]),
         ]),
       );
     }
@@ -670,27 +652,6 @@
     ]);
   }
 
-  function modalFiles(card) {
-    if (!card.files || !card.files.length) {
-      return null;
-    }
-    var fileChips = card.files.map(function (f) {
-      return h(
-        'button',
-        {
-          class: 'file-chip',
-          onClick: function () {
-            vscode.postMessage({ type: 'openFile', path: f });
-          },
-        },
-        [icon(ICON.fileModal, 'icon'), f],
-      );
-    });
-    return h('div', { class: 'section' }, [
-      h('div', { class: 'field-label' }, 'Files touched'),
-      h('div', { class: 'files-list' }, fileChips),
-    ]);
-  }
 
   function buildModal() {
     var card = board().cards[state.openCardId];
@@ -704,7 +665,6 @@
       modalMeta(card),
       modalDescription(card),
       modalChecklist(card),
-      modalFiles(card),
     ];
 
     var panel = h(

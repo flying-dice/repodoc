@@ -2,7 +2,6 @@
 column: done
 labels: [core]
 priority: high
-files: [src/core/store.ts, src/core/ports.ts, src/adapters/nodeFileSystem.ts, src/adapters/memFileSystem.ts]
 updatedAt: 2026-07-16T15:20:00.000Z
 ---
 # Restructure to Ports & Adapters with file-per-card layout

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { RepoDocStore } from '../core/store';
 import { buildWebviewHtml } from './webviewHtml';
-import { resolveInsideRoot } from './pathContainment';
 import { DataMessage, OpenCardMessage, WebviewToHostMessage } from './protocol';
 
 /**
@@ -182,12 +181,6 @@ export class BoardPanel {
         }
         break;
       }
-      case 'openFile': {
-        if (typeof m.path === 'string') {
-          void this.openFile(m.path);
-        }
-        break;
-      }
       default:
         break;
     }
@@ -197,26 +190,6 @@ export class BoardPanel {
     const name = await vscode.window.showInputBox({ prompt: 'List name' });
     if (name && name.trim()) {
       this.store.addColumn(this.boardId, name.trim());
-    }
-  }
-
-  private async openFile(relPath: string): Promise<void> {
-    const root = this.store.root;
-    if (!root) {
-      void vscode.window.showWarningMessage(`RepoDoc: no workspace open for "${relPath}".`);
-      return;
-    }
-    const abs = resolveInsideRoot(root, relPath);
-    if (abs === undefined) {
-      void vscode.window.showWarningMessage(`RepoDoc: "${relPath}" is outside the workspace.`);
-      return;
-    }
-    try {
-      const uri = vscode.Uri.file(abs);
-      const doc = await vscode.workspace.openTextDocument(uri);
-      await vscode.window.showTextDocument(doc);
-    } catch {
-      void vscode.window.showWarningMessage(`RepoDoc: could not open "${relPath}".`);
     }
   }
 

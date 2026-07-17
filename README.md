@@ -24,9 +24,9 @@ Trello-style columns with drag & drop, WIP limits, labels, priorities, search, a
 
 ![Kanban board with live agent progress](images/board.png)
 
-Click a card for the full picture — priority, live agent status, description, checklist, and the files it touches (click one to jump into the editor):
+Click a card for the full picture — priority, live agent status, description, and checklist:
 
-![Card detail with checklist and files touched](images/card.png)
+![Card detail with checklist](images/card.png)
 
 ## Decision records
 
@@ -61,7 +61,7 @@ Tell your agent the conventions once (or drop them in your agent instructions fi
 
 - Pick up a card by setting `agent: <you>` and `column: doing` in its frontmatter.
 - Report progress with `live: true`, `status: <one-liner>`, `progress: 0-100`.
-- Tick checklist items (`- [x]`) as you complete them; list touched files under `files:`.
+- Tick checklist items (`- [x]`) as you complete them.
 - Made a significant choice? Add the next `decisions/NN-*.md` and link it from the card.
 
 RepoDoc watches the files and updates the board live.

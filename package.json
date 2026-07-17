@@ -2,7 +2,7 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Documentation, decision records, and kanban boards living inside your repo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "jonathanturnock",
   "license": "MIT",
   "repository": {
