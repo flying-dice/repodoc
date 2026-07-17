@@ -16,6 +16,7 @@
 
   var addText = ''; // uncontrolled composer text; never triggers a render
   var commentText = ''; // uncontrolled comment-composer text; never triggers a render
+  var commentWho = null; // composer author override; null = use the configured name
 
   /* ---- Drag state ---- */
   var drag = {
@@ -795,6 +796,22 @@
   }
 
   /* ---- Card detail modal ---- */
+  // Modal width from the resolved reading-width token: presets map to CSS
+  // classes; a custom CSS length (host-sanitized) becomes an inline width.
+  function readingWidthToken() {
+    return (state.data && state.data.readingWidth) || 'wide';
+  }
+  function modalWidthClass() {
+    var t = readingWidthToken();
+    var preset = t === 'narrow' || t === 'wide' || t === 'full';
+    return 'modal width-' + (preset ? t : 'custom');
+  }
+  function modalWidthStyle() {
+    var t = readingWidthToken();
+    var preset = t === 'narrow' || t === 'wide' || t === 'full';
+    return preset ? null : 'width:' + t + ';';
+  }
+
   function columnOfCard(cardId) {
     var b = board();
     for (var i = 0; i < b.columns.length; i++) {
@@ -959,10 +976,11 @@
 
   function submitComment() {
     var text = commentText.trim();
+    var who = (commentWho !== null ? commentWho : (state.data && state.data.commentAuthor) || '').trim();
     if (!text || !state.openCardId) {
       return;
     }
-    vscode.postMessage({ type: 'addComment', cardId: state.openCardId, text: text });
+    vscode.postMessage({ type: 'addComment', cardId: state.openCardId, text: text, who: who });
     // Clear locally; the resulting data refresh brings the persisted entry.
     commentText = '';
     var ta = document.getElementById('comment-composer');
@@ -1003,9 +1021,25 @@
     });
     textarea.value = commentText;
 
+    var authorValue =
+      commentWho !== null ? commentWho : (state.data && state.data.commentAuthor) || '';
+    var authorInput = h('input', {
+      id: 'comment-author',
+      class: 'comment-author-input',
+      placeholder: 'name',
+      title: 'Name recorded on your comments',
+      onInput: function (e) {
+        commentWho = e.target.value; // no render; overrides the configured name
+      },
+    });
+    authorInput.value = authorValue;
+
     var composer = h('div', { class: 'comment-composer' }, [
       textarea,
       h('div', { class: 'comment-composer-actions' }, [
+        h('span', { class: 'comment-as' }, 'as'),
+        authorInput,
+        h('div', { class: 'comment-composer-spacer' }),
         h('button', { class: 'btn-primary', onClick: submitComment }, 'Comment'),
       ]),
     ]);
@@ -1237,7 +1271,8 @@
     var panel = h(
       'div',
       {
-        class: 'modal width-' + ((state.data && state.data.readingWidth) || 'wide'),
+        class: modalWidthClass(),
+        style: modalWidthStyle(),
         onClick: function (e) {
           e.stopPropagation();
         },
@@ -1509,11 +1544,10 @@
     var caretStart = restoreSearch ? active.selectionStart : 0;
     var caretEnd = restoreSearch ? active.selectionEnd : 0;
 
-    while (app.firstChild) {
-      app.removeChild(app.firstChild);
-    }
-
     if (!state.data) {
+      while (app.firstChild) {
+        app.removeChild(app.firstChild);
+      }
       return;
     }
 
@@ -1522,23 +1556,37 @@
       state.openCardId = null;
     }
 
-    app.appendChild(buildTopBar());
-    app.appendChild(buildCanvas());
-    app.appendChild(buildStatusBar());
-
-    if (state.openCardId) {
-      var modal = buildModal();
-      if (modal) {
-        app.appendChild(modal);
+    // Build into a detached fragment FIRST. If any builder throws on an
+    // unexpected card shape, the current board stays on screen instead of
+    // going blank and freezing every later action.
+    var frag = document.createDocumentFragment();
+    try {
+      frag.appendChild(buildTopBar());
+      frag.appendChild(buildCanvas());
+      frag.appendChild(buildStatusBar());
+      if (state.openCardId) {
+        var modal = buildModal();
+        if (modal) {
+          frag.appendChild(modal);
+        }
       }
+      if (state.blocked) {
+        var dialog = buildBlockedDialog();
+        if (dialog) {
+          frag.appendChild(dialog);
+        }
+      }
+    } catch (buildErr) {
+      // Keep the previous DOM; surface the failure for diagnosis.
+      // eslint-disable-next-line no-console
+      console.error('RepoDoc: board render failed', buildErr);
+      return;
     }
 
-    if (state.blocked) {
-      var dialog = buildBlockedDialog();
-      if (dialog) {
-        app.appendChild(dialog);
-      }
+    while (app.firstChild) {
+      app.removeChild(app.firstChild);
     }
+    app.appendChild(frag);
 
     if (restoreSearch) {
       var input = document.getElementById('search-input');
@@ -1571,8 +1619,20 @@
 
   /* ---- Messaging ---- */
   window.addEventListener('message', function (event) {
-    var msg = event.data;
+    try {
+      handleMessage(event.data);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('RepoDoc: message handling failed', err);
+    }
+  });
+
+  function handleMessage(msg) {
     if (!msg) {
+      return;
+    }
+    if (msg.type === 'bounce' && msg.message) {
+      vscode.postMessage(msg.message); // test/automation echo via the real channel
       return;
     }
     if (msg.type === 'openCard' && typeof msg.cardId === 'string') {
@@ -1604,7 +1664,7 @@
       return;
     }
     applyData(msg);
-  });
+  }
 
   vscode.postMessage({ type: 'ready' });
 })();

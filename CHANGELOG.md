@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.7.0] — 2026-07-17
+
+- **Rich markdown** stated and verified: cards, decisions, and docs render full GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks), Mermaid diagrams, and PlantUML through a configurable server. Card descriptions render as markdown in the card view.
+- **Reading width** accepts a preset (`narrow`, `wide`, `full`) or any fixed CSS length such as `500px`, `90%`, or `60rem`, applied to the reading views and the card view.
+- **Comment author** — the card comment composer has an author field, prefilled from `repodoc.commentAuthor` (falling back to your git name) and editable per comment; edits persist.
+- **Board resilience** — the board webview builds each render into a detached fragment and only swaps it in on success, so an unexpected card can no longer blank the board or freeze later actions; render and message failures are logged for diagnosis.
+- Added an end-to-end test suite that drives every board action through the real webview channel and asserts the resulting filesystem change and immediate refresh.
+- Moved the Development section into `CONTRIBUTING.md`.
+
 ## [0.6.3] — 2026-07-17
 
 - Rewrote the README and Marketplace description in a plain, neutral voice focused on the core value: in-repository task management that travels with the code.

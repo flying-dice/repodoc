@@ -2,7 +2,7 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Task boards, decision records, and documentation stored as plain files in your repository",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "publisher": "flying-dice",
   "license": "MIT",
   "repository": {
@@ -164,23 +164,18 @@
       "properties": {
         "repodoc.readingWidth": {
           "type": "string",
-          "enum": [
-            "narrow",
-            "wide",
-            "full"
-          ],
-          "enumDescriptions": [
-            "A compact 760px reading column (640px card modal)",
-            "A roomier 1100px reading column (900px card modal)",
-            "Use the full editor width"
-          ],
           "default": "wide",
-          "description": "Width of RepoDoc's reading surfaces \u2014 the rendered Docs/Decision views and the card modal."
+          "markdownDescription": "Width of RepoDoc's reading surfaces (Docs and Decision views, and the card view). Use a preset: `narrow` (760px), `wide` (1100px), `full` (entire editor width), or any fixed CSS length such as `500px`, `90%`, or `60rem`."
         },
         "repodoc.plantUmlServer": {
           "type": "string",
           "default": "https://www.plantuml.com/plantuml",
           "markdownDescription": "PlantUML server used to render ```plantuml fences in Docs and Decisions. The default is the public plantuml.com server \u2014 **diagram source is sent to it**. To keep diagrams private, run your own local renderer with Docker:\n\n```\ndocker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty\n```\n\nthen set this to `http://localhost:8792`. Leave empty to show PlantUML fences as plain code."
+        },
+        "repodoc.commentAuthor": {
+          "type": "string",
+          "default": "",
+          "description": "Name used for comments you add from the card view. When empty, your git user.name is used. Editing the name in the comment composer updates this setting."
         }
       }
     }

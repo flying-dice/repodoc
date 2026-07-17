@@ -204,3 +204,17 @@
 .fm-table td {
   color: var(--vscode-editor-foreground);
 }
+
+/* ---- GFM task lists and strikethrough ---- */
+.adr-md li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -20px;
+}
+.adr-md input[type='checkbox'] {
+  accent-color: var(--vscode-checkbox-selectBackground);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.adr-md del {
+  color: var(--vscode-descriptionForeground);
+}

@@ -441,6 +441,9 @@ input::placeholder {
   width: 640px;
   max-width: 100%;
 }
+.modal.width-narrow {
+  width: 640px;
+}
 .modal.width-wide {
   width: 900px;
 }
@@ -881,11 +884,6 @@ input::placeholder {
 .comment-input:focus {
   border-color: var(--vscode-focusBorder);
 }
-.comment-composer-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
 /* ---- Blocked-move dialog ---- */
 .blocked-modal {
   width: 440px;
@@ -971,4 +969,30 @@ input::placeholder {
   border-left: 3px solid var(--vscode-textBlockQuote-border);
   background: var(--vscode-textBlockQuote-background);
   color: var(--vscode-descriptionForeground);
+}
+
+/* ---- Comment author box ---- */
+.comment-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+.comment-as {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.comment-author-input {
+  width: 120px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+.comment-composer-spacer {
+  flex: 1;
 }

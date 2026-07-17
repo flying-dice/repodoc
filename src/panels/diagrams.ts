@@ -20,6 +20,7 @@ export function renderMarkdownWithDiagrams(
   const server = (options.plantUmlServer ?? '').trim().replace(/\/+$/, '');
 
   const marked = new Marked({
+    gfm: true,
     renderer: {
       code({ text, lang }: { text: string; lang?: string }): string | false {
         const language = (lang ?? '').trim().toLowerCase();

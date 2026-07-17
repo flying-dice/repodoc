@@ -6,6 +6,7 @@ import { MemFileSystemAdapter } from './adapters/memFileSystem';
 import { SystemClock } from './adapters/systemClock';
 import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
 import { BoardPanel } from './panels/boardPanel';
+import { WebviewToHostMessage } from './panels/protocol';
 import { MarkdownPanel } from './panels/markdownPanel';
 
 /** Public surface returned by {@link activate}, used by e2e tests. */
@@ -154,6 +155,18 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
           return false;
         }
         return BoardPanel.postOpenCard(boardId, cardId);
+      },
+    ),
+
+    // Internal test/automation: bounce a message through an open board's
+    // webview so the real webview->host channel is exercised.
+    vscode.commands.registerCommand(
+      'repodoc.bounceWebviewMessage',
+      (boardId: unknown, message: unknown): boolean => {
+        if (typeof boardId !== 'string' || !message || typeof message !== 'object') {
+          return false;
+        }
+        return BoardPanel.postBounce(boardId, message as WebviewToHostMessage);
       },
     ),
 

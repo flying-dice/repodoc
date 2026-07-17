@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { marked } from 'marked';
 import * as path from 'path';
 import { RepoDocStore } from '../core/store';
+import { resolveReadingWidth } from './readingWidth';
 import { buildWebviewHtml } from './webviewHtml';
 import {
   DataMessage,
@@ -93,6 +94,19 @@ export class BoardPanel {
   }
 
   /**
+   * Test/automation: ask an open board's webview to re-post `message` through
+   * the real webview->host channel. Returns false when no panel is open.
+   */
+  public static postBounce(boardId: string, message: WebviewToHostMessage): boolean {
+    const panel = BoardPanel.panels.get(boardId);
+    if (!panel) {
+      return false;
+    }
+    void panel.panel.webview.postMessage({ type: 'bounce', message });
+    return true;
+  }
+
+  /**
    * Open (or reveal) a board panel and show a card's detail modal. If the
    * webview is still loading, the open is queued and flushed on its `ready`.
    */
@@ -147,7 +161,8 @@ export class BoardPanel {
       config,
       boardPath: this.store.displayPath(this.boardId),
       descHtml,
-      readingWidth: readingWidth(),
+      readingWidth: resolveReadingWidth(),
+      commentAuthor: resolveCommentAuthor(this.store.root),
     };
     void this.panel.webview.postMessage(message);
   }
@@ -202,13 +217,15 @@ export class BoardPanel {
       case 'addComment': {
         if (typeof m.cardId === 'string' && typeof m.text === 'string') {
           const text = m.text.trim();
+          const who = sanitizeAuthor(typeof m.who === 'string' ? m.who : '');
           if (text) {
-            this.store.addComment(
-              this.boardId,
-              m.cardId,
-              localIdentity(this.store.root),
-              text,
-            );
+            const author = who || resolveCommentAuthor(this.store.root);
+            this.store.addComment(this.boardId, m.cardId, author, text);
+            // Persist an edited name so it sticks across sessions.
+            const config = vscode.workspace.getConfiguration('repodoc');
+            if (who && who !== (config.get<string>('commentAuthor') ?? '').trim()) {
+              void config.update('commentAuthor', who, vscode.ConfigurationTarget.Global);
+            }
           }
         }
         break;
@@ -344,11 +361,15 @@ export class BoardPanel {
   }
 }
 
-/** The configured reading width ('narrow' | 'wide' | 'full'; legacy 'normal' = narrow). */
-function readingWidth(): string {
-  const value = vscode.workspace.getConfiguration('repodoc').get<string>('readingWidth');
-  if (value === 'narrow' || value === 'normal') {
-    return 'narrow';
-  }
-  return value === 'full' ? 'full' : 'wide';
+/** The comment author: the setting when set, else the local git identity. */
+function resolveCommentAuthor(root: string | undefined): string {
+  const configured = sanitizeAuthor(
+    vscode.workspace.getConfiguration('repodoc').get<string>('commentAuthor') ?? '',
+  );
+  return configured || localIdentity(root);
+}
+
+/** One line, trimmed, capped — author names never carry markup or newlines. */
+function sanitizeAuthor(raw: string): string {
+  return raw.replace(/[\r\n*]/g, ' ').trim().slice(0, 60);
 }

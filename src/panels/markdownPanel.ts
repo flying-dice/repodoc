@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { isPresetWidth, resolveReadingWidth } from './readingWidth';
 import { RepoDocStore } from '../core/store';
 import { buildWebviewHtml, escapeHtml } from './webviewHtml';
 
@@ -204,7 +205,7 @@ export class MarkdownPanel {
       </div>
     </div>
     <div class="content">
-      <div class="reading-column width-${readingWidth()}">
+      <div class="reading-column ${readingColumnAttrs().cls}"${readingColumnAttrs().style}>
         <div class="filecrumb">${escapeHtml(fileCrumb)}</div>
         <div class="adr-md">${bodyHtml}</div>
       </div>
@@ -250,13 +251,13 @@ function frontmatterTable(data: Record<string, unknown>): string {
   return `<table class="fm-table"><tbody>${rows}</tbody></table>`;
 }
 
-/** The configured reading-column width: 'normal' | 'wide' | 'full'. */
-function readingWidth(): string {
-  const value = vscode.workspace.getConfiguration('repodoc').get<string>('readingWidth');
-  if (value === 'narrow' || value === 'normal') {
-    return 'narrow';
+/** Class + optional inline style for the reading column, from the setting. */
+function readingColumnAttrs(): { cls: string; style: string } {
+  const token = resolveReadingWidth();
+  if (isPresetWidth(token)) {
+    return { cls: `width-${token}`, style: '' };
   }
-  return value === 'full' ? 'full' : 'wide';
+  return { cls: 'width-custom', style: ` style="max-width: ${token}"` };
 }
 
 /** The configured PlantUML server URL ('' disables PlantUML rendering). */

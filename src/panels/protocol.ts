@@ -25,6 +25,8 @@ export interface DataMessage {
   descHtml: Record<string, string>;
   /** Configured reading width: 'narrow' | 'wide' | 'full' (sizes the modal). */
   readingWidth: string;
+  /** The author name prefilled in the comment composer. */
+  commentAuthor: string;
 }
 
 
@@ -82,6 +84,9 @@ export interface AddCommentMessage {
   type: 'addComment';
   cardId: string;
   text: string;
+  /** Author name from the composer; the host falls back to the configured
+   * comment author, then the local git identity. */
+  who?: string;
 }
 
 /**

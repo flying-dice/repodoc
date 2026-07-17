@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { renderMarkdownWithDiagrams } from '../../panels/diagrams';
+import { sanitizeReadingWidth } from '../../panels/readingWidth';
 
 suite('renderMarkdownWithDiagrams', () => {
   test('mermaid fences become pre.mermaid blocks and set hasMermaid', () => {
@@ -37,3 +38,51 @@ suite('renderMarkdownWithDiagrams', () => {
   });
 });
 
+
+suite('GitHub Flavored Markdown support', () => {
+  test('tables render', () => {
+    const { html } = renderMarkdownWithDiagrams('| a | b |\n| - | - |\n| 1 | 2 |\n', {});
+    assert.ok(html.includes('<table>'));
+    assert.ok(html.includes('<td>1</td>'));
+  });
+
+  test('strikethrough renders', () => {
+    const { html } = renderMarkdownWithDiagrams('~~gone~~\n', {});
+    assert.ok(html.includes('<del>gone</del>'));
+  });
+
+  test('task lists render as checkboxes', () => {
+    const { html } = renderMarkdownWithDiagrams('- [x] done\n- [ ] open\n', {});
+    assert.ok(html.includes('type="checkbox"'));
+    assert.ok(html.includes('checked'));
+  });
+
+  test('autolinks render', () => {
+    const { html } = renderMarkdownWithDiagrams('visit https://example.com now\n', {});
+    assert.ok(html.includes('<a href="https://example.com"'));
+  });
+});
+
+suite('sanitizeReadingWidth', () => {
+  test('presets pass through; legacy normal maps to narrow', () => {
+    assert.strictEqual(sanitizeReadingWidth('narrow'), 'narrow');
+    assert.strictEqual(sanitizeReadingWidth('WIDE'), 'wide');
+    assert.strictEqual(sanitizeReadingWidth('full'), 'full');
+    assert.strictEqual(sanitizeReadingWidth('normal'), 'narrow');
+  });
+
+  test('CSS lengths are accepted; bare numbers become px', () => {
+    assert.strictEqual(sanitizeReadingWidth('500px'), '500px');
+    assert.strictEqual(sanitizeReadingWidth('90%'), '90%');
+    assert.strictEqual(sanitizeReadingWidth('60rem'), '60rem');
+    assert.strictEqual(sanitizeReadingWidth('500'), '500px');
+  });
+
+  test('anything unsafe or unknown falls back to wide', () => {
+    assert.strictEqual(sanitizeReadingWidth(undefined), 'wide');
+    assert.strictEqual(sanitizeReadingWidth(''), 'wide');
+    assert.strictEqual(sanitizeReadingWidth('red; background: url(x)'), 'wide');
+    assert.strictEqual(sanitizeReadingWidth('calc(100% - 10px)'), 'wide');
+    assert.strictEqual(sanitizeReadingWidth('50vh'), 'wide');
+  });
+});

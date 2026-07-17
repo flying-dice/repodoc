@@ -8,6 +8,10 @@ Task boards, decision records, and documentation for VS Code, stored as plain fi
 
 A card is a markdown file. A decision is a markdown file. A board is a folder with a JSON config. Project state is versioned with the code it describes, shows up in diffs and pull requests, and travels with every clone. There is no server and no account.
 
+## Rich markdown
+
+Cards, decisions, and docs render full GitHub Flavored Markdown: tables, task lists, strikethrough, and autolinks. Mermaid fences render as diagrams with no network calls. PlantUML fences render through a configurable server, local or remote.
+
 ## The board
 
 Columns with drag and drop, WIP limits, labels, priorities, and search. Cards show a checklist count, comment count, progress, and custom field chips. The board updates when the files change on disk.
@@ -72,10 +76,6 @@ Navigation uses standard tree views: boards expand into columns and cards, and d
 
 - `repodoc.readingWidth` sets the width of reading views and the card view: narrow, wide, or full.
 - `repodoc.plantUmlServer` sets the PlantUML renderer. The default is the public plantuml.com server. To render privately, run `docker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty` and set the value to `http://localhost:8792`.
-
-## Development
-
-Run `npm install`, then press `F5` for an Extension Development Host. `npm run compile` type-checks, lints, and bundles. `npm test` runs the unit suite and the end-to-end suite. Pushing a `v*` tag builds the VSIX and attaches it to a GitHub release.
 
 ## License
 
