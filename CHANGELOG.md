@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.8.0] — 2026-07-20
+
+- One renderer for every content block. Card comments now render full GitHub Flavored Markdown, Mermaid, and PlantUML — the same pipeline as card descriptions, decision records, and docs. File references like `src/core/store.ts:12` in descriptions and comments are one-click links that open the file at that line.
+
 ## [0.7.0] — 2026-07-17
 
 - **Rich markdown** stated and verified: cards, decisions, and docs render full GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks), Mermaid diagrams, and PlantUML through a configurable server. Card descriptions render as markdown in the card view.

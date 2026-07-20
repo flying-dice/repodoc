@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { plantUmlServer } from './plantUml';
 import { isPresetWidth, resolveReadingWidth } from './readingWidth';
 import { RepoDocStore } from '../core/store';
 import { buildWebviewHtml, escapeHtml } from './webviewHtml';
@@ -260,7 +261,3 @@ function readingColumnAttrs(): { cls: string; style: string } {
   return { cls: 'width-custom', style: ` style="max-width: ${token}"` };
 }
 
-/** The configured PlantUML server URL ('' disables PlantUML rendering). */
-function plantUmlServer(): string {
-  return vscode.workspace.getConfiguration('repodoc').get<string>('plantUmlServer') ?? '';
-}

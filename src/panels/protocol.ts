@@ -23,6 +23,8 @@ export interface DataMessage {
   boardPath: string;
   /** Card descriptions rendered to HTML (markdown, host-side), keyed by card id. */
   descHtml: Record<string, string>;
+  /** Comment journal entries rendered to HTML (shared renderer), per card id. */
+  commentHtml: Record<string, string[]>;
   /** Configured reading width: 'narrow' | 'wide' | 'full' (sizes the modal). */
   readingWidth: string;
   /** The author name prefilled in the comment composer. */

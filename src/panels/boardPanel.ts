@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { marked } from 'marked';
 import * as path from 'path';
 import { RepoDocStore } from '../core/store';
 import { resolveReadingWidth } from './readingWidth';
+import { renderMarkdownWithDiagrams } from './diagrams';
+import { plantUmlServer } from './plantUml';
 import { buildWebviewHtml } from './webviewHtml';
 import {
   DataMessage,
@@ -148,12 +149,23 @@ export class BoardPanel {
     }
     this.panel.title = board.name;
     const config = this.store.getBoardConfig(this.boardId);
+
+    // Every content block (descriptions, comment journal entries) is rendered
+    // through the one shared renderer used by the Docs and Decision views:
+    // GitHub Flavored Markdown, Mermaid, and PlantUML.
+    const server = plantUmlServer();
+    const render = (md: string): string => renderMarkdownWithDiagrams(md, { plantUmlServer: server }).html;
     const descHtml: Record<string, string> = {};
+    const commentHtml: Record<string, string[]> = {};
     for (const card of Object.values(board.cards)) {
       if (card.desc) {
-        descHtml[card.id] = marked.parse(card.desc) as string;
+        descHtml[card.id] = render(card.desc);
+      }
+      if (card.comments && card.comments.length) {
+        commentHtml[card.id] = card.comments.map((c) => render(c.text));
       }
     }
+
     const message: DataMessage = {
       type: 'data',
       boardId: this.boardId,
@@ -161,6 +173,7 @@ export class BoardPanel {
       config,
       boardPath: this.store.displayPath(this.boardId),
       descHtml,
+      commentHtml,
       readingWidth: resolveReadingWidth(),
       commentAuthor: resolveCommentAuthor(this.store.root),
     };
@@ -357,6 +370,10 @@ export class BoardPanel {
       bodyHtml: '  <div id="app"></div>',
       stylesheets: ['base.css', 'board.css'],
       scriptFileName: 'board.js',
+      // Mermaid backs diagrams inside content blocks (descriptions, comments).
+      extraScripts: ['mermaid.min.js'],
+      // PlantUML content blocks load images from the configured/local server.
+      extraImgSrc: ['https:', 'data:', 'http://localhost:*', 'http://127.0.0.1:*'],
     });
   }
 }

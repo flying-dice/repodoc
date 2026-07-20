@@ -918,29 +918,29 @@ input::placeholder {
 }
 
 /* ---- Rendered-markdown description in the modal ---- */
-.section-desc.md p {
+.content-md p {
   margin: 0 0 10px;
 }
-.section-desc.md p:last-child {
+.content-md p:last-child {
   margin-bottom: 0;
 }
-.section-desc.md ul,
-.section-desc.md ol {
+.content-md ul,
+.content-md ol {
   margin: 0 0 10px;
   padding-left: 20px;
 }
-.section-desc.md li {
+.content-md li {
   margin: 0 0 4px;
 }
-.section-desc.md a {
+.content-md a {
   color: var(--vscode-textLink-foreground);
   text-decoration: none;
 }
-.section-desc.md a:hover {
+.content-md a:hover {
   color: var(--vscode-textLink-activeForeground);
   text-decoration: underline;
 }
-.section-desc.md code {
+.content-md code {
   background: var(--vscode-textCodeBlock-background);
   color: var(--vscode-textPreformat-foreground);
   padding: 1px 5px;
@@ -948,7 +948,7 @@ input::placeholder {
   font-family: var(--font-mono);
   font-size: 12px;
 }
-.section-desc.md pre {
+.content-md pre {
   background: var(--vscode-textCodeBlock-background);
   border: 1px solid var(--vscode-panel-border);
   border-radius: 8px;
@@ -956,14 +956,14 @@ input::placeholder {
   overflow: auto;
   margin: 0 0 10px;
 }
-.section-desc.md pre code {
+.content-md pre code {
   background: none;
   padding: 0;
 }
-.section-desc.md strong {
+.content-md strong {
   color: var(--vscode-foreground);
 }
-.section-desc.md blockquote {
+.content-md blockquote {
   margin: 0 0 10px;
   padding: 2px 12px;
   border-left: 3px solid var(--vscode-textBlockQuote-border);
@@ -995,4 +995,30 @@ input::placeholder {
 }
 .comment-composer-spacer {
   flex: 1;
+}
+
+/* ---- Shared content-block extras (comments + descriptions) ---- */
+.comment-text.content-md {
+  margin-top: 2px;
+}
+.content-md .mermaid {
+  margin: 6px 0 12px;
+  text-align: center;
+}
+.content-md img.plantuml {
+  max-width: 100%;
+}
+.content-md table {
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.content-md th,
+.content-md td {
+  border: 1px solid var(--vscode-panel-border);
+  padding: 4px 9px;
+  text-align: left;
+}
+.content-md del {
+  color: var(--vscode-descriptionForeground);
 }

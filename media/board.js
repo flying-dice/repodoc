@@ -866,12 +866,8 @@
     if (!card.desc) {
       return null;
     }
-    // Host-rendered markdown (marked, same pipeline as the docs/decision
-    // views); falls back to plain text when the map is missing.
     var html = state.data && state.data.descHtml ? state.data.descHtml[card.id] : null;
-    var body = html
-      ? h('div', { class: 'section-desc md', html: html })
-      : h('div', { class: 'section-desc' }, card.desc);
+    var body = contentBlock('section-desc', html, card.desc);
     return h('div', { class: 'section' }, [h('div', { class: 'field-label' }, 'Description'), body]);
   }
 
@@ -974,6 +970,93 @@
     return nodes;
   }
 
+  // ---- Shared content-block enhancement ----
+  // Every content block (descriptions, comments) is host-rendered by the one
+  // shared markdown renderer, then enhanced here: plain-text file references
+  // become one-click links, and mermaid fences render as diagrams.
+
+  // Walk the rendered HTML and turn `path:line` text into clickable links,
+  // skipping anything already inside a link, code, or an existing file link.
+  function linkifyElement(root) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (!node.nodeValue || node.nodeValue.indexOf('.') === -1) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        var p = node.parentElement;
+        if (p && p.closest('a, code, pre, .file-link')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        FILE_REF_RE.lastIndex = 0;
+        return FILE_REF_RE.test(node.nodeValue)
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT;
+      },
+    });
+    var targets = [];
+    var node;
+    while ((node = walker.nextNode())) {
+      targets.push(node);
+    }
+    targets.forEach(function (t) {
+      var built = [];
+      appendLinkifiedLine(built, t.nodeValue);
+      var frag = document.createDocumentFragment();
+      appendChildren(frag, built);
+      t.parentNode.replaceChild(frag, t);
+    });
+  }
+
+  var mermaidInited = false;
+  function runMermaid(root) {
+    if (!window.mermaid) {
+      return;
+    }
+    if (!mermaidInited) {
+      var kind = document.body.dataset.vscodeThemeKind || '';
+      var dark = kind.indexOf('dark') !== -1 || kind === 'vscode-high-contrast';
+      try {
+        window.mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: dark ? 'dark' : 'default',
+        });
+      } catch (e) {
+        /* ignore */
+      }
+      mermaidInited = true;
+    }
+    var nodes = Array.prototype.slice
+      .call(root.querySelectorAll('.mermaid'))
+      .filter(function (el) {
+        return !el.getAttribute('data-processed');
+      });
+    if (nodes.length) {
+      try {
+        window.mermaid.run({ nodes: nodes });
+      } catch (e2) {
+        /* ignore */
+      }
+    }
+  }
+
+  function enhanceContentBlocks(root) {
+    var blocks = root.querySelectorAll('.content-md');
+    for (var i = 0; i < blocks.length; i++) {
+      linkifyElement(blocks[i]);
+    }
+    runMermaid(root);
+  }
+
+  // A content block: host-rendered HTML when available, else linkified plain
+  // text as a fallback.
+  function contentBlock(cls, html, fallbackText) {
+    if (html) {
+      return h('div', { class: cls + ' content-md', html: html });
+    }
+    return h('div', { class: cls }, linkifyFileRefs(fallbackText || ''));
+  }
+
   function submitComment() {
     var text = commentText.trim();
     var who = (commentWho !== null ? commentWho : (state.data && state.data.commentAuthor) || '').trim();
@@ -991,13 +1074,16 @@
 
   function modalComments(card) {
     var entries = Array.isArray(card.comments) ? card.comments : [];
-    var list = entries.map(function (entry) {
+    var htmls =
+      state.data && state.data.commentHtml ? state.data.commentHtml[card.id] : null;
+    var list = entries.map(function (entry, index) {
+      var html = htmls ? htmls[index] : null;
       return h('div', { class: 'comment-entry' }, [
         h('div', { class: 'comment-meta' }, [
           h('span', { class: 'comment-who' }, entry.who || '—'),
           h('span', { class: 'comment-time' }, humanizeTime(entry.at)),
         ]),
-        h('div', { class: 'comment-text' }, linkifyFileRefs(entry.text || '')),
+        contentBlock('comment-text', html, entry.text || ''),
       ]);
     });
 
@@ -1587,6 +1673,14 @@
       app.removeChild(app.firstChild);
     }
     app.appendChild(frag);
+
+    // Enhance host-rendered content blocks in place (file links + diagrams).
+    try {
+      enhanceContentBlocks(app);
+    } catch (enhanceErr) {
+      // eslint-disable-next-line no-console
+      console.error('RepoDoc: content enhancement failed', enhanceErr);
+    }
 
     if (restoreSearch) {
       var input = document.getElementById('search-input');

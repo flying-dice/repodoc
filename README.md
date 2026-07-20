@@ -10,7 +10,7 @@ A card is a markdown file. A decision is a markdown file. A board is a folder wi
 
 ## Rich markdown
 
-Cards, decisions, and docs render full GitHub Flavored Markdown: tables, task lists, strikethrough, and autolinks. Mermaid fences render as diagrams with no network calls. PlantUML fences render through a configurable server, local or remote.
+Every content block goes through one renderer: card descriptions, card comments, decision records, and docs. All render full GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks), Mermaid diagrams with no network calls, and PlantUML through a configurable server. In cards and comments, `path/to/file.ts:12` references become one-click links that open the file at that line.
 
 ## The board
 

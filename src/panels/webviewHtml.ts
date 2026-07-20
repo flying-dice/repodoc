@@ -57,7 +57,8 @@ export function buildWebviewHtml(options: BuildWebviewHtmlOptions): string {
   } =
     options;
   const cspSource = webview.cspSource;
-  const allScripts = [...(scriptFileName ? [scriptFileName] : []), ...(extraScripts ?? [])];
+  // Extra scripts load BEFORE the main script (e.g. mermaid before board.js).
+  const allScripts = [...(extraScripts ?? []), ...(scriptFileName ? [scriptFileName] : [])];
   const nonce = allScripts.length > 0 ? getNonce() : undefined;
 
   const mediaUri = (fileName: string): vscode.Uri =>
