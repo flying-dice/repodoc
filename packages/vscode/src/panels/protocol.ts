@@ -154,6 +154,12 @@ export interface AddCommentMessage {
  * `path` is relative to the store root; the host containment-checks it before
  * opening. `line`/`endLine` are 1-based.
  */
+/** Copy the card's pasteable reference (`<scope>/<id> — <title> (<path>)`) to the clipboard. */
+export interface CopyRefMessage {
+  type: 'copyRef';
+  cardId: string;
+}
+
 export interface OpenFileMessage {
   type: 'openFile';
   path: string;
@@ -222,4 +228,5 @@ export type WebviewToHostMessage =
   | RecordGatePassMessage
   | SetFieldMessage
   | AddCommentMessage
-  | OpenFileMessage;
+  | OpenFileMessage
+  | CopyRefMessage;

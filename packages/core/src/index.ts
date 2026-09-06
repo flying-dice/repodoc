@@ -36,6 +36,7 @@ export { checkValue, evaluateGates, evaluateTransition } from './gates';
 export { pad, slugFromFileName, slugify, titleCase } from './naming';
 export { computeCardOrder } from './ordering';
 export * from './ports';
+export { formatRef } from './refs';
 export { seedBoardConfig } from './seed';
 export { SKILL_MD, SKILL_NAME } from './skillContent';
 export type { AgentKind } from './skillManager';

@@ -291,6 +291,12 @@ export class BoardPanel {
         }
         break;
       }
+      case 'copyRef': {
+        if (typeof m['cardId'] === 'string') {
+          void copyRefToClipboard(this.source.cardRef(m['cardId']));
+        }
+        break;
+      }
       case 'openFile': {
         if (typeof m['path'] === 'string') {
           const line = m['line'];
@@ -558,4 +564,14 @@ function sanitizeAuthor(raw: string): string {
     .replace(/[\r\n*]/g, ' ')
     .trim()
     .slice(0, 60);
+}
+
+/** Writes a card reference to the clipboard and confirms briefly in the status bar. */
+export async function copyRefToClipboard(ref: string | undefined): Promise<void> {
+  if (!ref) {
+    void vscode.window.showWarningMessage('RepoDoc: could not build a reference for that card.');
+    return;
+  }
+  await vscode.env.clipboard.writeText(ref);
+  vscode.window.setStatusBarMessage(`RepoDoc: copied ${ref.split(' — ')[0] ?? ref}`, 3000);
 }

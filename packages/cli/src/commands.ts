@@ -154,8 +154,14 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [boardId, cardId] = need(args, ['board', 'card']);
       const { card, column } = requireCard(ctx, boardId, cardId);
-      out.emit({ board: boardId, column, ...card }, () => {
-        const lines = [`# ${card.title}`, `id: ${card.id}`, `column: ${column}`];
+      const ref = ctx.store.cardRef(boardId, cardId);
+      out.emit({ board: boardId, column, ref, ...card }, () => {
+        const lines = [
+          `# ${card.title}`,
+          `id: ${card.id}`,
+          `ref: ${ref ?? ''}`,
+          `column: ${column}`,
+        ];
         for (const [k, v] of Object.entries(card)) {
           if (
             ['id', 'title', 'desc', 'checklist', 'gates', 'comments', 'custom'].includes(k) ||
@@ -488,10 +494,12 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [setId, featureId] = need(args, ['set', 'feature']);
       const feature = requireFeature(ctx, setId, featureId);
-      out.emit({ set: setId, ...feature }, () => {
+      const ref = ctx.store.featureRef(setId, featureId);
+      out.emit({ set: setId, ref, ...feature }, () => {
         const lines = [
           `# ${feature.title}`,
           `id: ${feature.id}`,
+          `ref: ${ref ?? ''}`,
           `file: features/${setId}/${feature.file}`,
           `status: ${feature.status}`,
         ];

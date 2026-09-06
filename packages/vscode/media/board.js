@@ -63,6 +63,7 @@
 
   /* ---- Inline SVG icons (from the design mock) ---- */
   var ICON = {
+    copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>',
     search:
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>',
     checklist:
@@ -586,6 +587,26 @@
     }
     titleRow.push(h('div', { class: 'card-title' }, card.title));
     children.push(h('div', { class: 'card-titlerow' }, titleRow));
+    // The id is what every CLI command and chat message references — always
+    // visible, with a one-click copy of the full ref.
+    children.push(
+      h('div', { class: 'card-idrow' }, [
+        h('code', { class: 'card-id', title: 'Card id' }, card.id),
+        h(
+          'button',
+          {
+            class: 'card-copy',
+            title: 'Copy ref',
+            'aria-label': `Copy ref for ${card.id}`,
+            onClick: function (e) {
+              e.stopPropagation();
+              copyRef(card.id);
+            },
+          },
+          icon(ICON.copy, 'icon'),
+        ),
+      ]),
+    );
 
     if (card.live) {
       // D-8: an unset progress is not "0% complete" — omit the number and the
@@ -924,6 +945,11 @@
   }
 
   // The repo-relative file backing a card (host-resolved, see DataMessage).
+  /** Asks the host to put the card's `<board>/<id> — <title> (<path>)` ref on the clipboard. */
+  function copyRef(cardId) {
+    vscode.postMessage({ type: 'copyRef', cardId: cardId });
+  }
+
   function cardFileOf(cardId) {
     var files = state.data?.cardFiles;
     return files?.[cardId] ? files[cardId] : null;
@@ -999,6 +1025,20 @@
     }
 
     var actions = [];
+    actions.push(
+      h(
+        'button',
+        {
+          class: 'ghost-btn',
+          title: 'Copy a pasteable reference: <board>/<id> — <title> (<path>)',
+          'aria-label': `Copy ref for ${card.id}`,
+          onClick: function () {
+            copyRef(card.id);
+          },
+        },
+        [icon(ICON.copy, 'icon'), ' Copy ref'],
+      ),
+    );
     var file = cardFileOf(card.id);
     if (file) {
       actions.push(
@@ -1025,6 +1065,17 @@
         h('div', { class: 'modal-head-main' }, [
           h('div', { class: 'modal-badges' }, badges),
           titleNode,
+          h(
+            'code',
+            {
+              class: 'modal-id',
+              title: 'Card id — click to copy the ref',
+              onClick: function () {
+                copyRef(card.id);
+              },
+            },
+            `${state.data ? state.data.boardId : ''}/${card.id}`,
+          ),
         ]),
         h('div', { class: 'modal-head-actions' }, actions),
       ]),

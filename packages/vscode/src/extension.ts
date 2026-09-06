@@ -9,7 +9,7 @@ import {
   SystemClock,
 } from '@repodoc/core';
 import * as vscode from 'vscode';
-import { BoardPanel } from './panels/boardPanel';
+import { BoardPanel, copyRefToClipboard } from './panels/boardPanel';
 import { CardBoardSource, FeatureSetSource } from './panels/boardSource';
 import { MarkdownPanel } from './panels/markdownPanel';
 import type { WebviewToHostMessage } from './panels/protocol';
@@ -227,6 +227,20 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         return;
       }
       await openRepoFile(root, relPath);
+    }),
+
+    // Copy a pasteable `<scope>/<id> — <title> (<path>)` reference for a card or
+    // feature tree node — the same string the webview's "Copy ref" and
+    // `repodoc card show` produce.
+    vscode.commands.registerCommand('repodoc.copyRef', async (arg: unknown): Promise<void> => {
+      const node = arg as
+        | { kind?: string; boardId?: string; cardId?: string; setId?: string; featureId?: string }
+        | undefined;
+      if (node?.kind === 'card' && node.boardId && node.cardId) {
+        await copyRefToClipboard(store.cardRef(node.boardId, node.cardId));
+      } else if (node?.kind === 'feature' && node.setId && node.featureId) {
+        await copyRefToClipboard(store.featureRef(node.setId, node.featureId));
+      }
     }),
 
     // Open a board's or feature set's `.config.json` — columns, gates, labels

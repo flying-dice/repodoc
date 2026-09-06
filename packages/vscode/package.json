@@ -147,6 +147,12 @@
         "title": "RepoDoc Settings",
         "category": "RepoDoc",
         "icon": "$(gear)"
+      },
+      {
+        "command": "repodoc.copyRef",
+        "title": "Copy Ref",
+        "category": "RepoDoc",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -208,6 +214,10 @@
         {
           "command": "repodoc.setDecisionStatus",
           "when": "false"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "false"
         }
       ],
       "view/item/context": [
@@ -265,6 +275,26 @@
           "command": "repodoc.openDocSource",
           "when": "view == repodoc.docs && viewItem == repodoc.docFile",
           "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "navigation@2"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "navigation@2"
         }
       ]
     },

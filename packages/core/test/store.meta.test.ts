@@ -1,6 +1,7 @@
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
 import { parseFrontmatter } from '../src/frontmatter';
+import { formatRef } from '../src/refs';
 import { makeStore, required } from './helpers';
 
 const CONFIG = JSON.stringify({
@@ -162,5 +163,14 @@ describe('store.cardFilePath', () => {
     assert.strictEqual(store.cardFilePath('b', 'card'), 'boards/b/01-card.md');
     assert.strictEqual(store.cardFilePath('b', 'nope'), undefined);
     assert.strictEqual(store.cardFilePath('zzz', 'card'), undefined);
+  });
+});
+
+describe('store.cardRef / formatRef', () => {
+  test('builds `<scope>/<id> — <title> (<path>)`, path optional, unknown card undefined', () => {
+    const { store } = seed();
+    assert.strictEqual(store.cardRef('b', 'card'), 'b/card — Card (boards/b/01-card.md)');
+    assert.strictEqual(store.cardRef('b', 'nope'), undefined);
+    assert.strictEqual(formatRef('s', 'x', '  '), 's/x — x');
   });
 });

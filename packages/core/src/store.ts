@@ -13,6 +13,7 @@ import { evaluateTransition } from './gates';
 import { pad, slugFromFileName, slugify, titleCase } from './naming';
 import { computeCardOrder } from './ordering';
 import type { ClockPort, Disposable, FileSystemPort } from './ports';
+import { formatRef } from './refs';
 import { seedBoardConfig } from './seed';
 import type {
   BoardData,
@@ -555,6 +556,24 @@ export class RepoDocStore {
   }
 
   // ---- card file helpers ----
+
+  /** The pasteable reference for a card (see {@link formatRef}); undefined for an unknown card. */
+  cardRef(boardId: string, cardId: string): string | undefined {
+    const card = this.getBoard(boardId)?.cards[cardId];
+    if (!card) {
+      return undefined;
+    }
+    return formatRef(boardId, cardId, card.title, this.cardFilePath(boardId, cardId));
+  }
+
+  /** The pasteable reference for a feature; undefined for an unknown feature. */
+  featureRef(setId: string, featureId: string): string | undefined {
+    const feature = this.getFeature(setId, featureId);
+    if (!feature) {
+      return undefined;
+    }
+    return formatRef(setId, featureId, feature.title, this.featureFilePath(setId, featureId));
+  }
 
   /** Path of a card file relative to the root (`boards/<id>/NN-slug.md`), for hosts that open it. */
   cardFilePath(boardId: string, cardId: string): string | undefined {

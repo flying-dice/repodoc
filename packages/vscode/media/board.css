@@ -1282,3 +1282,51 @@ input::placeholder {
 .blocked-actions {
   align-items: center;
 }
+
+/* Card id + copy ref (the id is what the CLI and chat references use) */
+.card-idrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  min-height: 18px;
+}
+.card-id {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  opacity: 0;
+}
+.card:hover .card-copy,
+.card:focus-within .card-copy,
+.card-copy:focus-visible {
+  opacity: 1;
+}
+.card-copy:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+.modal-id {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+.modal-id:hover {
+  color: var(--vscode-textLink-foreground);
+}

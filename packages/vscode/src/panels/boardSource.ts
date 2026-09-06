@@ -34,6 +34,8 @@ export interface BoardSource {
    * `undefined` when it cannot be resolved (no workspace root, missing file).
    */
   cardFilePath?(cardId: string): string | undefined;
+  /** The pasteable reference for a card, see `formatRef` in @repodoc/core. */
+  cardRef(cardId: string): string | undefined;
   addComment?(cardId: string, who: string, text: string): void;
   setCardField?(cardId: string, fieldId: string, value: CustomFieldValue | undefined): void;
   toggleChecklistItem?(cardId: string, index: number): void;
@@ -91,6 +93,10 @@ export class CardBoardSource implements BoardSource {
 
   cardFilePath(cardId: string): string | undefined {
     return this.store.cardFilePath(this.id, cardId);
+  }
+
+  cardRef(cardId: string): string | undefined {
+    return this.store.cardRef(this.id, cardId);
   }
 
   addComment(cardId: string, who: string, text: string): void {
@@ -162,6 +168,10 @@ export class FeatureSetSource implements BoardSource {
   }
 
   /** The `.feature` file itself — source code, so "Open file" is a must. */
+  cardRef(featureId: string): string | undefined {
+    return this.store.featureRef(this.id, featureId);
+  }
+
   cardFilePath(featureId: string): string | undefined {
     return this.store.featureFilePath(this.id, featureId);
   }
