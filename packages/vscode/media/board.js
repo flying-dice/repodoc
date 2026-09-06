@@ -27,7 +27,10 @@
   var MOVE_TO_END = Number.MAX_SAFE_INTEGER;
 
   var addText = ''; // uncontrolled composer text; never triggers a render
-  var commentText = ''; // uncontrolled comment-composer text; never triggers a render
+  // Unsent comment drafts, keyed "<boardId>/<cardId>" — a draft belongs to the
+  // card it was typed on, so closing a card keeps it and opening another card
+  // never inherits it. Mirrors src/panels/commentDrafts.ts BY HAND.
+  var commentDrafts = {};
   var commentWho = null; // composer author override; null = use the configured name
   var descText = ''; // uncontrolled description-editor text
   var checkText = ''; // uncontrolled checklist-composer text
@@ -50,6 +53,36 @@
     } catch (_err) {
       /* ignore */
     }
+  }
+
+  /* ---- Comment drafts (mirrors src/panels/commentDrafts.ts) ---- */
+  function draftKey(boardId, cardId) {
+    return `${boardId}/${cardId}`;
+  }
+  function getDraft(drafts, boardId, cardId) {
+    var value = drafts[draftKey(boardId, cardId)];
+    return typeof value === 'string' ? value : '';
+  }
+  function setDraft(drafts, boardId, cardId, text) {
+    if (text.trim() === '') {
+      return clearDraft(drafts, boardId, cardId);
+    }
+    var next = Object.assign({}, drafts);
+    next[draftKey(boardId, cardId)] = text;
+    return next;
+  }
+  function clearDraft(drafts, boardId, cardId) {
+    var key = draftKey(boardId, cardId);
+    if (!Object.prototype.hasOwnProperty.call(drafts, key)) {
+      return drafts;
+    }
+    var next = Object.assign({}, drafts);
+    delete next[key];
+    return next;
+  }
+  // The board this webview is showing; part of every draft key.
+  function boardIdOf() {
+    return state.data ? state.data.boardId : '';
   }
 
   /* ---- Drag state ---- */
@@ -108,6 +141,7 @@
     onDrop: 'drop',
     onMouseDown: 'mousedown',
     onWheel: 'wheel',
+    onScroll: 'scroll',
     onBlur: 'blur',
   };
 
@@ -256,6 +290,46 @@
   function can(name) {
     var caps = state.data?.capabilities;
     return caps?.[name] !== false;
+  }
+  /**
+   * A feature set declares `meta: false` — its cards are `.feature` files, not
+   * cards, and the whole surface says so (composer, search, footer).
+   */
+  function isFeatureSet() {
+    return state.data?.capabilities?.meta === false;
+  }
+  function noun(plural) {
+    if (isFeatureSet()) {
+      return plural ? 'features' : 'feature';
+    }
+    return plural ? 'cards' : 'card';
+  }
+  // Cards on the board, and how many of them the current filter keeps.
+  function cardCounts() {
+    var b = board();
+    var total = 0;
+    var visible = 0;
+    (b?.columns || []).forEach(function (col) {
+      (col.cardIds || []).forEach(function (id) {
+        var card = b.cards[id];
+        if (!card) {
+          return;
+        }
+        total++;
+        if (matches(card)) {
+          visible++;
+        }
+      });
+    });
+    return { visible: visible, total: total };
+  }
+  function clearFilter() {
+    state.query = '';
+    render();
+    var input = document.getElementById('search-input');
+    if (input) {
+      input.focus();
+    }
   }
   function fieldDefs() {
     var f = config().fields;
@@ -498,7 +572,7 @@
 
     var searchInput = h('input', {
       id: 'search-input',
-      placeholder: 'Search cards',
+      placeholder: `Search ${noun(true)}`,
       value: state.query,
       onInput: function (e) {
         state.query = e.target.value;
@@ -674,15 +748,31 @@
     }
     children.push(h('div', { class: 'card-meta' }, meta));
 
+    var openCard = function () {
+      state.openCardId = cardId;
+      render();
+    };
     var cardEl = h(
       'div',
       {
         class: 'card',
         draggable: true,
         dataset: { cardId: cardId },
-        onClick: function () {
-          state.openCardId = cardId;
-          render();
+        // The card face is the way into the card view, so it is reachable and
+        // activatable from the keyboard, not just by mouse.
+        role: 'button',
+        tabindex: '0',
+        'aria-label': `Open ${noun(false)} ${card.title}`,
+        onClick: openCard,
+        onKeyDown: function (e) {
+          if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') {
+            return;
+          }
+          if (e.target !== cardEl) {
+            return; // a button inside the card (Copy ref) handles its own keys
+          }
+          e.preventDefault();
+          openCard();
         },
         onDragStart: function (e) {
           onCardDragStart(e, cardId, cardEl);
@@ -779,7 +869,9 @@
     if (state.addingCol === col.id) {
       var textarea = h('textarea', {
         id: `composer-${col.id}`,
-        placeholder: 'Enter a title for this card...',
+        placeholder: isFeatureSet()
+          ? 'Enter a name for this feature...'
+          : 'Enter a title for this card...',
         onInput: function (e) {
           addText = e.target.value; // no render
         },
@@ -803,11 +895,15 @@
               saveCard(col.id);
             },
           },
-          'Add card',
+          isFeatureSet() ? 'Add feature' : 'Add card',
         ),
         h(
           'button',
-          { class: 'btn-cancel', 'aria-label': 'Cancel adding a card', onClick: cancelComposer },
+          {
+            class: 'btn-cancel',
+            'aria-label': `Cancel adding a ${noun(false)}`,
+            onClick: cancelComposer,
+          },
           '✕',
         ),
       ]);
@@ -824,7 +920,7 @@
             render();
           },
         },
-        [h('span', { class: 'plus' }, '+'), ' Add a card'],
+        [h('span', { class: 'plus' }, '+'), ` Add a ${noun(false)}`],
       ),
     ]);
   }
@@ -848,6 +944,17 @@
   /* ---- Canvas ---- */
   function buildCanvas() {
     var b = board();
+    var counts = cardCounts();
+    // A filter that matches nothing left every column blank with no
+    // explanation; say so, and offer the way back.
+    if (isFiltering() && counts.visible === 0) {
+      return h('div', { class: 'canvas' }, [
+        h('div', { class: 'board-empty' }, [
+          h('div', { class: 'board-empty-line' }, `No matches for “${state.query.trim()}”`),
+          h('button', { class: 'btn-secondary', onClick: clearFilter }, 'Clear filter'),
+        ]),
+      ]);
+    }
     var cols = (b.columns || []).map(buildColumn);
     var addList = can('addColumn')
       ? h('div', { class: 'add-list-wrap' }, [
@@ -864,8 +971,61 @@
         ])
       : null;
     var inner = h('div', { class: 'canvas-inner' }, cols.concat([addList]));
-    return h('div', { class: 'canvas', onWheel: onCanvasWheel }, [inner]);
+    // The strip is focusable and arrow-scrollable, and fades at the right edge
+    // while there are columns past it — board overflow was otherwise silent.
+    var canvas = h(
+      'div',
+      {
+        class: 'canvas',
+        tabindex: '0',
+        role: 'region',
+        'aria-label': 'Board columns — scroll with the arrow keys',
+        onWheel: onCanvasWheel,
+        onKeyDown: onCanvasKeys,
+        onScroll: syncCanvasOverflow,
+      },
+      [inner],
+    );
+    return h('div', { class: 'canvas-wrap' }, [
+      canvas,
+      h('div', { class: 'canvas-fade', 'aria-hidden': 'true' }),
+    ]);
   }
+
+  var CANVAS_STEP = 320; // one column plus its gap
+
+  function onCanvasKeys(e) {
+    if (e.target !== e.currentTarget) {
+      return; // a card or an input inside the strip owns its own keys
+    }
+    var canvas = e.currentTarget;
+    if (e.key === 'ArrowRight') {
+      canvas.scrollLeft += CANVAS_STEP;
+    } else if (e.key === 'ArrowLeft') {
+      canvas.scrollLeft -= CANVAS_STEP;
+    } else if (e.key === 'Home') {
+      canvas.scrollLeft = 0;
+    } else if (e.key === 'End') {
+      canvas.scrollLeft = canvas.scrollWidth;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    syncCanvasOverflow();
+  }
+
+  /** Show the right-edge fade only while there is board left to scroll to. */
+  function syncCanvasOverflow() {
+    var canvas = document.querySelector('.canvas');
+    var fade = document.querySelector('.canvas-fade');
+    if (!canvas || !fade) {
+      return;
+    }
+    var more = canvas.scrollWidth - canvas.clientWidth - canvas.scrollLeft > 2;
+    fade.className = more ? 'canvas-fade on' : 'canvas-fade';
+  }
+
+  window.addEventListener('resize', syncCanvasOverflow);
 
   // Plain vertical wheel over the board BACKGROUND scrolls horizontally
   // (shift+wheel already does natively). Inside a column stack the wheel stays
@@ -883,15 +1043,10 @@
 
   /* ---- Status bar ---- */
   function buildStatusBar() {
-    var b = board();
-    var total = 0;
-    (b.columns || []).forEach(function (col) {
-      col.cardIds.forEach(function (id) {
-        if (b.cards[id]) {
-          total++;
-        }
-      });
-    });
+    var counts = cardCounts();
+    var countText = isFiltering()
+      ? `${counts.visible} of ${counts.total} ${noun(true)}`
+      : `${counts.total} ${noun(counts.total !== 1)}`;
     var boardPath = state.data?.boardPath || '';
     // G-1: the data directory was plain text; it now opens the board config,
     // where columns, gates, labels and fields are authored.
@@ -911,7 +1066,7 @@
         )
       : h('span', { class: 'status-datadir' }, boardPath);
     return h('div', { class: 'statusbar' }, [
-      h('span', {}, total + (total === 1 ? ' card' : ' cards')),
+      h('span', {}, countText),
       h('div', { class: 'status-spacer' }),
       pathNode,
     ]);
@@ -964,8 +1119,9 @@
   }
 
   function modalHead(card, col) {
+    // The column badge lives in the status row below the title now, so the
+    // badge strip carries the card's own labels only.
     var badges = (card.labels || []).map(labelChip).filter(Boolean);
-    badges.push(h('span', { class: 'col-badge' }, col ? col.name : ''));
 
     var titleNode;
     if (can('meta') && state.editingTitle) {
@@ -1063,7 +1219,7 @@
     return h('div', { class: 'modal-head' }, [
       h('div', { class: 'modal-head-row' }, [
         h('div', { class: 'modal-head-main' }, [
-          h('div', { class: 'modal-badges' }, badges),
+          badges.length ? h('div', { class: 'modal-badges' }, badges) : null,
           titleNode,
           h(
             'code',
@@ -1079,6 +1235,7 @@
         ]),
         h('div', { class: 'modal-head-actions' }, actions),
       ]),
+      modalStatusRow(card, col),
     ]);
   }
 
@@ -1293,9 +1450,14 @@
   }
 
   function modalMeta(card) {
-    var cells = [
-      h('div', {}, [h('div', { class: 'field-label' }, 'Priority'), priorityEditor(card)]),
-    ];
+    var cells = [];
+    // A surface that cannot edit priority has nothing useful to say when none
+    // is set — a feature has no priority at all, so do not print "None".
+    if (can('meta') || card.priority) {
+      cells.push(
+        h('div', {}, [h('div', { class: 'field-label' }, 'Priority'), priorityEditor(card)]),
+      );
+    }
     if (can('meta')) {
       var labelsNode = labelsEditor(card);
       if (labelsNode) {
@@ -1306,6 +1468,9 @@
           ]),
         );
       }
+    }
+    if (!cells.length) {
+      return null;
     }
     return h('div', { class: 'modal-cols' }, cells);
   }
@@ -1495,27 +1660,28 @@
       }
     });
     var toggles = can('checklist');
+    // A real checkbox with a real label: focusable, Space-operable, and
+    // announced with its checked state — the visual box is CSS on the input.
     var itemNodes = items.map(function (item, index) {
-      var boxChildren = item.done ? [icon(ICON.check, 'icon')] : [];
-      return h(
-        'div',
-        {
-          class: 'check-item',
-          onClick: toggles
-            ? function () {
-                vscode.postMessage({
-                  type: 'toggleCheck',
-                  cardId: state.openCardId,
-                  index: index,
-                });
-              }
-            : null,
+      var inputId = `check-${card.id}-${index}`;
+      var box = h('input', {
+        type: 'checkbox',
+        id: inputId,
+        class: 'check-box',
+        onChange: function () {
+          vscode.postMessage({
+            type: 'toggleCheck',
+            cardId: card.id,
+            index: index,
+          });
         },
-        [
-          h('span', { class: `check-box${item.done ? ' done' : ''}` }, boxChildren),
-          h('span', { class: `check-text${item.done ? ' done' : ''}` }, item.text),
-        ],
-      );
+      });
+      box.checked = item.done === true;
+      box.disabled = !toggles;
+      return h('div', { class: 'check-item' }, [
+        box,
+        h('label', { class: `check-text${item.done ? ' done' : ''}`, for: inputId }, item.text),
+      ]);
     });
     return h('div', { class: 'section' }, [
       h('div', { class: 'checklist-head' }, [
@@ -1671,14 +1837,19 @@
   }
 
   function submitComment() {
-    var text = commentText.trim();
-    var who = (commentWho !== null ? commentWho : state.data?.commentAuthor || '').trim();
-    if (!text || !state.openCardId) {
+    var cardId = state.openCardId;
+    if (!cardId) {
       return;
     }
-    vscode.postMessage({ type: 'addComment', cardId: state.openCardId, text: text, who: who });
-    // Clear locally; the resulting data refresh brings the persisted entry.
-    commentText = '';
+    var text = getDraft(commentDrafts, boardIdOf(), cardId).trim();
+    var who = (commentWho !== null ? commentWho : state.data?.commentAuthor || '').trim();
+    if (!text) {
+      return;
+    }
+    vscode.postMessage({ type: 'addComment', cardId: cardId, text: text, who: who });
+    // The draft is spent — drop it so reopening this card starts clean; the
+    // resulting data refresh brings the persisted entry.
+    commentDrafts = clearDraft(commentDrafts, boardIdOf(), cardId);
     var ta = document.getElementById('comment-composer');
     if (ta) {
       ta.value = '';
@@ -1707,7 +1878,8 @@
       class: 'comment-input',
       placeholder: 'Add a comment — journal what changed…',
       onInput: function (e) {
-        commentText = e.target.value; // no render
+        // No render: the draft is stored against THIS card only.
+        commentDrafts = setDraft(commentDrafts, boardIdOf(), card.id, e.target.value);
       },
       onKeyDown: function (e) {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -1715,12 +1887,12 @@
           submitComment();
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          commentText = '';
+          commentDrafts = clearDraft(commentDrafts, boardIdOf(), card.id);
           e.target.value = '';
         }
       },
     });
-    textarea.value = commentText;
+    textarea.value = getDraft(commentDrafts, boardIdOf(), card.id);
 
     var authorValue = commentWho !== null ? commentWho : state.data?.commentAuthor || '';
     var authorInput = h('input', {
@@ -1769,23 +1941,22 @@
 
     if (def.type === 'boolean') {
       var on = val === true;
-      return h(
-        'div',
-        {
-          class: 'field-bool',
-          onClick: function () {
-            postField(cardId, def.id, !on);
-          },
+      // Same treatment as a checklist item: a native checkbox carries the
+      // checked state and the keyboard behaviour for free.
+      var boolId = `field-${cardId}-${def.id}`;
+      var boolBox = h('input', {
+        type: 'checkbox',
+        id: boolId,
+        class: 'check-box',
+        onChange: function (e) {
+          postField(cardId, def.id, e.target.checked === true);
         },
-        [
-          h(
-            'span',
-            { class: `check-box${on ? ' done' : ''}` },
-            on ? [icon(ICON.check, 'icon')] : [],
-          ),
-          h('span', { class: 'field-bool-label' }, on ? 'Yes' : 'No'),
-        ],
-      );
+      });
+      boolBox.checked = on;
+      return h('div', { class: 'field-bool' }, [
+        boolBox,
+        h('label', { class: 'field-bool-label', for: boolId }, on ? 'Yes' : 'No'),
+      ]);
     }
 
     if (def.type === 'select') {
@@ -2035,6 +2206,47 @@
     return null;
   }
 
+  /**
+   * The move this card can make next, and what stands in its way — shared by
+   * the modal's status row and the Gates section so they never disagree.
+   * Null when the card is already in the last column.
+   */
+  function nextMoveState(card, col) {
+    var next = nextColumnOf(col);
+    if (!next) {
+      return null;
+    }
+    var blocking = (col?.exit || []).concat(next.enter || []);
+    // Gates are only enforced where evidence has a home — a feature set has no
+    // sidecar, so its moves are never gate-blocked (CHANGELOG 0.9.0) and the
+    // button must not pretend otherwise.
+    var unmet = can('gateEvidence')
+      ? blocking.filter(function (def) {
+          return !gateSatisfied(card, def);
+        })
+      : [];
+    return { next: next, blocking: blocking, unmet: unmet, ok: unmet.length === 0 };
+  }
+
+  function moveToNext(card, next) {
+    state.lastMove = { cardId: card.id, toColumn: next.id, index: MOVE_TO_END };
+    vscode.postMessage({
+      type: 'moveCard',
+      cardId: card.id,
+      toColumn: next.id,
+      index: MOVE_TO_END,
+    });
+    closeModal();
+  }
+
+  /** The Gates section, scrolled into view from the header's hint. */
+  function revealGates() {
+    var section = document.getElementById('gates-section');
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
   function gateRow(card, def, colId, dir) {
     var sat = gateSatisfied(card, def);
     var status = sat
@@ -2161,53 +2373,59 @@
 
     // A keyboard-reachable move that does not need drag and drop. Enabled when
     // every gate on THIS transition passes; the host re-validates regardless.
-    if (next) {
-      var blocking = [];
-      (col?.exit || []).forEach(function (def) {
-        blocking.push(def);
-      });
-      (next.enter || []).forEach(function (def) {
-        blocking.push(def);
-      });
-      // Gates are only enforced where evidence has a home — a feature set has
-      // no sidecar, so its moves are never gate-blocked (CHANGELOG 0.9.0) and
-      // the button must not pretend otherwise.
-      var enforced = can('gateEvidence');
-      var ok =
-        !enforced ||
-        blocking.every(function (def) {
-          return gateSatisfied(card, def);
-        });
-      children.push(
-        h(
-          'button',
-          {
-            class: 'btn-primary move-next',
-            disabled: ok ? null : 'disabled',
-            title: ok ? `Move to ${next.name}` : `${blocking.length} gates must be satisfied first`,
-            onClick: ok
-              ? function () {
-                  state.lastMove = {
-                    cardId: card.id,
-                    toColumn: next.id,
-                    index: MOVE_TO_END,
-                  };
-                  vscode.postMessage({
-                    type: 'moveCard',
-                    cardId: card.id,
-                    toColumn: next.id,
-                    index: MOVE_TO_END,
-                  });
-                  closeModal();
-                }
-              : null,
-          },
-          `Move to ${next.name}`,
-        ),
-      );
+    var move = nextMoveState(card, col);
+    if (move) {
+      children.push(moveNextButton(card, move, 'btn-primary move-next'));
     }
 
-    return h('div', { class: 'section' }, children);
+    return h('div', { class: 'section', id: 'gates-section' }, children);
+  }
+
+  /** The "Move to <next>" button, gated by {@link nextMoveState}. */
+  function moveNextButton(card, move, className) {
+    return h(
+      'button',
+      {
+        class: className,
+        disabled: move.ok ? null : 'disabled',
+        title: move.ok
+          ? `Move to ${move.next.name}`
+          : `${move.unmet.length} gate${move.unmet.length === 1 ? '' : 's'} must be satisfied first`,
+        onClick: move.ok
+          ? function () {
+              moveToNext(card, move.next);
+            }
+          : null,
+      },
+      `Move to ${move.next.name}`,
+    );
+  }
+
+  /**
+   * A compact "where is this and what is next" row under the card title: the
+   * column it is in, the move it can make, and — when gates block that move —
+   * a one-line hint that takes a human to them.
+   */
+  function modalStatusRow(card, col) {
+    var children = [h('span', { class: 'col-badge' }, col ? col.name : '')];
+    var move = nextMoveState(card, col);
+    if (move) {
+      children.push(moveNextButton(card, move, 'btn-secondary move-next-inline'));
+      if (move.unmet.length) {
+        children.push(
+          h(
+            'button',
+            {
+              class: 'disclosure status-row-hint-btn',
+              title: 'Show the gates for this move',
+              onClick: revealGates,
+            },
+            `${move.unmet.length} gate${move.unmet.length === 1 ? '' : 's'} to satisfy`,
+          ),
+        );
+      }
+    }
+    return h('div', { class: 'modal-status-row' }, children);
   }
 
   function buildModal() {
@@ -2756,6 +2974,10 @@
       // eslint-disable-next-line no-console
       console.error('RepoDoc: content enhancement failed', enhanceErr);
     }
+
+    // The overflow fade depends on layout, so it is set once the strip is in
+    // the document (and again on every scroll / resize).
+    syncCanvasOverflow();
 
     restoreFocus(activeId, caretStart, caretEnd);
   }

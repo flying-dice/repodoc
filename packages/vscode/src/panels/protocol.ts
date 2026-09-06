@@ -108,6 +108,24 @@ export interface MoveBlockedMessage {
 
 export type HostToWebviewMessage = DataMessage | OpenCardMessage | MoveBlockedMessage;
 
+/**
+ * Sent by a markdown reading view (decision / doc) when a link inside the
+ * rendered document is clicked. The webview does not resolve anything: it
+ * forwards the raw `href`, and the host resolves it against the displayed
+ * document's repo-relative path (`panels/linkTargets.ts`), refusing whatever
+ * escapes the workspace root. Untrusted like every inbound message.
+ *
+ * Mirrored by hand in `media/mdLinks.js`.
+ */
+export interface OpenLinkMessage {
+  type: 'openLink';
+  /** The `href` attribute exactly as authored in the markdown. */
+  href: string;
+}
+
+/** Everything a markdown reading view can send to the host. */
+export type MarkdownWebviewToHostMessage = OpenLinkMessage;
+
 /** Messages sent from the webview up to the extension host. */
 export interface ReadyMessage {
   type: 'ready';

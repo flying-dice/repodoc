@@ -21,6 +21,8 @@
 - **Decision status from the tree.** *Set Status…* writes `status:` in a decision's frontmatter.
 - **Fixes.** An unset priority reads *None* instead of *Medium*; column counts and WIP state are computed over all cards, showing "n of N" only while a search filter is active; a live card with no `progress` no longer claims "0% complete"; the card view's gate list no longer offers requirements for columns behind the card; and Escape closes the blocked-move dialog and then the card view, which now carry `role="dialog"`, `aria-modal`, labelled close buttons and focus on open.
 
+- **Reading-view fixes from the UX review.** An unsent comment draft now belongs to the card it was typed on — keyed by board and card, kept if you close and reopen that card, and never carried into the next one. Relative markdown links in Decisions and Docs navigate: a link to a `decisions/*.md` opens that record, one under `docs/` opens that page, any other in-repo file opens in an editor, `#anchors` scroll the page, `http(s)` links open in your browser, and anything resolving outside the workspace is refused. Checklist items and boolean custom fields are real checkboxes with real labels — focusable, Space-operable, and announced with their checked state — and a card on the board face is reachable by Tab and opens with Enter or Space.
+
 ## [0.8.0] — 2026-07-20
 
 - One renderer for every content block. Card comments now render full GitHub Flavored Markdown, Mermaid, and PlantUML — the same pipeline as card descriptions, decision records, and docs. File references like `src/core/store.ts:12` in descriptions and comments are one-click links that open the file at that line.

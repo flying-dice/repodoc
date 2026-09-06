@@ -1,7 +1,10 @@
 import type { RepoDocStore } from '@repodoc/core';
 import * as vscode from 'vscode';
+import { openRepoFile } from '../repoFiles';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { resolveRelativeLink } from './linkTargets';
 import { plantUmlServer } from './plantUml';
+import type { OpenLinkMessage } from './protocol';
 import { isPresetWidth, resolveReadingWidth } from './readingWidth';
 import { buildWebviewHtml, escapeHtml } from './webviewHtml';
 
@@ -44,6 +47,13 @@ export class MarkdownPanel {
       } else {
         MarkdownPanel.docPanel = undefined;
       }
+    });
+
+    // Links inside the rendered document are routed through the host — a
+    // relative href in a webview would otherwise resolve against the
+    // `vscode-webview://` origin and navigate nowhere.
+    this.panel.webview.onDidReceiveMessage((message: unknown) => {
+      void this.onMessage(message);
     });
   }
 
@@ -121,6 +131,56 @@ export class MarkdownPanel {
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
     };
+  }
+
+  /**
+   * Handle one (untrusted) message from the reading view. The only one there is
+   * is `openLink`; anything else, or an href that resolves outside the
+   * workspace, is dropped.
+   */
+  private async onMessage(message: unknown): Promise<void> {
+    const candidate = message as Partial<OpenLinkMessage> | null | undefined;
+    if (candidate?.type !== 'openLink' || typeof candidate.href !== 'string') {
+      return;
+    }
+    const target = resolveRelativeLink(this.sourcePath(), candidate.href);
+    switch (target.kind) {
+      case 'fragment':
+        return; // the page scrolls itself (media/mdLinks.js)
+      case 'external':
+        await vscode.env.openExternal(vscode.Uri.parse(target.url));
+        return;
+      case 'decision':
+        if (this.store.getDecision(target.id)) {
+          await vscode.commands.executeCommand('repodoc.openDecision', target.id);
+          return;
+        }
+        await openRepoFile(this.store.root, target.path);
+        return;
+      case 'doc':
+        if (this.store.readDoc(target.path)) {
+          await vscode.commands.executeCommand('repodoc.openDoc', target.path);
+          return;
+        }
+        await openRepoFile(this.store.root, target.path);
+        return;
+      case 'file':
+        await openRepoFile(this.store.root, target.path);
+        return;
+      default:
+        void vscode.window.showWarningMessage(
+          `RepoDoc: cannot open ${candidate.href} — ${target.reason}.`,
+        );
+        return;
+    }
+  }
+
+  /** Repo-relative path of the document on screen — what links resolve against. */
+  private sourcePath(): string {
+    if (this.state.kind === 'doc') {
+      return this.state.target;
+    }
+    return this.store.decisionFilePath(this.state.target) ?? `decisions/${this.state.target}.md`;
   }
 
   private render(): void {
@@ -227,6 +287,8 @@ export class MarkdownPanel {
       title: leaf,
       bodyHtml: body,
       stylesheets: ['base.css', 'markdown.css'],
+      // Routes clicked links to the host and scrolls `#fragment` links.
+      scriptFileName: 'mdLinks.js',
       ...(hasMermaid ? { extraScripts: ['mermaid.min.js', 'mermaid-init.js'] } : {}),
       extraImgSrc: ['https:', 'data:', 'http://localhost:*', 'http://127.0.0.1:*'],
     });

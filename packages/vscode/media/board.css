@@ -86,11 +86,49 @@ input::placeholder {
   background: var(--vscode-editor-background);
   padding: 18px 16px 20px;
 }
+.canvas:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+/* Holds the column strip and its right-edge overflow affordance. Sits BELOW
+   the top bar, so the fade can never cover the search field. */
+.canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.canvas-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 36px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: linear-gradient(to right, transparent, var(--vscode-editor-background));
+}
+.canvas-fade.on {
+  opacity: 1;
+}
 .canvas-inner {
   display: flex;
   gap: 14px;
   height: 100%;
   align-items: flex-start;
+}
+/* A search that matches nothing: say so where the columns would be. */
+.board-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 2px;
+}
+.board-empty-line {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
 }
 
 .column {
@@ -188,6 +226,10 @@ input::placeholder {
 }
 .card.dragging {
   opacity: 0.4;
+}
+.card:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 .card-labels {
   display: flex;
@@ -487,6 +529,25 @@ input::placeholder {
   background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
   border: 1px solid var(--vscode-widget-border);
 }
+/* Where this card is and what it can do next, directly under the title. */
+.modal-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.move-next-inline {
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+.status-row-hint {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+}
+.status-row-hint-btn {
+  padding: 0;
+}
 .modal-title {
   font-size: 20px;
   font-weight: 640;
@@ -589,11 +650,10 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 10px;
-  cursor: pointer;
   padding: 4px 2px;
   border-radius: 6px;
 }
-.check-item:hover .check-box:not(.done) {
+.check-item:hover input.check-box:not(:checked):not(:disabled) {
   border-color: var(--vscode-focusBorder);
 }
 .check-box {
@@ -628,6 +688,48 @@ input::placeholder {
 .check-text.done {
   color: var(--vscode-descriptionForeground);
   text-decoration: line-through;
+}
+/* Checklist items and boolean fields ARE native checkboxes: the box below is
+   an appearance-stripped `input`, so focus, Space and the checked state come
+   from the platform while the visual stays the design's. */
+input.check-box {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  cursor: pointer;
+}
+input.check-box:checked {
+  border-color: var(--vscode-checkbox-selectBorder);
+  background: var(--vscode-checkbox-selectBackground);
+  color: var(--vscode-checkbox-foreground);
+}
+input.check-box:checked::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 3px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input.check-box:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+input.check-box:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+label.check-text,
+label.field-bool-label {
+  cursor: pointer;
+}
+input.check-box:disabled + label.check-text {
+  cursor: default;
 }
 
 /* ---- Card-face field chips + gate chip ---- */
