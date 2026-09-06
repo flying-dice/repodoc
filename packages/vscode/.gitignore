@@ -1,0 +1,9 @@
+out
+dist
+node_modules
+.vscode-test/
+*.vsix
+media/mermaid.min.js
+# copied in by `bun run vsix` for the marketplace package
+CHANGELOG.md
+LICENSE

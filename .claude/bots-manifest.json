@@ -1,0 +1,76 @@
+{
+  "version": "0.1.0",
+  "updatedAt": "2026-09-06T01:55:23.310Z",
+  "variant": "vanilla",
+  "items": {
+    "bot:architect": [
+      "/home/user/repodoc/.claude/agents/bots/architect.md"
+    ],
+    "bot:architect-deep": [
+      "/home/user/repodoc/.claude/agents/bots/architect-deep.md"
+    ],
+    "bot:designer": [
+      "/home/user/repodoc/.claude/agents/bots/designer.md"
+    ],
+    "bot:designer-deep": [
+      "/home/user/repodoc/.claude/agents/bots/designer-deep.md"
+    ],
+    "bot:developer": [
+      "/home/user/repodoc/.claude/agents/bots/developer.md"
+    ],
+    "bot:developer-lite": [
+      "/home/user/repodoc/.claude/agents/bots/developer-lite.md"
+    ],
+    "bot:lead": [
+      "/home/user/repodoc/.claude/agents/bots/lead.md"
+    ],
+    "bot:senior-developer": [
+      "/home/user/repodoc/.claude/agents/bots/senior-developer.md"
+    ],
+    "bot:senior-developer-deep": [
+      "/home/user/repodoc/.claude/agents/bots/senior-developer-deep.md"
+    ],
+    "bot:tester": [
+      "/home/user/repodoc/.claude/agents/bots/tester.md"
+    ],
+    "bot:tester-deep": [
+      "/home/user/repodoc/.claude/agents/bots/tester-deep.md"
+    ],
+    "skill:antigravity-harness": [
+      "/home/user/repodoc/.claude/skills/antigravity-harness"
+    ],
+    "skill:claude-harness": [
+      "/home/user/repodoc/.claude/skills/claude-harness"
+    ],
+    "skill:clean-code-review": [
+      "/home/user/repodoc/.claude/skills/clean-code-review"
+    ],
+    "skill:codex-harness": [
+      "/home/user/repodoc/.claude/skills/codex-harness"
+    ],
+    "skill:coding-styleguide": [
+      "/home/user/repodoc/.claude/skills/coding-styleguide"
+    ],
+    "skill:pre-commit": [
+      "/home/user/repodoc/.claude/skills/pre-commit"
+    ],
+    "skill:project-status": [
+      "/home/user/repodoc/.claude/skills/project-status"
+    ],
+    "skill:refactor": [
+      "/home/user/repodoc/.claude/skills/refactor"
+    ],
+    "skill:repodoc-workflow": [
+      "/home/user/repodoc/.claude/skills/repodoc-workflow"
+    ],
+    "skill:requirements-review": [
+      "/home/user/repodoc/.claude/skills/requirements-review"
+    ],
+    "skill:sprint-plan": [
+      "/home/user/repodoc/.claude/skills/sprint-plan"
+    ],
+    "skill:sprint-start": [
+      "/home/user/repodoc/.claude/skills/sprint-start"
+    ]
+  }
+}

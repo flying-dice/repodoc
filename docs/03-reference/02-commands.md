@@ -1,12 +1,15 @@
 # Commands
 
+These are the VS Code extension's commands. For the terminal equivalents see
+[the CLI reference](03-cli.md).
+
 RepoDoc contributes a `repodoc` activity-bar container with three tree views —
 Boards, Decisions, and Docs — and the commands below (declared under the
 `RepoDoc` category in `package.json`).
 
 | Command | ID | What it does |
 | --- | --- | --- |
-| Initialize Workspace | `repodoc.init` | Seeds a starter board, a first decision record, and a docs page |
+| Initialize Workspace | `repodoc.init` | Writes the starter board config (never touches existing content) |
 | Refresh | `repodoc.refresh` | Re-reads the data from disk and refreshes the views |
 | Open Board | `repodoc.openBoard` | Opens a board in the kanban webview panel |
 | Open Decision | `repodoc.openDecision` | Opens a decision record in the reading view |

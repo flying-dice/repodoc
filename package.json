@@ -1,216 +1,43 @@
 {
-  "name": "repodoc",
-  "displayName": "RepoDoc",
-  "description": "Task boards, decision records, and documentation stored as plain files in your repository",
-  "version": "0.8.0",
-  "publisher": "flying-dice",
+  "name": "@flying-dice/repodoc",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Task boards, decision records, and documentation stored as plain files in your repository — a VS Code extension and a CLI over one core.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/flying-dice/repodoc"
   },
-  "engines": {
-    "vscode": "^1.100.0"
-  },
-  "categories": [
-    "Other"
+  "workspaces": [
+    "packages/*"
   ],
-  "icon": "media/icon.png",
-  "main": "./dist/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "repodoc",
-          "title": "RepoDoc",
-          "icon": "media/repodoc.svg"
-        }
-      ]
-    },
-    "views": {
-      "repodoc": [
-        {
-          "id": "repodoc.boards",
-          "name": "Boards",
-          "icon": "media/repodoc.svg"
-        },
-        {
-          "id": "repodoc.decisions",
-          "name": "Decisions",
-          "icon": "media/repodoc.svg"
-        },
-        {
-          "id": "repodoc.docs",
-          "name": "Docs",
-          "icon": "media/repodoc.svg"
-        }
-      ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "repodoc.boards",
-        "contents": "No RepoDoc data found in this repo yet.\n[Initialize RepoDoc](command:repodoc.init)\nThis creates a starter board config under `boards/`. Your cards, decisions, and docs are yours to add.",
-        "when": "!repodoc.initialized"
-      },
-      {
-        "view": "repodoc.decisions",
-        "contents": "Decision records live in `decisions/` as numbered markdown files.\n[New Decision](command:repodoc.newDecision)",
-        "when": "repodoc.initialized"
-      },
-      {
-        "view": "repodoc.docs",
-        "contents": "Documentation is rendered from the markdown tree under `docs/`.\nAdd a folder, drop in a `.md` file, and it shows up here."
-      }
-    ],
-    "commands": [
-      {
-        "command": "repodoc.init",
-        "title": "Initialize Workspace",
-        "category": "RepoDoc"
-      },
-      {
-        "command": "repodoc.refresh",
-        "title": "Refresh",
-        "category": "RepoDoc",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "repodoc.openBoard",
-        "title": "Open Board",
-        "category": "RepoDoc",
-        "icon": "$(open-preview)"
-      },
-      {
-        "command": "repodoc.openDecision",
-        "title": "Open Decision",
-        "category": "RepoDoc"
-      },
-      {
-        "command": "repodoc.openDoc",
-        "title": "Open Doc",
-        "category": "RepoDoc"
-      },
-      {
-        "command": "repodoc.newBoard",
-        "title": "New Board",
-        "category": "RepoDoc",
-        "icon": "$(add)"
-      },
-      {
-        "command": "repodoc.newDecision",
-        "title": "New Decision",
-        "category": "RepoDoc",
-        "icon": "$(add)"
-      },
-      {
-        "command": "repodoc.installAgentSkill",
-        "title": "Install Agent Skill",
-        "category": "RepoDoc"
-      },
-      {
-        "command": "repodoc.openSettings",
-        "title": "RepoDoc Settings",
-        "category": "RepoDoc",
-        "icon": "$(gear)"
-      }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "repodoc.openSettings",
-          "when": "view == repodoc.boards",
-          "group": "navigation@8"
-        },
-        {
-          "command": "repodoc.newBoard",
-          "when": "view == repodoc.boards",
-          "group": "navigation@1"
-        },
-        {
-          "command": "repodoc.newDecision",
-          "when": "view == repodoc.decisions",
-          "group": "navigation@1"
-        },
-        {
-          "command": "repodoc.refresh",
-          "when": "view =~ /^repodoc\\./",
-          "group": "navigation@9"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "repodoc.openBoard",
-          "when": "false"
-        },
-        {
-          "command": "repodoc.openDecision",
-          "when": "false"
-        },
-        {
-          "command": "repodoc.openDoc",
-          "when": "false"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "repodoc.openBoard",
-          "when": "view == repodoc.boards && viewItem == repodoc.board",
-          "group": "inline"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "RepoDoc",
-      "properties": {
-        "repodoc.readingWidth": {
-          "type": "string",
-          "default": "wide",
-          "markdownDescription": "Width of RepoDoc's reading surfaces (Docs and Decision views, and the card view). Use a preset: `narrow` (760px), `wide` (1100px), `full` (entire editor width), or any fixed CSS length such as `500px`, `90%`, or `60rem`."
-        },
-        "repodoc.plantUmlServer": {
-          "type": "string",
-          "default": "https://www.plantuml.com/plantuml",
-          "markdownDescription": "PlantUML server used to render ```plantuml fences in Docs and Decisions. The default is the public plantuml.com server \u2014 **diagram source is sent to it**. To keep diagrams private, run your own local renderer with Docker:\n\n```\ndocker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty\n```\n\nthen set this to `http://localhost:8792`. Leave empty to show PlantUML fences as plain code."
-        },
-        "repodoc.commentAuthor": {
-          "type": "string",
-          "default": "",
-          "description": "Name used for comments you add from the card view. When empty, your git user.name is used. Editing the name in the comment composer updates this setting."
-        }
-      }
-    }
+  "bin": {
+    "repodoc": "./packages/cli/src/bin.ts"
+  },
+  "files": [
+    "packages/cli/src",
+    "packages/core/src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test"
-  },
-  "dependencies": {
-    "marked": "^15.0.7",
-    "mermaid": "^11.16.0",
-    "plantuml-encoder": "^1.4.0"
+    "check-types": "bun run --filter '*' check-types",
+    "lint": "eslint packages",
+    "test": "bun test packages/core packages/cli packages/vscode/test/unit",
+    "test:e2e": "bun run --cwd packages/vscode test",
+    "compile": "bun run --cwd packages/vscode compile",
+    "watch": "bun run --cwd packages/vscode watch",
+    "vsix": "bun run --cwd packages/vscode package && bun run --cwd packages/vscode vsix",
+    "repodoc": "bun packages/cli/src/bin.ts"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.10",
-    "@types/node": "^24.0.0",
-    "@types/vscode": "^1.100.0",
+    "@types/bun": "^1.2.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.3.2",
-    "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
-    "npm-run-all": "^4.1.5",
     "typescript": "^5.8.3"
   }
 }

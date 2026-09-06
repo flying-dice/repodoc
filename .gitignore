@@ -1,7 +1,6 @@
-.DS_Store
 out
 dist
 node_modules
 .vscode-test/
 *.vsix
-media/mermaid.min.js
+**/media/mermaid.min.js

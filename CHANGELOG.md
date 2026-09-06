@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.9.0] — 2026-09-06
+
+- **A CLI over the same core.** `bunx github:flying-dice/repodoc <command>` runs `repodoc` straight from the repository with no install or build step: `board list|show|create`, `column add`, `card list|show|create|move|gates|gate-pass|comment|update|check|set`, `decision list|show|create`, `docs tree|show`, `skill install`, and `init`. Every command takes `--json`, `--root`, and `--who`. `card move` enforces workflow gates exactly like the board and records overrides only with `--override`.
+- **Bun workspace.** The repository is now three packages — `@repodoc/core` (the vscode-free store and adapters), `@repodoc/cli`, and the `repodoc` extension — installed, scripted, and unit-tested with Bun. Core and CLI unit tests run under `bun test`; the extension's end-to-end suite still runs on `@vscode/test-cli`. See `decisions/09-one-core-two-hosts.md`.
+- **Core API.** `moveCard` and `addCard` return a result instead of failing silently; new `updateCardMeta` (title, labels, priority, agent, live, status, progress) and `recordGateEvidence`.
+- **Fix.** The free-text `agent:` frontmatter key is parsed onto cards again, so the avatar and the live banner render for agent-claimed cards.
+- **Skill.** The agent skill teaches the CLI first and hand-editing as the fallback.
+
 ## [0.8.0] — 2026-07-20
 
 - One renderer for every content block. Card comments now render full GitHub Flavored Markdown, Mermaid, and PlantUML — the same pipeline as card descriptions, decision records, and docs. File references like `src/core/store.ts:12` in descriptions and comments are one-click links that open the file at that line.
