@@ -67,6 +67,12 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [boardId] = need(args, ['board']);
       const board = requireBoard(ctx, boardId);
+      // A substituted column set is reported on stderr so stdout (and --json)
+      // stay exactly what a caller can parse.
+      const warning = ctx.store.boardConfigWarning(boardId);
+      if (warning !== undefined) {
+        out.warn(warning);
+      }
       out.emit({ id: boardId, ...board }, () => {
         const lines = [`${board.name} (${boardId})`];
         for (const col of board.columns) {
@@ -227,26 +233,29 @@ export const COMMANDS: Command[] = [
       const { board } = requireCard(ctx, boardId, cardId);
       const target = requireColumn(board, toColumn);
       const index = intFlag(args.flags, 'index') ?? Number.MAX_SAFE_INTEGER;
-      const results = ctx.store.evaluateMove(boardId, cardId, toColumn);
-      const failing = results.filter((r) => !r.satisfied);
       const override = args.flags['override'] === true;
-      const reason = stringFlag(args.flags, 'reason');
-      if (failing.length && !override) {
-        throw new CommandError(refusalText(cardId, toColumn, failing));
-      }
-      if (failing.length && override && !reason?.trim()) {
-        throw new UsageError(
-          '--override requires --reason <why> (recorded on the card next to each overridden gate)',
-        );
-      }
-      for (const r of failing) {
-        ctx.store.recordGateOverride(boardId, cardId, r.gate.id, ctx.who, reason);
-      }
-      const moved = ctx.store.moveCard(boardId, cardId, toColumn, index);
+      const reason = stringFlag(args.flags, 'reason')?.trim() ?? '';
+      // The gate policy has one owner in core, so a refused move never leaves an
+      // override behind and the webview cannot drift from the CLI.
+      const moved = ctx.store.moveCardGated(
+        boardId,
+        cardId,
+        toColumn,
+        index,
+        override && reason ? { override: { who: ctx.who, reason } } : undefined,
+      );
       if (!moved.ok) {
+        if ('blocked' in moved) {
+          if (override) {
+            throw new UsageError(
+              '--override requires --reason <why> (recorded on the card next to each overridden gate)',
+            );
+          }
+          throw new CommandError(refusalText(cardId, toColumn, moved.blocked));
+        }
         throw new CommandError(storeErrorMessage(moved.error));
       }
-      const overridden = failing.map((r) => r.gate.id);
+      const overridden = moved.overridden;
       out.emit(
         {
           board: boardId,
@@ -296,7 +305,9 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [boardId, cardId, gateId, result] = need(args, ['board', 'card', 'gate', 'result']);
       requireCard(ctx, boardId, cardId);
-      ctx.store.recordGateEvidence(boardId, cardId, gateId, result, ctx.who);
+      if (!ctx.store.recordGateEvidence(boardId, cardId, gateId, result, ctx.who)) {
+        throw new UsageError('card gate-pass: <result> must not be empty');
+      }
       out.emit({ board: boardId, card: cardId, gate: gateId, result, who: ctx.who }, () => [
         `Recorded ${gateId} on ${cardId}`,
       ]);
@@ -310,7 +321,9 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
       requireCard(ctx, boardId, cardId);
-      ctx.store.addComment(boardId, cardId, ctx.who, text);
+      if (!ctx.store.addComment(boardId, cardId, ctx.who, text)) {
+        throw new UsageError('card comment: <text> must not be empty');
+      }
       out.emit({ board: boardId, card: cardId, who: ctx.who, text }, () => [
         `Commented on ${cardId} as ${ctx.who}`,
       ]);
@@ -365,7 +378,9 @@ export const COMMANDS: Command[] = [
       const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
       const { card } = requireCard(ctx, boardId, cardId);
       const index = card.checklist?.length ?? 0;
-      ctx.store.addChecklistItem(boardId, cardId, text);
+      if (!ctx.store.addChecklistItem(boardId, cardId, text)) {
+        throw new UsageError('card check-add: <text> must not be empty');
+      }
       const after = requireCard(ctx, boardId, cardId).card.checklist?.[index];
       out.emit({ board: boardId, card: cardId, index, item: after }, () => [
         `Added checklist item ${index}: [${after?.done ? 'x' : ' '}] ${after?.text ?? ''}`,

@@ -23,6 +23,7 @@ import {
   readBoardConfigFile,
   toColumns,
 } from './boardConfig';
+import { detectEol } from './eol';
 import {
   featureIdFromFileName,
   parseFeature,
@@ -283,6 +284,10 @@ export function writeStatusTag(content: string, columnId: string): string {
     lines[i] = line.replace(/@status:\S*/, `${STATUS_TAG_PREFIX}${columnId}`);
     return lines.join('\n');
   }
-  lines.splice(Math.max(0, featureIdx), 0, `${STATUS_TAG_PREFIX}${columnId}`);
+  // A line INSERTED into a CRLF file must end like its neighbours, or the file
+  // comes back with mixed endings; replacing a tag in place needs no such care.
+  const eol = detectEol(content);
+  const tag = `${STATUS_TAG_PREFIX}${columnId}`;
+  lines.splice(Math.max(0, featureIdx), 0, eol === '\r\n' ? `${tag}\r` : tag);
   return lines.join('\n');
 }

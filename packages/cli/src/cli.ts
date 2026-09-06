@@ -36,8 +36,14 @@ export function runCli(argv: string[], cwd: string, io: Io): number {
   const positionals =
     command.name === '' ? [maybeName, ...rest].filter((p): p is string => p !== undefined) : rest;
   try {
-    const ctx = buildContext(args, cwd);
-    command.run(ctx, { positionals, flags: args.flags }, makePrinter(ctx.json, io.stdout));
+    // Only `init` may name a root that does not exist yet — creating it is
+    // the whole point of the command.
+    const ctx = buildContext(args, cwd, { mayCreateRoot: command.group === 'init' });
+    command.run(
+      ctx,
+      { positionals, flags: args.flags },
+      makePrinter(ctx.json, io.stdout, io.stderr),
+    );
     return 0;
   } catch (e) {
     if (e instanceof UsageError) {

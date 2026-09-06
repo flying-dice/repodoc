@@ -13,6 +13,7 @@
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
+import { defaultColumns } from '../src/boardConfig';
 import { parseFrontmatter } from '../src/frontmatter';
 import { makeStore, required } from './helpers';
 
@@ -128,10 +129,7 @@ describe('store.updateCardMeta — adversarial', () => {
     assert.strictEqual(body, '# Card\n\nBody.\n', 'the body must not absorb frontmatter lines');
   });
 
-  test.skip('given a CRLF card file, when meta is patched, then the file keeps its CRLF line endings', () => {
-    // DEFECT: parseFrontmatter normalizes CRLF to LF before splitting and the
-    // serializer emits LF, so one edit rewrites every line ending in the file.
-    // See REAL BUGS FOUND #4 (frontmatter.ts parseFrontmatter/serializeFrontmatter).
+  test('given a CRLF card file, when meta is patched, then the file keeps its CRLF line endings', () => {
     const { fs, store } = makeStore({
       'boards/b/.config.json': CONFIG,
       'boards/b/01-card.md': '---\r\ncolumn: todo\r\n---\r\n# Card\r\n\r\nBody.\r\n',
@@ -224,19 +222,35 @@ describe('store.addChecklistItem — adversarial', () => {
     assert.deepStrictEqual(fs.snapshot(), before);
   });
 
-  test.skip('given an empty checklist item, when a later mutation appends a section, then the item survives', () => {
-    // DEFECT: an empty item is written as "- [ ] " (trailing space). Appending a
-    // Gates/Comments section trims trailing body whitespace, turning the line
-    // into "- [ ]", which findChecklist no longer matches — the item silently
-    // disappears and every later index shifts.
-    // See REAL BUGS FOUND #5 (cardBody.ts appendChecklistLine / upsertGateLine).
+  test('given an empty checklist item, when a later mutation appends a section, then the item survives', () => {
+    // An empty item is refused outright, so the odd `- [ ] ` line is never
+    // written; the real item survives the appended Gates section either way.
     const { store } = withCard('# Card\n');
     store.addChecklistItem('b', 'card', 'real');
-    store.addChecklistItem('b', 'card', '');
+    assert.strictEqual(store.addChecklistItem('b', 'card', ''), false, 'an empty item is refused');
+    assert.strictEqual(store.addChecklistItem('b', 'card', '   '), false);
     const before = required(store.getBoard('b'), 'board').cards['card']?.checklist?.length;
     store.recordGateEvidence('b', 'card', 'tests', 'green', 'tester');
     const after = required(store.getBoard('b'), 'board').cards['card']?.checklist?.length;
     assert.strictEqual(after, before, 'appending a Gates section must not drop a checklist item');
+  });
+
+  test('given a body ending in a line with trailing spaces, when a section is appended, then those spaces survive', () => {
+    // appendSection may only drop trailing blank LINES — never the trailing
+    // space of a content line, which is what an empty task item is made of.
+    const { fs, store } = withCard('# Card\n\n## Checklist\n\n- [ ] kept \n\n');
+    store.recordGateEvidence('b', 'card', 'tests', 'green', 'tester');
+    assert.ok(
+      read(fs).includes('- [ ] kept \n\n## Gates\n'),
+      `the content line keeps its trailing space, file is:\n${read(fs)}`,
+    );
+  });
+
+  test('given an empty comment, when added, then it is refused and nothing is written', () => {
+    const { fs, store } = withCard('# Card\n');
+    const before = fs.snapshot();
+    assert.strictEqual(store.addComment('b', 'card', 'tester', '  \n '), false);
+    assert.deepStrictEqual(fs.snapshot(), before);
   });
 });
 
@@ -350,15 +364,28 @@ describe('store gate evidence — adversarial', () => {
     assert.deepStrictEqual(fs.snapshot(), before);
   });
 
-  test.skip('given a multi-line result, when the same gate is re-recorded, then no orphan line is left', () => {
-    // DEFECT: recordGate writes the note verbatim, so a newline splits the
-    // evidence across two lines; re-recording replaces only the first, leaving
-    // stale text under ## Gates forever.
-    // See REAL BUGS FOUND #3 (store.ts recordGate/upsertGateLine).
+  test('given a multi-line result, when the same gate is re-recorded, then no orphan line is left', () => {
     const { fs, store } = withCard('# Card\n');
     store.recordGateEvidence('b', 'card', 'tests', 'line1\nline2', 'tester');
+    assert.ok(read(fs).includes('- [x] tests — line1 line2 (tester,'), 'the note is one line');
     store.recordGateEvidence('b', 'card', 'tests', 'clean', 'tester');
     assert.ok(!read(fs).includes('line2'), 'stale evidence must not survive a re-record');
+  });
+
+  test('given a multi-line reason, when a gate is overridden, then the audit line stays one line', () => {
+    const { fs, store } = withCard('# Card\n');
+    store.recordGateOverride('b', 'card', 'g', 'tester', 'hotfix\nsecond line');
+    store.recordGateOverride('b', 'card', 'g', 'tester', 'final');
+    const body = parseFrontmatter(read(fs)).body;
+    assert.ok(!body.includes('second line'), `no orphan line may survive, got:\n${body}`);
+    assert.ok(body.includes(`- [x] g — OVERRIDDEN (tester, ${STAMP}): final`));
+  });
+
+  test('given an empty result, when evidence is recorded, then it is refused and nothing is written', () => {
+    const { fs, store } = withCard('# Card\n');
+    const before = fs.snapshot();
+    assert.strictEqual(store.recordGateEvidence('b', 'card', 'tests', '  ', 'tester'), false);
+    assert.deepStrictEqual(fs.snapshot(), before);
   });
 });
 
@@ -501,16 +528,45 @@ describe('store.addCard / moveCard results — adversarial', () => {
     assert.deepStrictEqual(fs.snapshot(), before);
   });
 
-  test('given a board whose config is malformed, then its cards parse but belong to no column', () => {
-    // The config falls back to zero columns, so getBoard still exposes the card
-    // in `cards` while no column lists it — see DECISIONS NEEDED.
+  test('given a board whose config is malformed, then the default columns stand in and the card is visible', () => {
+    // Decision 4: zero columns would leave every card invisible, so the board
+    // falls back to the default columns and the host warns.
     const { store } = makeStore({
       'boards/b/.config.json': '{ this is not json',
       'boards/b/01-card.md': '---\ncolumn: todo\n---\n# Card\n',
     });
     const board = required(store.getBoard('b'), 'board');
-    assert.deepStrictEqual(board.columns, []);
+    assert.deepStrictEqual(
+      board.columns.map((c) => c.id),
+      defaultColumns().map((c) => c.id),
+    );
     assert.ok(board.cards['card'], 'the card is still parsed');
+    assert.deepStrictEqual(
+      required(
+        board.columns.find((c) => c.id === 'todo'),
+        'todo column',
+      ).cardIds,
+      ['card'],
+      'the card lands in the column its frontmatter names',
+    );
     assert.strictEqual(store.cardFilePath('b', 'card'), 'boards/b/01-card.md');
+    assert.match(
+      required(store.boardConfigWarning('b'), 'config warning'),
+      /boards\/b\/\.config\.json is missing or declares no usable columns/,
+    );
+  });
+
+  test('given a board with no config file at all, then the default columns stand in', () => {
+    const { store } = makeStore({ 'boards/b/01-card.md': '---\ncolumn: nope\n---\n# Card\n' });
+    const board = required(store.getBoard('b'), 'board');
+    assert.strictEqual(board.columns.length, defaultColumns().length);
+    // An unknown column still falls back to the first column, so nothing hides.
+    assert.deepStrictEqual(required(board.columns[0], 'first column').cardIds, ['card']);
+    assert.ok(store.boardConfigWarning('b'), 'the substitution is reported');
+  });
+
+  test('given a board whose config is sound, then no warning is produced', () => {
+    const { store } = withCard('# Card\n');
+    assert.strictEqual(store.boardConfigWarning('b'), undefined);
   });
 });

@@ -21,7 +21,9 @@ the extension's core parses — the parsers live in `src/core/` (`frontmatter.ts
 
 - `columns` is an ordered list; each needs an `id`, and may set `name`, `color`,
   an optional `wip` limit, and `enter`/`exit` gates (see below). A column with no
-  `name` falls back to a title-cased `id`.
+  `name` falls back to a title-cased `id`. A board whose `.config.json` is
+  missing, unparsable, or declares no usable column falls back to the default
+  columns so its cards stay visible; `repodoc board show` says so on stderr.
 - `labels` is a keyed map. An entry that is null or carries no string field is
   dropped, so a stray `"core": null` never reaches the UI.
 - `fields` is an ordered list of custom card-field definitions (see below).
@@ -77,7 +79,11 @@ what to read, run, or record; a column's `prompt` says what working in that
 column means. The CLI prints every failing gate's prompt when it refuses a move
 and the target column's prompt when a move succeeds, so an agent is handed the
 process rather than just a "no". A gate without a prompt gets a generated one
-naming its script or field.
+naming its script (or, for a script gate with no command, the gate id) or field.
+A gate whose `script` is empty or whitespace is dropped when the config is read
+— a gate that requires running nothing can never be satisfied by running
+anything — as is a gate whose `id` repeats an earlier gate in the same
+`enter`/`exit` list.
 
 **Approvals are field gates** — a review sign-off is just a field a reviewer
 sets, checked with `= <name>`. The `check` mini-syntax:
@@ -123,7 +129,12 @@ A sentence or two of description.
   description. Checklist items are `- [ ]` / `- [x]`.
 - `NN` is a two-digit global order, contiguous from `01`; the slug after it is
   the card's identity. Frontmatter uses a small YAML subset — `key: value`
-  pairs, inline `[a, b]` arrays, strings, numbers, and booleans.
+  pairs, inline `[a, b]` arrays, strings, numbers, and booleans. Anything else in
+  the block (a key whose value continues on indented lines, `#` comments, blank
+  lines) is not understood but IS preserved: it is written back byte-for-byte,
+  and a `key: value` line RepoDoc did not change keeps its exact original text.
+  An opening `---` block that declares no key at all is a horizontal rule in the
+  body, not frontmatter, so the prose under it is never consumed.
 - **Custom-field values** are flat frontmatter keys, one per board-defined field
   id, typed by the def: `release: v0.2.0` (select), `estimate: 5` (number),
   `blocked: true` (boolean), `due: 2026-07-20` (date), `areas: [core, ci]`
@@ -137,6 +148,10 @@ A sentence or two of description.
 
   - [x] tests-passing — npm test green, 130 unit + 9 e2e (claude, 2026-07-17T02:30:00Z)
   ```
+
+**Line endings are yours.** Every write detects the file's dominant line ending
+(CRLF or LF) and re-emits it, so editing a card, a decision, or a feature never
+converts the file and never turns a one-line change into a whole-file diff.
 
   A human override is recorded on the same line as
   `OVERRIDDEN (<who>, <ISO time>): <reason>`, keeping the bypass and its

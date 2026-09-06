@@ -11,7 +11,7 @@ import {
   RepoDocStore,
   SystemClock,
 } from '../../core/src/index';
-import { type ParsedArgs, stringFlag } from './args';
+import { type ParsedArgs, stringFlag, UsageError } from './args';
 
 /** Everything a command needs: the store over the chosen root, plus identity. */
 export interface CommandContext {
@@ -23,8 +23,19 @@ export interface CommandContext {
   json: boolean;
 }
 
-export function buildContext(args: ParsedArgs, cwd = process.cwd()): CommandContext {
+/** How the root may be treated for this invocation. */
+export interface ContextOptions {
+  /** `init` alone may name a root that does not exist yet. */
+  mayCreateRoot?: boolean;
+}
+
+export function buildContext(
+  args: ParsedArgs,
+  cwd = process.cwd(),
+  options: ContextOptions = {},
+): CommandContext {
   const root = resolveRoot(stringFlag(args.flags, 'root') ?? process.env['REPODOC_ROOT'], cwd);
+  assertUsableRoot(root, options.mayCreateRoot === true);
   const fs = new NodeFileSystemAdapter(root);
   const store = new RepoDocStore(fs, new SystemClock(), root);
   const who =
@@ -62,6 +73,32 @@ export function resolveRoot(explicit: string | undefined, cwd: string): string {
     dir = parent;
   }
   return gitRoot ?? path.resolve(cwd);
+}
+
+/**
+ * The root has to be a directory. Pointing `--root` at a file, or at a path
+ * that does not exist, silently produced an empty workspace — every list said
+ * "none" and every write landed somewhere the caller did not mean. It is a
+ * usage error instead; `init` may name a directory that does not exist yet.
+ */
+function assertUsableRoot(root: string, mayCreate: boolean): void {
+  let stat: fs.Stats | undefined;
+  try {
+    stat = fs.statSync(root);
+  } catch {
+    stat = undefined;
+  }
+  if (stat === undefined) {
+    if (mayCreate) {
+      return;
+    }
+    throw new UsageError(
+      `--root ${root} does not exist (run \`repodoc init --root ${root}\` to create it)`,
+    );
+  }
+  if (!stat.isDirectory()) {
+    throw new UsageError(`--root ${root} is not a directory`);
+  }
 }
 
 function isDir(p: string): boolean {

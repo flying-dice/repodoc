@@ -1,6 +1,12 @@
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { checkValue, evaluateGates, evaluateTransition } from '../src/gates';
+import {
+  checkValue,
+  defaultGatePrompt,
+  evaluateGates,
+  evaluateTransition,
+  gatePromptText,
+} from '../src/gates';
 import type { Card, Column, CustomFieldValue, GateDef } from '../src/types';
 
 function baseCard(over: Partial<Card> = {}): Card {
@@ -215,5 +221,35 @@ describe('gates — evaluateTransition', () => {
       results.map((r) => r.gate.id),
       ['n'],
     );
+  });
+});
+
+describe('gates.defaultGatePrompt', () => {
+  test('a script gate names its command', () => {
+    assert.strictEqual(
+      defaultGatePrompt({ id: 'tests', script: 'bun test' }),
+      'Run `bun test` and, only if it exits 0, record the result with gate-pass.',
+    );
+  });
+
+  test('a script gate with an empty script names the gate, never `undefined`', () => {
+    // The branch is on presence, exactly as evaluateGate decides the kind.
+    const prompt = defaultGatePrompt({ id: 'tests', script: '' });
+    assert.strictEqual(
+      prompt,
+      'Run `tests` and, only if it exits 0, record the result with gate-pass.',
+    );
+    assert.ok(!prompt.includes('undefined'));
+  });
+
+  test('a field gate names its field and check, defaulting to nonempty', () => {
+    assert.strictEqual(
+      defaultGatePrompt({ id: 'g', field: 'owner' }),
+      'Set the `owner` field so that it satisfies `nonempty`.',
+    );
+  });
+
+  test('an authored prompt wins over the default wording', () => {
+    assert.strictEqual(gatePromptText({ id: 'g', script: 's', prompt: 'Ask Dana.' }), 'Ask Dana.');
   });
 });

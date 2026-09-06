@@ -253,25 +253,35 @@ function normalizeFields(value: unknown): CustomFieldDef[] {
  * without a string id or without at least one of `script` / `field`. When both
  * `script` and `field` are present, `script` wins (the entry becomes a script
  * gate and `field`/`check` are dropped). `check` is kept only on a field gate.
+ *
+ * Also dropped: a gate whose `script` is empty or whitespace (a gate that
+ * requires running nothing can never be satisfied by running anything — it is a
+ * config error, not a rule), and a gate whose id repeats an earlier gate in the
+ * SAME list (hosts key a gate's rendered prompt by id, so the duplicate's
+ * instructions could never reach a reader).
  */
 function normalizeGates(value: unknown): GateDef[] {
   if (!Array.isArray(value)) {
     return [];
   }
   const out: GateDef[] = [];
+  const seen = new Set<string>();
   for (const raw of value) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       continue;
     }
     const g = raw as Record<string, unknown>;
     const id = readString(g, 'id');
-    if (id === undefined || id.length === 0) {
+    if (id === undefined || id.length === 0 || seen.has(id)) {
       continue;
     }
     const script = readString(g, 'script');
     const field = readString(g, 'field');
     if (script === undefined && field === undefined) {
       continue; // a gate is script XOR field — an entry with neither is dropped
+    }
+    if (script !== undefined && script.trim() === '') {
+      continue; // "run nothing and record it green" is not a gate
     }
     const def: GateDef = { id };
     const label = readString(g, 'label');
@@ -292,6 +302,7 @@ function normalizeGates(value: unknown): GateDef[] {
       }
     }
     out.push(def);
+    seen.add(id);
   }
   return out;
 }

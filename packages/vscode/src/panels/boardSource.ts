@@ -2,6 +2,8 @@ import type {
   BoardData,
   CardMetaPatch,
   CustomFieldValue,
+  GatedMoveResult,
+  GateOverride,
   GateResult,
   RepoDocConfig,
   RepoDocStore,
@@ -27,11 +29,22 @@ export interface BoardSource {
   getConfig(): RepoDocConfig;
   /** The data directory shown in the status bar, e.g. `boards/<id>/`. */
   displayPath(): string;
-  moveCard(cardId: string, toColumn: string, index: number): void;
+  /**
+   * Move a card, gates and all: the source refuses without writing when a gate
+   * blocks and no `override` (with a reason) is given, and journals one override
+   * per blocking gate when it is. The policy itself lives in core, so this
+   * surface and `repodoc card move` behave identically — there is deliberately
+   * no ungated move here for a caller to reach for.
+   */
+  moveCardGated(
+    cardId: string,
+    toColumn: string,
+    index: number,
+    options: { override?: GateOverride },
+  ): GatedMoveResult;
   addCard(column: string, title: string): void;
   /** Gates guarding a move; `[]` when the source does not gate moves. */
   evaluateMove(cardId: string, toColumn: string): GateResult[];
-  recordGateOverride(cardId: string, gateId: string, who: string, reason?: string): void;
   /**
    * The repo-relative file backing a card, for the host's "Open file" action.
    * `undefined` when it cannot be resolved (no workspace root, missing file).
@@ -82,8 +95,13 @@ export class CardBoardSource implements BoardSource {
     return this.store.displayPath(this.id);
   }
 
-  moveCard(cardId: string, toColumn: string, index: number): void {
-    this.store.moveCard(this.id, cardId, toColumn, index);
+  moveCardGated(
+    cardId: string,
+    toColumn: string,
+    index: number,
+    options: { override?: GateOverride },
+  ): GatedMoveResult {
+    return this.store.moveCardGated(this.id, cardId, toColumn, index, options);
   }
 
   addCard(column: string, title: string): void {
@@ -92,10 +110,6 @@ export class CardBoardSource implements BoardSource {
 
   evaluateMove(cardId: string, toColumn: string): GateResult[] {
     return this.store.evaluateMove(this.id, cardId, toColumn);
-  }
-
-  recordGateOverride(cardId: string, gateId: string, who: string, reason?: string): void {
-    this.store.recordGateOverride(this.id, cardId, gateId, who, reason);
   }
 
   recordGateEvidence(cardId: string, gateId: string, result: string, who: string): void {
@@ -180,9 +194,11 @@ export class FeatureSetSource implements BoardSource {
     return this.store.featureSetDisplayPath(this.id);
   }
 
-  moveCard(cardId: string, toColumn: string, _index: number): void {
-    // Feature files are never renumbered — order inside a column is file order.
-    this.store.moveFeature(this.id, cardId, toColumn);
+  moveCardGated(cardId: string, toColumn: string): GatedMoveResult {
+    // Feature files are never renumbered — order inside a column is file order —
+    // and gates are not enforced for features, so nothing can block or override.
+    const moved = this.store.moveFeature(this.id, cardId, toColumn);
+    return moved.ok ? { ok: true, overridden: [] } : { ok: false, error: moved.error };
   }
 
   addCard(column: string, title: string): void {
@@ -191,10 +207,6 @@ export class FeatureSetSource implements BoardSource {
 
   evaluateMove(): GateResult[] {
     return []; // gates are not enforced for features in this iteration
-  }
-
-  recordGateOverride(): void {
-    // No gates, so there is never anything to override.
   }
 
   /** The `.feature` file itself — source code, so "Open file" is a must. */

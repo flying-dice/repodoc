@@ -19,8 +19,11 @@ import type { Card, Column, CustomFieldValue, GateDef, GateResult } from './type
  * reader the same thing.
  */
 export function defaultGatePrompt(gate: GateDef): string {
-  if (gate.script) {
-    return `Run \`${gate.script}\` and, only if it exits 0, record the result with gate-pass.`;
+  // Presence, not truthiness — exactly as evaluateGate decides which kind of
+  // gate this is. A `"script": ""` gate is still a script gate, and naming it
+  // after the gate id beats telling the reader to set the `undefined` field.
+  if (gate.script !== undefined) {
+    return `Run \`${gate.script || gate.id}\` and, only if it exits 0, record the result with gate-pass.`;
   }
   return `Set the \`${gate.field}\` field so that it satisfies \`${gate.check ?? 'nonempty'}\`.`;
 }

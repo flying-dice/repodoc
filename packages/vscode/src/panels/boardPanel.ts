@@ -1,10 +1,11 @@
-import type { CardMetaPatch, CustomFieldValue, Priority } from '@repodoc/core';
+import type { CustomFieldValue } from '@repodoc/core';
 import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
 import type { BoardSource } from './boardSource';
 import { renderMarkdownWithDiagrams } from './diagrams';
 import { collectGatePrompts, toBlockedGate } from './gateGuidance';
 import { localIdentity } from './identity';
+import { sanitizeMetaPatch } from './metaPatch';
 import { plantUmlServer } from './plantUml';
 import type {
   DataMessage,
@@ -387,10 +388,9 @@ export class BoardPanel {
   }
 
   /**
-   * Evaluate a proposed move against the target column's gates. When gates
-   * block and the move is not overridden, tell the webview and hold. When
-   * overridden, attribute an override to the local identity for each blocking
-   * gate, then move.
+   * Ask core to move the card. When gates block and the move carries no usable
+   * override, nothing is written and the webview is told why so it can show the
+   * blocked-move dialog; an override without a reason is refused outright.
    */
   private handleMove(
     cardId: string,
@@ -399,42 +399,48 @@ export class BoardPanel {
     override: boolean,
     reason?: string,
   ): void {
-    const results = this.source.evaluateMove(cardId, toColumn);
-    const blocking = results.filter((r) => !r.satisfied);
     const why = (reason ?? '').replace(/[\r\n]/g, ' ').trim();
-    if (blocking.length && !override) {
-      const server = plantUmlServer();
-      const message: MoveBlockedMessage = {
-        type: 'moveBlocked',
-        cardId,
-        toColumn,
-        results: blocking.map((r) => {
-          const gate = toBlockedGate(r);
-          gate.promptHtml = renderMarkdownWithDiagrams(gate.prompt ?? '', {
-            plantUmlServer: server,
-          }).html;
-          return gate;
-        }),
-      };
-      void this.panel.webview.postMessage(message);
+    // The gate policy itself lives in core (RepoDocStore.moveCardGated), so the
+    // webview and `repodoc card move` refuse, override and journal identically.
+    // Same identity rule as comments, so both hosts write the same name.
+    const result = this.source.moveCardGated(
+      cardId,
+      toColumn,
+      index,
+      override && why ? { override: { who: resolveCommentAuthor(this.root), reason: why } } : {},
+    );
+    if (result.ok) {
+      return; // the store fired, which re-posts the board
+    }
+    if (!('blocked' in result)) {
+      // The move is impossible (duplicate slugs, an unknown column…): nothing
+      // was written, so re-post the data — the webview moved the card
+      // optimistically and would otherwise keep showing a move that never was.
+      this.postData();
       return;
     }
-    if (blocking.length && override) {
-      // The CLI refuses `--override` without `--reason` (commands.ts:209-211);
-      // the UI must not write a weaker audit line than an agent does.
-      if (!why) {
-        void vscode.window.showWarningMessage(
-          'RepoDoc: an override needs a reason — say why the gate was bypassed.',
-        );
-        return;
-      }
-      // Same identity rule as comments, so both hosts write the same name.
-      const who = resolveCommentAuthor(this.root);
-      for (const r of blocking) {
-        this.source.recordGateOverride(cardId, r.gate.id, who, why);
-      }
+    if (override) {
+      // The CLI refuses `--override` without `--reason`; the UI must not write a
+      // weaker audit line than an agent does.
+      void vscode.window.showWarningMessage(
+        'RepoDoc: an override needs a reason — say why the gate was bypassed.',
+      );
+      return;
     }
-    this.source.moveCard(cardId, toColumn, index);
+    const server = plantUmlServer();
+    const message: MoveBlockedMessage = {
+      type: 'moveBlocked',
+      cardId,
+      toColumn,
+      results: result.blocked.map((r) => {
+        const gate = toBlockedGate(r);
+        gate.promptHtml = renderMarkdownWithDiagrams(gate.prompt ?? '', {
+          plantUmlServer: server,
+        }).html;
+        return gate;
+      }),
+    };
+    void this.panel.webview.postMessage(message);
   }
 
   /**
@@ -486,64 +492,6 @@ function resolveCommentAuthor(root: string | undefined): string {
     vscode.workspace.getConfiguration('repodoc').get<string>('commentAuthor') ?? '',
   );
   return configured || localIdentity(root);
-}
-
-const PRIORITIES: Priority[] = ['high', 'med', 'low'];
-
-/**
- * Narrow an untrusted `updateMeta` payload to a {@link CardMetaPatch}. Unknown
- * keys and wrong-typed values are dropped; `null` is kept, because clearing is
- * how the webview mirrors the CLI's `--priority ""` convention. Returns
- * undefined when nothing usable survives.
- */
-function sanitizeMetaPatch(raw: Record<string, unknown>): CardMetaPatch | undefined {
-  const patch: CardMetaPatch = {};
-  let any = false;
-
-  if (typeof raw['title'] === 'string' && raw['title'].trim()) {
-    patch.title = raw['title'].replace(/[\r\n]/g, ' ').trim();
-    any = true;
-  }
-  if (raw['labels'] === null) {
-    patch.labels = null;
-    any = true;
-  } else if (Array.isArray(raw['labels']) && raw['labels'].every((l) => typeof l === 'string')) {
-    // Labels are written as one frontmatter line; a newline in one would forge
-    // another key, so each is flattened exactly as the title is.
-    patch.labels = (raw['labels'] as string[]).map((l) => l.replace(/[\r\n]/g, ' ').trim());
-    any = true;
-  }
-  if (raw['priority'] === null) {
-    patch.priority = null;
-    any = true;
-  } else if (PRIORITIES.includes(raw['priority'] as Priority)) {
-    patch.priority = raw['priority'] as Priority;
-    any = true;
-  }
-  for (const key of ['agent', 'status'] as const) {
-    const value = raw[key];
-    if (value === null) {
-      patch[key] = null;
-      any = true;
-    } else if (typeof value === 'string') {
-      const trimmed = value.replace(/[\r\n]/g, ' ').trim();
-      patch[key] = trimmed === '' ? null : trimmed;
-      any = true;
-    }
-  }
-  if (raw['live'] === null || typeof raw['live'] === 'boolean') {
-    patch.live = raw['live'] as boolean | null;
-    any = true;
-  }
-  if (raw['progress'] === null) {
-    patch.progress = null;
-    any = true;
-  } else if (typeof raw['progress'] === 'number' && Number.isFinite(raw['progress'])) {
-    patch.progress = Math.max(0, Math.min(100, Math.round(raw['progress'])));
-    any = true;
-  }
-
-  return any ? patch : undefined;
 }
 
 /** One line, trimmed, capped — author names never carry markup or newlines. */

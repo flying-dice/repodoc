@@ -15,7 +15,7 @@ runs the TypeScript entry point directly. Inside this checkout use
 
 | Flag | Meaning |
 | --- | --- |
-| `--root <dir>` | Workspace root. Default: the nearest ancestor of the current directory containing `boards/`, `decisions/`, `docs/`, or `features/`; else the nearest git root; else the current directory. `REPODOC_ROOT` also works. |
+| `--root <dir>` | Workspace root. Default: the nearest ancestor of the current directory containing `boards/`, `decisions/`, `docs/`, or `features/`; else the nearest git root; else the current directory. `REPODOC_ROOT` also works. A root that is a file, or a path that does not exist, is a usage error (exit `2`) — only `init` may name a directory that does not exist yet, which it creates. |
 | `--who <name>` | Author for comments, gate evidence, and overrides. Default: `REPODOC_AUTHOR`, then `git config user.name`, then the OS user. |
 | `--json` | Print the result as JSON instead of text. |
 | `--help` | Show usage. `repodoc help card` lists one group. |
@@ -29,7 +29,7 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | --- | --- |
 | `init` | Writes the starter `boards/project-backlog/.config.json` if absent. Never touches existing content. |
 | `board list` | Boards with card counts. |
-| `board show <board>` | Columns (with WIP and gate ids) and the cards in each. |
+| `board show <board>` | Columns (with WIP and gate ids) and the cards in each. A board whose `.config.json` is missing or malformed shows the default columns and a one-line warning on stderr, leaving stdout (and `--json`) clean. |
 | `board create <name>` | New board with default columns and labels. |
 | `column add <board> <name>` | Append a column. |
 | `card list <board> [--column <id>]` | Cards in board order. |

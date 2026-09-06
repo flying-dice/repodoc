@@ -36,7 +36,9 @@ const OTHER_KEYWORD = /^(Background|Rule|Examples|Scenarios):/;
 /**
  * Parses one `.feature` file. `fileName` is used only as the title fallback for
  * a file with no `Feature:` line — such a file still parses so a stray feature
- * is never invisible on the board.
+ * is never invisible on the board, and the tags it declares (its `@status:`
+ * among them) still count as the feature's own, so the board agrees with the
+ * tag a move would rewrite.
  */
 export function parseFeature(fileName: string, content: string): ParsedFeature {
   const parsed: ParsedFeature = {
@@ -94,6 +96,13 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
     if (inDescription) {
       descriptionLines.push(line);
     }
+  }
+
+  if (!sawFeature && pendingTags.length) {
+    // No `Feature:` line ever claimed them, so the tags collected before the
+    // end of the file belong to the file itself. Without this a stray file's
+    // `@status:` tag is invisible while a move happily rewrites it.
+    parsed.tags = pendingTags;
   }
 
   parsed.description = descriptionLines.join('\n').trim();

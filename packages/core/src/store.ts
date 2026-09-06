@@ -16,6 +16,7 @@ import {
 import { type CardEntry, findChecklist, parseCard } from './cardParse';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
+import { applyEol, detectEol, normalizeEol } from './eol';
 import { FeatureStore } from './features';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { evaluateTransition } from './gates';
@@ -35,10 +36,13 @@ import type {
   DocNode,
   FeatureRecord,
   FeatureSetRef,
+  GatedMoveResult,
+  GateOverride,
   GateResult,
   MoveCardResult,
   Priority,
   RepoDocConfig,
+  StoreError,
 } from './types';
 
 /**
@@ -166,8 +170,33 @@ export class RepoDocStore {
     this.fire();
   }
 
+  /**
+   * A board's config, with one substitution: a board that declares no usable
+   * column gets {@link defaultColumns}. A missing or malformed `.config.json`
+   * would otherwise leave the board with zero columns, and every card in it
+   * invisible — the cards are the data, the config is only a lens on them.
+   * Hosts surface {@link boardConfigWarning} so the substitution is not silent.
+   */
   private readConfig(boardId: string): BoardConfig {
-    return readBoardConfigFile(this.fs, this.configPath(boardId), boardId);
+    const config = readBoardConfigFile(this.fs, this.configPath(boardId), boardId);
+    if (config.columns.length === 0) {
+      config.columns = defaultColumns();
+    }
+    return config;
+  }
+
+  /**
+   * One line explaining that this board's columns were substituted (its
+   * `.config.json` is missing, unparsable, or declares no usable column);
+   * `undefined` when the file is fine. Hosts print it on a side channel —
+   * stderr for the CLI — so machine-readable output stays clean.
+   */
+  boardConfigWarning(boardId: string): string | undefined {
+    const onFile = readBoardConfigFile(this.fs, this.configPath(boardId), boardId);
+    if (onFile.columns.length > 0) {
+      return undefined;
+    }
+    return `${this.configPath(boardId)} is missing or declares no usable columns; showing the default columns`;
   }
 
   // ---- boards ----
@@ -261,18 +290,23 @@ export class RepoDocStore {
   }
 
   /**
-   * Moves a card into `toColumnId` at `index` (clamped; pass a large number for
-   * "last"). Gates are NOT evaluated here — hosts call {@link evaluateMove}
-   * first and decide whether to proceed or record an override.
+   * Whether a move of `cardId` into `toColumnId` is possible at all, ignoring
+   * gates: the error it would fail with, or `undefined`. Callers check this
+   * BEFORE writing anything (see {@link moveCardGated}) — recording an override
+   * for a move that then turns out to be impossible would leave the card
+   * claiming a bypassed gate for something that never happened.
    */
-  moveCard(boardId: string, cardId: string, toColumnId: string, index: number): MoveCardResult {
+  private validateMove(
+    boardId: string,
+    cardId: string,
+    toColumnId: string,
+    entries: CardEntry[],
+  ): StoreError | undefined {
     if (!this.fs.exists(`boards/${boardId}`)) {
-      return { ok: false, error: { code: 'unknown-board', boardId } };
+      return { code: 'unknown-board', boardId };
     }
-    const entries = this.readBoardCards(boardId);
-    const moved = entries.find((e) => e.slug === cardId);
-    if (!moved) {
-      return { ok: false, error: { code: 'unknown-card', cardId } }; // never delete
+    if (!entries.some((e) => e.slug === cardId)) {
+      return { code: 'unknown-card', cardId }; // never delete
     }
     // Slugs are card identities. Externally-authored files can collide (two
     // NN-foo.md files); renumbering would then rename one file over the other
@@ -280,13 +314,30 @@ export class RepoDocStore {
     const seen = new Set<string>();
     for (const e of entries) {
       if (seen.has(e.slug)) {
-        return { ok: false, error: { code: 'duplicate-slugs', slug: e.slug } };
+        return { code: 'duplicate-slugs', slug: e.slug };
       }
       seen.add(e.slug);
     }
-    const config = this.readConfig(boardId);
-    if (!config.columns.some((c) => c.id === toColumnId)) {
-      return { ok: false, error: { code: 'unknown-column', columnId: toColumnId } };
+    if (!this.readConfig(boardId).columns.some((c) => c.id === toColumnId)) {
+      return { code: 'unknown-column', columnId: toColumnId };
+    }
+    return undefined;
+  }
+
+  /**
+   * Moves a card into `toColumnId` at `index` (clamped; pass a large number for
+   * "last"). Gates are NOT evaluated here — use {@link moveCardGated}, which
+   * owns the gate policy both hosts share.
+   */
+  moveCard(boardId: string, cardId: string, toColumnId: string, index: number): MoveCardResult {
+    const entries = this.readBoardCards(boardId);
+    const error = this.validateMove(boardId, cardId, toColumnId, entries);
+    if (error) {
+      return { ok: false, error };
+    }
+    const moved = entries.find((e) => e.slug === cardId);
+    if (!moved) {
+      return { ok: false, error: { code: 'unknown-card', cardId } }; // proven above
     }
 
     // Set the card's column in its frontmatter (same file name, updatedAt stamped).
@@ -307,6 +358,52 @@ export class RepoDocStore {
     );
     this.fire();
     return { ok: true };
+  }
+
+  /**
+   * The gate-aware move BOTH hosts use, so the policy has exactly one owner:
+   *
+   *  1. validate the move (unknown board/card/column, duplicate slugs) —
+   *     nothing is written when it cannot succeed;
+   *  2. evaluate the gates guarding the transition;
+   *  3. refuse, without writing, when a gate blocks and no override with a
+   *     non-empty reason was given;
+   *  4. otherwise journal one override per blocking gate, then move.
+   *
+   * The ordering is the point: an override must never be recorded for a move
+   * the store then refuses.
+   */
+  moveCardGated(
+    boardId: string,
+    cardId: string,
+    toColumnId: string,
+    index: number,
+    options?: { override?: GateOverride },
+  ): GatedMoveResult {
+    const error = this.validateMove(boardId, cardId, toColumnId, this.readBoardCards(boardId));
+    if (error) {
+      return { ok: false, error };
+    }
+    const blocking = this.evaluateMove(boardId, cardId, toColumnId).filter((r) => !r.satisfied);
+    const override = options?.override;
+    const reason = override?.reason.trim() ?? '';
+    if (blocking.length > 0 && (override === undefined || reason === '')) {
+      // An override without a reason is not an override: the audit line would
+      // say a gate was bypassed and never say why.
+      return { ok: false, blocked: blocking };
+    }
+    const overridden: string[] = [];
+    if (override !== undefined) {
+      for (const result of blocking) {
+        this.recordGateOverride(boardId, cardId, result.gate.id, override.who, reason);
+        overridden.push(result.gate.id);
+      }
+    }
+    const moved = this.moveCard(boardId, cardId, toColumnId, index);
+    if (!moved.ok) {
+      return { ok: false, error: moved.error };
+    }
+    return { ok: true, overridden };
   }
 
   /**
@@ -357,9 +454,16 @@ export class RepoDocStore {
    * description and before any `## Gates` / `## Comments` section (RepoDoc's
    * mandated section order is Checklist, Gates, Comments). A `text` with
    * newlines is collapsed to a single line. Stamps `updatedAt` and fires.
-   * Returns whether the card exists.
+   * Returns whether the item was written: an unknown card, or an
+   * empty/whitespace-only `text`, is a no-op.
    */
   addChecklistItem(boardId: string, cardId: string, text: string): boolean {
+    if (!text.trim()) {
+      // An empty item writes `- [ ] `, whose trailing space the next appended
+      // section would trim away — leaving `- [ ]`, which no longer parses as an
+      // item. Refuse it rather than write a line that later disappears.
+      return false;
+    }
     return this.updateCard(boardId, cardId, (data, body) => ({
       data,
       body: appendChecklistLine(body, text),
@@ -424,11 +528,15 @@ export class RepoDocStore {
    * `- **<who>** (<ISO now>): <text>`. Multi-line text is written with its
    * continuation lines indented two spaces. When the card has no `## Comments`
    * section one is created at the end of the body (after any `## Gates`).
-   * Stamps `updatedAt` and fires; an unknown card is a silent no-op.
+   * Stamps `updatedAt` and fires. Returns whether the entry was written: an
+   * unknown card, or an empty/whitespace-only `text`, is a no-op.
    */
-  addComment(boardId: string, cardId: string, who: string, text: string): void {
+  addComment(boardId: string, cardId: string, who: string, text: string): boolean {
+    if (!text.trim()) {
+      return false; // an empty journal entry says nothing and cannot be removed
+    }
     const at = this.now();
-    this.updateCard(boardId, cardId, (data, body) => ({
+    return this.updateCard(boardId, cardId, (data, body) => ({
       data,
       body: appendCommentLine(body, who, at, text),
     }));
@@ -474,7 +582,8 @@ export class RepoDocStore {
   /**
    * Records evidence that a script gate passed, as
    * `- [x] <gateId> — <result> (<who>, <ISO now>)`. Callers must only record a
-   * run that actually exited green. Returns whether the card exists.
+   * run that actually exited green. An empty `result` is refused. Returns
+   * whether the line was written.
    */
   recordGateEvidence(
     boardId: string,
@@ -483,13 +592,23 @@ export class RepoDocStore {
     result: string,
     who: string,
   ): boolean {
-    return this.recordGate(boardId, cardId, gateId, `${result} (${who}, ${this.now()})`);
+    const clean = oneLine(result).trim();
+    if (!clean) {
+      return false; // evidence with no result is not evidence
+    }
+    return this.recordGate(boardId, cardId, gateId, `${clean} (${who}, ${this.now()})`);
   }
 
+  /**
+   * Writes one `- [x] <gateId> — <note>` line. The note is collapsed to a
+   * single line first: `## Gates` is a list, so a newline would leave a stale
+   * orphan line that re-recording the gate can never replace.
+   */
   private recordGate(boardId: string, cardId: string, gateId: string, note: string): boolean {
+    const line = oneLine(note);
     return this.updateCard(boardId, cardId, (data, body) => ({
       data,
-      body: upsertGateLine(body, gateId, note),
+      body: upsertGateLine(body, gateId, line),
     }));
   }
 
@@ -571,13 +690,16 @@ export class RepoDocStore {
     if (content === undefined) {
       return false;
     }
-    const { data, body } = parseFrontmatter(content);
+    // Process in LF and write back with the file's own endings: a card a human
+    // edits on Windows must not turn into a whole-file diff on one meta change.
+    const eol = detectEol(content);
+    const { data, body, raw } = parseFrontmatter(normalizeEol(content));
     const result = mutate(data, body);
     if (result === undefined) {
       return false;
     }
     result.data['updatedAt'] = this.now();
-    this.fs.writeFile(path, serializeFrontmatter(result.data, result.body));
+    this.fs.writeFile(path, applyEol(serializeFrontmatter(result.data, result.body, raw), eol));
     return true;
   }
 

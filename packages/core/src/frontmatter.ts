@@ -1,23 +1,48 @@
 /**
  * Minimal YAML-subset parser/serializer for RepoDoc card frontmatter.
  *
- * Supported: `key: value` pairs whose values are unquoted / single- / double-
- * quoted strings, numbers, booleans, and inline string arrays `[a, b]`.
+ * Understood: `key: value` pairs whose values are unquoted / single- / double-
+ * quoted strings, numbers, booleans, and inline string arrays `[a, b]`. Those
+ * are the only values RepoDoc reads or writes.
+ *
+ * Everything else in the block — a key with indented continuation lines (a YAML
+ * block list or nested map), `#` comments, blank lines, malformed lines — is
+ * kept as an OPAQUE chunk and re-emitted byte-for-byte, so editing a card never
+ * destroys frontmatter this parser does not model. {@link parseFrontmatter}
+ * hands those chunks back as `raw`; pass them to {@link serializeFrontmatter} to
+ * preserve them. A caller writing a fresh file simply omits `raw`.
+ *
  * Deliberately tolerant: text without frontmatter parses to empty data and the
- * whole text as the body; malformed lines are skipped. Round-trips stably for
- * the keys RepoDoc actually uses.
+ * whole text as the body. An opening `---` whose block declares no key at all is
+ * a horizontal rule in the body, not frontmatter — the prose under it is never
+ * swallowed.
  */
+
+/**
+ * One entry of a frontmatter block, in file order.
+ *  - `pair`   — a `key: value` line this module understands.
+ *  - `block`  — a key whose value continues on indented lines; opaque, but it
+ *               owns its key so nothing appends a second line for it.
+ *  - `opaque` — comments, blank lines, malformed lines: emitted verbatim.
+ */
+export type FrontmatterEntry =
+  | { kind: 'pair'; key: string; value: unknown; line: string }
+  | { kind: 'block'; key: string; lines: string[] }
+  | { kind: 'opaque'; lines: string[] };
 
 export interface Frontmatter {
   data: Record<string, unknown>;
   body: string;
+  /** The original block, for byte-preserving re-serialization. */
+  raw: FrontmatterEntry[];
 }
 
 export function parseFrontmatter(text: string): Frontmatter {
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
+  const noFrontmatter: Frontmatter = { data: {}, body: text, raw: [] };
   if ((lines[0] ?? '').trim() !== '---') {
-    return { data: {}, body: text };
+    return noFrontmatter;
   }
 
   let closing = -1;
@@ -28,44 +53,125 @@ export function parseFrontmatter(text: string): Frontmatter {
     }
   }
   if (closing === -1) {
-    return { data: {}, body: text };
+    return noFrontmatter;
   }
 
   const data: Record<string, unknown> = {};
-  for (let i = 1; i < closing; i++) {
-    const line = lines[i];
-    if (line === undefined || !line.trim()) {
+  const raw: FrontmatterEntry[] = [];
+  let sawKey = false;
+  let i = 1;
+  while (i < closing) {
+    const line = lines[i] ?? '';
+    const key = topLevelKey(line);
+    if (key === undefined) {
+      raw.push({ kind: 'opaque', lines: [line] });
+      i++;
       continue;
     }
-    const idx = line.indexOf(':');
-    if (idx === -1) {
-      continue; // malformed — skip
+    // Indented non-blank lines under a key are its value (a block sequence, a
+    // nested map, a folded scalar). Keep the whole group verbatim.
+    const group = [line];
+    let j = i + 1;
+    while (j < closing && isContinuation(lines[j] ?? '')) {
+      group.push(lines[j] ?? '');
+      j++;
     }
-    const key = line.slice(0, idx).trim();
-    if (!key) {
-      continue;
+    sawKey = true;
+    if (group.length > 1) {
+      raw.push({ kind: 'block', key, lines: group });
+    } else {
+      const value = parseValue(line.slice(line.indexOf(':') + 1).trim());
+      data[key] = value;
+      raw.push({ kind: 'pair', key, value, line });
     }
-    data[key] = parseValue(line.slice(idx + 1).trim());
+    i = j;
   }
 
-  const body = lines.slice(closing + 1).join('\n');
-  return { data, body };
+  // A block with content but no key at all is a horizontal rule opening the
+  // body (`---\n\nSome prose\n\n---`). Treating it as frontmatter would drop
+  // that prose on the next write, so it stays body.
+  if (!sawKey && lines.slice(1, closing).some((l) => l.trim() !== '')) {
+    return noFrontmatter;
+  }
+
+  return { data, body: lines.slice(closing + 1).join('\n'), raw };
 }
 
-export function serializeFrontmatter(data: Record<string, unknown>, body: string): string {
+/**
+ * Renders `data` + `body` as a frontmatter document. With `raw` (from
+ * {@link parseFrontmatter}) the original block is rebuilt in place: a known key
+ * keeps its line when its value is unchanged and is rewritten when it is not, a
+ * key removed from `data` loses its line, opaque chunks are emitted byte-for-
+ * byte, and keys new to `data` are appended before the closing fence.
+ */
+export function serializeFrontmatter(
+  data: Record<string, unknown>,
+  body: string,
+  raw: readonly FrontmatterEntry[] = [],
+): string {
   const lines = ['---'];
+  const emitted = new Set<string>();
+  for (const entry of raw) {
+    switch (entry.kind) {
+      case 'pair': {
+        if (emitted.has(entry.key) || !hasValue(data, entry.key)) {
+          continue; // a duplicate line, or a key the caller removed
+        }
+        emitted.add(entry.key);
+        const value = data[entry.key];
+        // An untouched value keeps its exact line — quoting, spacing and all.
+        lines.push(value === entry.value ? entry.line : `${entry.key}: ${serializeValue(value)}`);
+        break;
+      }
+      case 'block': {
+        // An explicit set replaces the block; otherwise it survives verbatim.
+        if (!emitted.has(entry.key) && hasValue(data, entry.key)) {
+          lines.push(`${entry.key}: ${serializeValue(data[entry.key])}`);
+        } else {
+          lines.push(...entry.lines);
+        }
+        emitted.add(entry.key);
+        break;
+      }
+      case 'opaque':
+        lines.push(...entry.lines);
+        break;
+    }
+  }
   for (const key of Object.keys(data)) {
-    const value = data[key];
-    if (value === undefined) {
+    if (emitted.has(key) || data[key] === undefined) {
       continue;
     }
-    lines.push(`${key}: ${serializeValue(value)}`);
+    lines.push(`${key}: ${serializeValue(data[key])}`);
   }
   lines.push('---');
   return `${lines.join('\n')}\n${body}`;
 }
 
 // ---------------------------------------------------------------------------
+
+/** The key of a top-level `key: value` line; undefined for anything else. */
+function topLevelKey(line: string): string | undefined {
+  if (line === '' || /^\s/.test(line) || line.startsWith('#')) {
+    return undefined; // blank, indented, or a comment
+  }
+  const idx = line.indexOf(':');
+  if (idx === -1) {
+    return undefined; // malformed — not a key line
+  }
+  const key = line.slice(0, idx).trim();
+  return key === '' ? undefined : key;
+}
+
+/** An indented, non-blank line: part of the value above it. */
+function isContinuation(line: string): boolean {
+  return /^[ \t]+\S/.test(line);
+}
+
+/** Whether `data` carries a writable value for `key` (absent/undefined = no). */
+function hasValue(data: Record<string, unknown>, key: string): boolean {
+  return key in data && data[key] !== undefined;
+}
 
 function parseValue(raw: string): unknown {
   if (raw === '') {

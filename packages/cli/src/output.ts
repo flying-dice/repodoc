@@ -3,9 +3,18 @@
 export interface Printer {
   /** Structured result for `--json`; otherwise the human lines. */
   emit(data: unknown, lines: () => string[]): void;
+  /**
+   * A note for a human, on stderr — never part of stdout, so `--json` output
+   * stays machine-readable and a warning can never corrupt a parsed result.
+   */
+  warn(line: string): void;
 }
 
-export function makePrinter(json: boolean, write: (s: string) => void): Printer {
+export function makePrinter(
+  json: boolean,
+  write: (s: string) => void,
+  writeError: (s: string) => void,
+): Printer {
   return {
     emit(data, lines): void {
       if (json) {
@@ -16,6 +25,9 @@ export function makePrinter(json: boolean, write: (s: string) => void): Printer 
           write(`${out.join('\n')}\n`);
         }
       }
+    },
+    warn(line): void {
+      writeError(`repodoc: ${line}\n`);
     },
   };
 }

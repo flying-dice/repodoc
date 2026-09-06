@@ -60,27 +60,24 @@ describe('store.setDecisionStatus — adversarial', () => {
     assert.strictEqual(read(fs, '01-x.md'), '---\nstatus: Accepted\n---\n# X\n');
   });
 
-  test('given a body that opens with a --- rule, when the status is set, then the leading prose is consumed as frontmatter (data-loss hazard)', () => {
-    // A body starting with `---` is indistinguishable from frontmatter, so the
-    // prose between the two rules is parsed as (unusable) frontmatter and never
-    // written back. Pinned here because it silently loses user text — see
-    // DECISIONS NEEDED.
-    const { fs, store } = makeStore({
-      'decisions/01-rule.md': '---\n\nA horizontal rule opened this file.\n\n---\n\n# Rule\n',
-    });
+  test('given a body that opens with a --- rule, when the status is set, then the prose survives and a real block is prepended', () => {
+    // Decision 5: a `---` block that declares no `key: value` line is a
+    // horizontal rule in the body, not frontmatter, so nothing under it is
+    // consumed — the new status block goes above it.
+    const body = '---\n\nA horizontal rule opened this file.\n\n---\n\n# Rule\n';
+    const { fs, store } = makeStore({ 'decisions/01-rule.md': body });
     store.setDecisionStatus('01-rule', 'Accepted');
-    assert.strictEqual(
-      read(fs, '01-rule.md'),
-      '---\nstatus: Accepted\n---\n\n# Rule\n',
-      'the text between the two rules is treated as frontmatter and lost',
-    );
+    assert.strictEqual(read(fs, '01-rule.md'), `---\nstatus: Accepted\n---\n${body}`);
   });
 
-  test.skip('given block-style YAML frontmatter, when the status is set, then the other keys survive', () => {
-    // DEFECT: parseFrontmatter only understands `key: value` lines, so a YAML
-    // block sequence is parsed as an empty string and re-serialized as `key: ""`
-    // — the list is destroyed by a status change.
-    // See REAL BUGS FOUND #1 (frontmatter.ts parseFrontmatter).
+  test('given a --- block holding only a comment, when parsed, then it is body rather than frontmatter', () => {
+    const record = parseDecisionText('01-c.md', '---\n# Not frontmatter\n---\n\nprose\n');
+    assert.strictEqual(record.frontmatter, undefined);
+    assert.strictEqual(record.body, '---\n# Not frontmatter\n---\n\nprose\n');
+    assert.strictEqual(record.title, 'Not frontmatter');
+  });
+
+  test('given block-style YAML frontmatter, when the status is set, then the other keys survive', () => {
     const { fs, store } = makeStore({
       'decisions/01-nested.md':
         '---\nstatus: Proposed\nauthors:\n  - dana\n  - sam\n---\n# Decision 01 — Nested\n\nBody.\n',
@@ -88,6 +85,39 @@ describe('store.setDecisionStatus — adversarial', () => {
     store.setDecisionStatus('01-nested', 'Accepted');
     const after = read(fs, '01-nested.md');
     assert.ok(after.includes('  - dana'), `the authors list must survive, got:\n${after}`);
+    assert.strictEqual(
+      after,
+      '---\nstatus: Accepted\nauthors:\n  - dana\n  - sam\n---\n# Decision 01 — Nested\n\nBody.\n',
+      'every byte but the status must be preserved',
+    );
+  });
+
+  test('given a comment, a blank line and a malformed line, when the status is set, then all three survive', () => {
+    const original =
+      '---\n# who owns this\nstatus: Proposed\n\nnot a key line\nowner: "dana"\n---\n# D\n';
+    const { fs, store } = makeStore({ 'decisions/01-mixed.md': original });
+    store.setDecisionStatus('01-mixed', 'Accepted');
+    assert.strictEqual(
+      read(fs, '01-mixed.md'),
+      original.replace('status: Proposed', 'status: Accepted'),
+    );
+  });
+
+  test('given a CRLF decision file, when the status is set, then the file stays CRLF', () => {
+    const { fs, store } = makeStore({
+      'decisions/01-crlf.md': '---\r\nstatus: Proposed\r\n---\r\n# D\r\n\r\nBody.\r\n',
+    });
+    store.setDecisionStatus('01-crlf', 'Accepted');
+    assert.strictEqual(
+      read(fs, '01-crlf.md'),
+      '---\r\nstatus: Accepted\r\n---\r\n# D\r\n\r\nBody.\r\n',
+    );
+  });
+
+  test('given an LF decision file, when the status is set, then no CR appears', () => {
+    const { fs, store } = makeStore({ 'decisions/01-lf.md': '---\nstatus: Proposed\n---\n# D\n' });
+    store.setDecisionStatus('01-lf', 'Accepted');
+    assert.ok(!read(fs, '01-lf.md').includes('\r'));
   });
 });
 

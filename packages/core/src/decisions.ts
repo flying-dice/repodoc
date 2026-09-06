@@ -4,6 +4,7 @@
  * delegates its decision methods here.
  */
 
+import { applyEol, detectEol, normalizeEol } from './eol';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { markdownTitle, pad, slugify, stripNumPrefix } from './naming';
 import type { FileSystemPort } from './ports';
@@ -114,9 +115,11 @@ export class DecisionStore {
     if (content === undefined) {
       return false;
     }
-    const { data, body } = parseFrontmatter(content);
+    // LF for processing, the file's own endings on the way out.
+    const eol = detectEol(content);
+    const { data, body, raw } = parseFrontmatter(normalizeEol(content));
     data['status'] = clean;
-    this.fs.writeFile(path, serializeFrontmatter(data, body));
+    this.fs.writeFile(path, applyEol(serializeFrontmatter(data, body, raw), eol));
     return true;
   }
 }

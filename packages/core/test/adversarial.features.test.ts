@@ -31,12 +31,21 @@ const SET_CONFIG = JSON.stringify({
 });
 
 describe('parseFeature — adversarial', () => {
-  test('given a file with no Feature line, when parsed, then the file name is the title and nothing is lost', () => {
+  test('given a file with no Feature line, when parsed, then the file name is the title and its tags still count', () => {
+    // Nothing else can claim them, so tags left over at the end of the file are
+    // the file's own — otherwise the board ignores a `@status:` tag that a move
+    // would happily rewrite.
     const parsed = parseFeature('stray-notes.feature', '@status:done\nsome prose\n');
     assert.strictEqual(parsed.title, 'stray-notes');
-    assert.deepStrictEqual(parsed.tags, []);
+    assert.deepStrictEqual(parsed.tags, ['@status:done']);
     assert.strictEqual(parsed.description, '');
     assert.deepStrictEqual(parsed.scenarios, []);
+  });
+
+  test('given a file with no Feature line whose tags belong to a scenario, when parsed, then they stay with the scenario', () => {
+    const parsed = parseFeature('x.feature', '@wip\nScenario: S\n');
+    assert.deepStrictEqual(parsed.tags, []);
+    assert.deepStrictEqual(parsed.scenarios, [{ name: 'S', tags: ['@wip'] }]);
   });
 
   test('given a Feature: line with no text, when parsed, then the title falls back to the file name', () => {
@@ -204,12 +213,17 @@ describe('writeStatusTag — adversarial', () => {
     );
   });
 
-  test.skip('given a CRLF file with no tag, when rewritten, then the inserted line uses CRLF too', () => {
-    // DEFECT: the inserted tag line is joined with a bare LF, leaving the file
-    // with mixed line endings. See REAL BUGS FOUND #7 (features.ts writeStatusTag).
+  test('given a CRLF file with no tag, when rewritten, then the inserted line uses CRLF too', () => {
     assert.strictEqual(
       writeStatusTag('Feature: T\r\nbody\r\n', 'done'),
       '@status:done\r\nFeature: T\r\nbody\r\n',
+    );
+  });
+
+  test('given an LF file with no tag, when rewritten, then no carriage return is introduced', () => {
+    assert.strictEqual(
+      writeStatusTag('Feature: T\nbody\n', 'done'),
+      '@status:done\nFeature: T\nbody\n',
     );
   });
 });
@@ -364,12 +378,7 @@ describe('FeatureStore through the store — adversarial', () => {
     assert.strictEqual(store.featureFilePath('s', 'a'), 'features/s/a.feature');
   });
 
-  test.skip('given a file with no Feature line, when moved, then the board follows its new column', () => {
-    // DEFECT: parseFeature only attaches the pending tag list when it meets a
-    // `Feature:` line, so a stray file's `@status:` tag is dropped. The move
-    // reports ok and rewrites the tag on disk, but the board snaps the feature
-    // back to the first column — a move that silently does nothing.
-    // See REAL BUGS FOUND #6 (featureParse.ts parseFeature).
+  test('given a file with no Feature line, when moved, then the board follows its new column', () => {
     const { fs, store } = makeStore({
       'features/s/.config.json': SET_CONFIG,
       'features/s/stray.feature': '@status:proposed\njust prose\n',
@@ -384,6 +393,30 @@ describe('FeatureStore through the store — adversarial', () => {
       'done',
       'the board must agree with the tag the move just wrote',
     );
+  });
+
+  test('given a file with no Feature line and no tag, when moved, then a tag is inserted and the board follows it', () => {
+    const { fs, store } = makeStore({
+      'features/s/.config.json': SET_CONFIG,
+      'features/s/stray.feature': 'just prose\n',
+    });
+    assert.deepStrictEqual(store.moveFeature('s', 'stray', 'done'), { ok: true });
+    assert.strictEqual(
+      required(fs.readFile('features/s/stray.feature'), 'stray file'),
+      '@status:done\njust prose\n',
+    );
+    assert.strictEqual(required(store.getFeature('s', 'stray'), 'stray record').status, 'done');
+  });
+
+  test('given a CRLF feature file, when moved, then the file keeps its CRLF endings', () => {
+    const { fs, store } = makeStore({
+      'features/s/.config.json': SET_CONFIG,
+      'features/s/crlf.feature': 'Feature: C\r\n  Prose.\r\n',
+    });
+    assert.deepStrictEqual(store.moveFeature('s', 'crlf', 'done'), { ok: true });
+    const after = required(fs.readFile('features/s/crlf.feature'), 'crlf file');
+    assert.strictEqual(after, '@status:done\r\nFeature: C\r\n  Prose.\r\n');
+    assert.strictEqual(required(store.getFeature('s', 'crlf'), 'crlf record').status, 'done');
   });
 
   test('given a set whose config is missing, when listed, then it still appears with its feature count', () => {

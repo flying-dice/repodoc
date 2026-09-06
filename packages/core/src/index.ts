@@ -35,6 +35,8 @@ export type { CardEntry } from './cardParse';
 export { findChecklist, findComments, findGates, parseCard } from './cardParse';
 export { DECISION_STATUSES, DecisionStore } from './decisions';
 export { DocStore } from './docs';
+export type { Eol } from './eol';
+export { applyEol, detectEol, normalizeEol } from './eol';
 export type { ParsedFeature, ParsedScenario } from './featureParse';
 export {
   featureIdFromFileName,
@@ -44,6 +46,7 @@ export {
   tagsWithoutStatus,
 } from './featureParse';
 export { defaultFeatureColumns, FeatureStore, writeStatusTag } from './features';
+export type { Frontmatter, FrontmatterEntry } from './frontmatter';
 export { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 export {
   checkValue,

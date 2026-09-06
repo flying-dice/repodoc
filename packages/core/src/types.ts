@@ -230,4 +230,24 @@ export type StoreError =
 
 export type MoveCardResult = { ok: true } | { ok: false; error: StoreError };
 
+/**
+ * The outcome of a gate-aware move (`RepoDocStore.moveCardGated`):
+ *  - `{ ok: true, overridden }` — moved; `overridden` names the gates whose
+ *    failure was journalled as an override (empty when nothing blocked).
+ *  - `{ ok: false, blocked }`   — gates block it and no valid override was
+ *    given; NOTHING was written.
+ *  - `{ ok: false, error }`     — the move itself is impossible (unknown board /
+ *    card / column, duplicate slugs); NOTHING was written.
+ */
+export type GatedMoveResult =
+  | { ok: true; overridden: string[] }
+  | { ok: false; blocked: GateResult[] }
+  | { ok: false; error: StoreError };
+
+/** Who bypassed a gate and why — required together, never one without the other. */
+export interface GateOverride {
+  who: string;
+  reason: string;
+}
+
 export type AddCardResult = { ok: true; cardId: string } | { ok: false; error: StoreError };

@@ -100,6 +100,45 @@ describe('normalizeBoardConfig — columns, gates, fields, labels', () => {
     assert.deepStrictEqual(gates, [{ id: 'g', script: 's' }]);
   });
 
+  test('given a gate whose script is empty or whitespace, when normalized, then it is dropped', () => {
+    // A gate that requires running nothing can never be satisfied by running
+    // anything: it is a config error, not a rule (see defaultGatePrompt).
+    assert.strictEqual(oneColumn({ id: 'a', enter: [{ id: 'g', script: '' }] }).enter, undefined);
+    assert.strictEqual(oneColumn({ id: 'a', enter: [{ id: 'g', script: '  ' }] }).enter, undefined);
+    assert.deepStrictEqual(
+      required(oneColumn({ id: 'a', enter: [{ id: 'g', script: ' make ' }] }).enter, 'gates'),
+      [{ id: 'g', script: ' make ' }],
+      'a script with real content is kept verbatim',
+    );
+  });
+
+  test('given two gates sharing an id in one list, when normalized, then only the first survives', () => {
+    // Decision 6: hosts key a gate's rendered prompt by id, so the second gate's
+    // instructions could never reach the reader anyway.
+    const column = oneColumn({
+      id: 'a',
+      enter: [
+        { id: 'dup', script: 'first' },
+        { id: 'dup', script: 'second' },
+        { id: 'other', field: 'f' },
+      ],
+    });
+    assert.deepStrictEqual(required(column.enter, 'enter gates'), [
+      { id: 'dup', script: 'first' },
+      { id: 'other', field: 'f' },
+    ]);
+  });
+
+  test('given the same gate id in enter and exit, when normalized, then both survive (different lists)', () => {
+    const column = oneColumn({
+      id: 'a',
+      enter: [{ id: 'g', script: 's' }],
+      exit: [{ id: 'g', script: 's' }],
+    });
+    assert.strictEqual(required(column.enter, 'enter')[0]?.id, 'g');
+    assert.strictEqual(required(column.exit, 'exit')[0]?.id, 'g');
+  });
+
   test('given an empty gate list, when normalized, then the key is omitted so configs round-trip', () => {
     const column = oneColumn({ id: 'a', enter: [], exit: 'nope' });
     assert.ok(!('enter' in column), 'an empty enter list must not be written back');

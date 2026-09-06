@@ -463,14 +463,13 @@ describe('repodoc card move — adversarial', () => {
     assert.ok(fs.existsSync(path.join(boardDir(), '09-one.md')), 'neither file is renamed');
   });
 
-  test.skip('given a move that will be refused, when it is overridden, then no override is recorded', () => {
-    // DEFECT: `card move` records the override BEFORE asking the store to move,
-    // so a move the store then refuses (here: duplicate slugs) leaves the card
-    // claiming a bypassed gate for a move that never happened.
-    // See REAL BUGS FOUND #2 (commands.ts `card move`).
+  test('given a move that will be refused, when it is overridden, then no override is recorded', () => {
+    // The store validates the move before it records anything, so a card can
+    // never claim a bypassed gate for a move that never happened.
     fs.copyFileSync(path.join(boardDir(), '01-one.md'), path.join(boardDir(), '09-one.md'));
     const r = run('card', 'move', BOARD, 'one', 'done', '--override', '--reason', 'hotfix');
     assert.strictEqual(r.code, 1);
+    assert.match(r.err, /two card files share the slug "one"/);
     for (const name of cardFiles()) {
       const content = fs.readFileSync(path.join(boardDir(), name), 'utf8');
       assert.ok(
@@ -478,6 +477,36 @@ describe('repodoc card move — adversarial', () => {
         `a refused move must not journal an override, but ${name} says:\n${content}`,
       );
     }
+  });
+});
+
+describe('repodoc board show — malformed config', () => {
+  test('given a board whose config is malformed, when shown, then the default columns print and stderr warns', () => {
+    // Decision 4: the cards are the data — they must stay visible — but the
+    // substitution is reported, and only on stderr so --json stays parseable.
+    fs.writeFileSync(path.join(boardDir(), '.config.json'), '{ not json at all');
+    fs.writeFileSync(path.join(boardDir(), '01-card.md'), '---\ncolumn: doing\n---\n# A card\n');
+    const shown = run('board', 'show', BOARD);
+    assert.strictEqual(shown.code, 0, shown.err);
+    assert.match(shown.out, /## In Progress \(doing\)/);
+    assert.match(shown.out, /card {2}A card/);
+    assert.match(shown.err, /\.config\.json is missing or declares no usable columns/);
+
+    const asJson = run('board', 'show', BOARD, '--json');
+    assert.strictEqual(asJson.code, 0);
+    const board = JSON.parse(asJson.out) as { columns: Array<{ id: string }> };
+    assert.deepStrictEqual(
+      board.columns.map((c) => c.id),
+      ['backlog', 'todo', 'doing', 'review', 'done'],
+      'stdout is still clean JSON',
+    );
+    assert.match(asJson.err, /declares no usable columns/);
+  });
+
+  test('given a sound config, when shown, then stderr stays empty', () => {
+    run('card', 'create', BOARD, 'One');
+    const shown = run('board', 'show', BOARD);
+    assert.strictEqual(shown.err, '');
   });
 });
 
@@ -510,6 +539,21 @@ describe('repodoc card gate-pass / gates — adversarial', () => {
     const r = run('card', 'gate-pass', BOARD, 'one', 'tests');
     assert.strictEqual(r.code, 2);
     assert.match(r.err, /missing argument: <result>/);
+  });
+
+  test('given an empty result, comment or checklist item, then each is a usage error and nothing is written', () => {
+    const before = readCard('one');
+    const empties: Array<[string[], RegExp]> = [
+      [['card', 'gate-pass', BOARD, 'one', 'tests', '  '], /<result> must not be empty/],
+      [['card', 'comment', BOARD, 'one', '  '], /<text> must not be empty/],
+      [['card', 'check-add', BOARD, 'one', ''], /<text> must not be empty/],
+    ];
+    for (const [argv, message] of empties) {
+      const r = run(...argv);
+      assert.strictEqual(r.code, 2, `${argv.join(' ')} should be a usage error: ${r.out}${r.err}`);
+      assert.match(r.err, message);
+    }
+    assert.strictEqual(readCard('one'), before, 'a refused write must not touch the card');
   });
 
   test('given an unknown card, when recording evidence, then it exits 1 and writes nothing', () => {
@@ -656,33 +700,55 @@ describe('CLI --json shape stability', () => {
 });
 
 describe('CLI global behaviour — adversarial', () => {
-  test('given --root pointing at a file, when listing, then it reports nothing rather than crashing', () => {
-    const file = path.join(root, 'a-file.txt');
-    fs.writeFileSync(file, 'contents');
+  /** Runs the CLI with an explicit root, capturing both streams. */
+  function withRoot(rootArg: string, ...argv: string[]): Result {
     let out = '';
-    const code = runCli(['--root', file, 'board', 'list'], root, {
+    let err = '';
+    const code = runCli(['--root', rootArg, ...argv], root, {
       stdout: (s) => {
         out += s;
       },
-      stderr: () => {},
+      stderr: (s) => {
+        err += s;
+      },
     });
-    assert.strictEqual(code, 0);
-    assert.match(out, /No boards\./);
+    return { code, out, err };
+  }
+
+  test('given --root pointing at a file, when listing, then it is a usage error naming the root', () => {
+    // Decision 8: a file-as-root used to report an empty workspace, which reads
+    // exactly like a real empty workspace — a mistake worth failing loudly on.
+    const file = path.join(root, 'a-file.txt');
+    fs.writeFileSync(file, 'contents');
+    const r = withRoot(file, 'board', 'list');
+    assert.strictEqual(r.code, 2);
+    assert.match(r.err, /is not a directory/);
+    assert.strictEqual(r.out, '', 'stdout stays empty for a usage error');
     assert.strictEqual(fs.readFileSync(file, 'utf8'), 'contents');
+  });
+
+  test('given --root pointing at a missing path, when listing, then it is a usage error pointing at init', () => {
+    const missing = path.join(root, 'nope', 'deeper');
+    const r = withRoot(missing, 'card', 'list', BOARD);
+    assert.strictEqual(r.code, 2);
+    assert.match(r.err, /does not exist/);
+    assert.match(r.err, /repodoc init --root/);
+    assert.ok(!fs.existsSync(missing), 'a refused command creates nothing');
+  });
+
+  test('given --root pointing at a missing path, when initializing, then the directory is created', () => {
+    const fresh = path.join(root, 'fresh', 'workspace');
+    const r = withRoot(fresh, 'init');
+    assert.strictEqual(r.code, 0, r.err);
+    assert.ok(fs.existsSync(path.join(fresh, 'boards', BOARD, '.config.json')));
   });
 
   test('given --root pointing at a file, when initializing, then it fails and leaves the file alone', () => {
     const file = path.join(root, 'a-file.txt');
     fs.writeFileSync(file, 'contents');
-    let err = '';
-    const code = runCli(['--root', file, 'init'], root, {
-      stdout: () => {},
-      stderr: (s) => {
-        err += s;
-      },
-    });
-    assert.notStrictEqual(code, 0, 'writing into a file-as-root cannot succeed');
-    assert.ok(err.length > 0, 'the failure is reported on stderr');
+    const r = withRoot(file, 'init');
+    assert.strictEqual(r.code, 2, 'writing into a file-as-root cannot succeed');
+    assert.ok(r.err.length > 0, 'the failure is reported on stderr');
     assert.strictEqual(fs.readFileSync(file, 'utf8'), 'contents');
   });
 

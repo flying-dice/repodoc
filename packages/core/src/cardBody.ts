@@ -48,9 +48,16 @@ export function findSection(lines: string[], headingRe: RegExp): BodySection | u
  * Appends a new `heading` section carrying `block` at the end of `body`,
  * separated by a single blank line and terminated by a newline. An
  * all-whitespace body is replaced by the section alone.
+ *
+ * Only trailing BLANK LINES are dropped — never trailing spaces on a line that
+ * has content. An empty checklist item is written `- [ ] `, and trimming that
+ * space turns it into `- [ ]`, which the checklist parser no longer matches:
+ * the item would vanish and every later index would shift.
  */
 export function appendSection(body: string, heading: string, block: string): string {
-  const trimmed = body.replace(/\s+$/, '');
+  // Anchored at a newline so the run can only ever start at a line boundary:
+  // trailing spaces on the last content line are not part of a blank line.
+  const trimmed = body.trim() === '' ? '' : body.replace(/(?:\r?\n[ \t]*)+$/, '');
   const prefix = trimmed.length ? `${trimmed}\n\n` : '';
   return `${prefix}${heading}\n\n${block}\n`;
 }
@@ -173,7 +180,9 @@ const GATE_SEPARATOR = ' — ';
  * section, one is appended at the end of the body.
  */
 export function upsertGateLine(body: string, gateId: string, note: string): string {
-  const line = `- [x] ${gateId}${GATE_SEPARATOR}${note}`;
+  // The evidence is ONE list line: a newline in the note would orphan the rest
+  // of it under `## Gates`, where re-recording the gate can never replace it.
+  const line = `- [x] ${gateId}${GATE_SEPARATOR}${note.replace(/[\r\n]+/g, ' ')}`;
   const lines = body.split('\n');
 
   const section = findSection(lines, /^##\s+gates\s*$/i);

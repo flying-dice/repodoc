@@ -64,14 +64,15 @@ describe('toBlockedGate — adversarial', () => {
     assert.strictEqual(projected.reason, 'ran `s`');
   });
 
-  test.skip('given a gate whose script is an empty string, when projected, then the prompt names the gate rather than undefined', () => {
-    // DEFECT: `defaultGatePrompt` branches on the truthiness of `script`, so a
-    // config with `"script": ""` (which normalizeBoardConfig keeps as a script
-    // gate) renders "Set the `undefined` field so that it satisfies
-    // `nonempty`." in the dialog and in the CLI refusal.
-    // See REAL BUGS FOUND #8 (core gates.ts defaultGatePrompt).
+  test('given a gate whose script is an empty string, when projected, then the prompt names the gate rather than undefined', () => {
+    // normalizeBoardConfig now drops such a gate, but this helper is pure and
+    // must not render "Set the `undefined` field" for whatever reaches it.
     const prompt = toBlockedGate(blocked({ id: 'tests', script: '' })).prompt ?? '';
     assert.ok(!prompt.includes('undefined'), `user-facing wording leaked undefined: ${prompt}`);
+    assert.strictEqual(
+      prompt,
+      'Run `tests` and, only if it exits 0, record the result with gate-pass.',
+    );
   });
 });
 
@@ -112,9 +113,9 @@ describe('collectGatePrompts — adversarial', () => {
 
   test('given two gates sharing an id in one list, when collected, then both are emitted under one key', () => {
     // The panel stores these in a Record keyed by `key`, so the LAST prompt wins
-    // and the first gate's instructions never reach the dialog. Duplicate gate
-    // ids in one list are a config mistake nothing currently rejects — see
-    // DECISIONS NEEDED.
+    // and the first gate's instructions never reach the dialog. Decision 6 makes
+    // normalizeBoardConfig drop the duplicate before it ever gets here; this
+    // helper stays pure and reports what it is given.
     const collected = collectGatePrompts([
       column('done', {
         enter: [

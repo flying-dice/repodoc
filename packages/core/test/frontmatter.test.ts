@@ -95,6 +95,88 @@ describe('frontmatter.parse', () => {
   });
 });
 
+describe('frontmatter.parse — opaque entries', () => {
+  test('a key with indented continuation lines is kept out of data and preserved verbatim', () => {
+    const text = '---\nstatus: Proposed\nauthors:\n  - dana\n  - sam\n---\nbody\n';
+    const parsed = parseFrontmatter(text);
+    assert.deepStrictEqual(parsed.data, { status: 'Proposed' });
+    assert.strictEqual(serializeFrontmatter(parsed.data, parsed.body, parsed.raw), text);
+  });
+
+  test('comments, blank lines and malformed lines survive a round-trip', () => {
+    const text = '---\n# a comment\n\nnot a key line\nkey: value\n---\nbody\n';
+    const parsed = parseFrontmatter(text);
+    assert.deepStrictEqual(parsed.data, { key: 'value' });
+    assert.strictEqual(serializeFrontmatter(parsed.data, parsed.body, parsed.raw), text);
+  });
+
+  test('a key with an empty value round-trips as an empty string', () => {
+    const text = '---\nstatus:\n---\nbody\n';
+    const parsed = parseFrontmatter(text);
+    assert.deepStrictEqual(parsed.data, { status: '' });
+    assert.strictEqual(serializeFrontmatter(parsed.data, parsed.body, parsed.raw), text);
+  });
+
+  test('an untouched value keeps its exact line; a changed one is rewritten', () => {
+    const parsed = parseFrontmatter('---\nowner: "dana"\nn:   7\n---\nbody\n');
+    parsed.data['n'] = 8;
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      '---\nowner: "dana"\nn: 8\n---\nbody\n',
+    );
+  });
+
+  test('a removed key loses its line and a new key is appended before the fence', () => {
+    const parsed = parseFrontmatter('---\na: 1\nb: 2\n---\nbody\n');
+    delete parsed.data['a'];
+    parsed.data['c'] = 3;
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      '---\nb: 2\nc: 3\n---\nbody\n',
+    );
+  });
+
+  test('setting a key that was a block replaces the block with one line', () => {
+    const parsed = parseFrontmatter('---\nauthors:\n  - dana\n---\nbody\n');
+    parsed.data['authors'] = ['dana', 'sam'];
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      '---\nauthors: [dana, sam]\n---\nbody\n',
+    );
+  });
+
+  test('a duplicated key is emitted once, at the first position, with the winning value', () => {
+    const parsed = parseFrontmatter('---\ncolumn: todo\ncolumn: done\n---\nbody\n');
+    assert.strictEqual(parsed.data['column'], 'done', 'the last line wins on read');
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      '---\ncolumn: done\n---\nbody\n',
+    );
+  });
+
+  test('a block that declares no key at all is body, not frontmatter', () => {
+    // A leading horizontal rule: consuming it would drop the prose beneath.
+    const text = '---\n\nA horizontal rule opened this file.\n\n---\n\n# Rule\n';
+    const parsed = parseFrontmatter(text);
+    assert.deepStrictEqual(parsed.data, {});
+    assert.deepStrictEqual(parsed.raw, []);
+    assert.strictEqual(parsed.body, text);
+  });
+
+  test('an empty block is still frontmatter', () => {
+    const parsed = parseFrontmatter('---\n---\nbody\n');
+    assert.deepStrictEqual(parsed.data, {});
+    assert.strictEqual(parsed.body, 'body\n');
+  });
+
+  test('serializing without raw writes exactly the keys given, in order', () => {
+    assert.strictEqual(
+      serializeFrontmatter({ b: 1, a: 'x' }, 'body\n'),
+      '---\nb: 1\na: x\n---\nbody\n',
+    );
+  });
+});
+
 describe('frontmatter.serialize', () => {
   test('serialize -> parse round-trips a representative card payload', () => {
     const data: Record<string, unknown> = {
