@@ -152,10 +152,17 @@ bunx github:flying-dice/repodoc decision create "<title>"
 \`\`\`
 
 Add \`--json\` to any command for machine-readable output, and \`--who <name>\`
-(or \`REPODOC_AUTHOR\`) to sign comments and gate evidence. \`card move\` refuses a
-move whose gates fail; satisfy them first — never pass \`--override\` unless a
-human told you to. Editing the files directly is still fine when the CLI is
-unavailable; the formats below are what it writes.
+(or \`REPODOC_AUTHOR\`) to sign comments and gate evidence.
+
+**The CLI is the workflow.** When \`card move\` refuses a move, its output lists
+every failing gate WITH THAT GATE'S INSTRUCTIONS — what to read, which command
+or skill to run, what to record. Read them, do the work, record the evidence
+(\`card gate-pass\` for a green script run, \`card set\` for a field), then re-run
+the move. When a move succeeds, the output may carry the target column's
+instructions ("now that the card is in Review: …") — follow those too. Never
+pass \`--override --reason\` unless a human explicitly authorised that override.
+Editing the files directly is still fine when the CLI is unavailable; the
+formats below are what it writes.
 
 ## Working a card
 

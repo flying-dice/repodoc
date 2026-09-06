@@ -188,6 +188,7 @@ export class RepoDocStore {
       wip: c.wip,
       enter: c.enter,
       exit: c.exit,
+      prompt: c.prompt,
       cardIds: [],
     }));
     const byId = new Map(columns.map((c) => [c.id, c]));
@@ -441,9 +442,19 @@ export class RepoDocStore {
     return evaluateTransition(card, from, to);
   }
 
-  /** Records a manual override for `gateId` on a card's `## Gates` section. */
-  recordGateOverride(boardId: string, cardId: string, gateId: string, who: string): boolean {
-    return this.recordGate(boardId, cardId, gateId, `OVERRIDDEN (${who}, ${this.now()})`);
+  /**
+   * Records a manual override for `gateId` on a card's `## Gates` section, as
+   * `OVERRIDDEN (<who>, <ISO now>)` with `: <reason>` appended when given.
+   */
+  recordGateOverride(
+    boardId: string,
+    cardId: string,
+    gateId: string,
+    who: string,
+    reason?: string,
+  ): boolean {
+    const why = reason?.trim() ? `: ${reason.trim()}` : '';
+    return this.recordGate(boardId, cardId, gateId, `OVERRIDDEN (${who}, ${this.now()})${why}`);
   }
 
   /**

@@ -35,8 +35,8 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `card list <board> [--column <id>]` | Cards in board order. |
 | `card show <board> <card>` | Metadata, description, checklist (indexed), gates, comments. |
 | `card create <board> <title> [--column <id>] [--priority p] [--labels a,b] [--agent name]` | New card; first column unless `--column`. Prints the new card id (its slug). |
-| `card move <board> <card> <column> [--index n] [--override]` | Move to the bottom of a column (or `--index`). Refuses when gates fail; `--override` records an override per failing gate, as the board does. |
-| `card gates <board> <card> <column>` | Evaluate the exit/enter gates for that move. Exit `1` while any fails. |
+| `card move <board> <card> <column> [--index n] [--override --reason <why>]` | Move to the bottom of a column (or `--index`). Refuses when gates fail and prints each failing gate's `prompt`; on success prints the target column's `prompt`. `--override` needs a `--reason`, recorded per overridden gate as the board does. |
+| `card gates <board> <card> <column>` | Evaluate the exit/enter gates for that move, with each failing gate's prompt. Exit `1` while any fails. |
 | `card gate-pass <board> <card> <gate> <result>` | Record `- [x] <gate> — <result> (<who>, <time>)` under `## Gates`. Only after a real green run. |
 | `card comment <board> <card> <text>` | Append a journal entry to `## Comments`. |
 | `card update <board> <card> [--title] [--agent] [--live] [--status] [--progress] [--priority] [--labels]` | Set reserved metadata. Pass `""` to remove a key. |
@@ -45,6 +45,28 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `decision list` / `decision show <id>` / `decision create <title>` | Decision records. |
 | `docs tree` / `docs show <relPath>` | The documentation tree. |
 | `skill install [claude\|opencode]` | Write the RepoDoc agent skill file into the repo. |
+
+## Gates feed the agent the workflow
+
+A board's `.config.json` may give each gate and each column a `prompt`. A
+refused move looks like this, and is the mechanism by which an agent is told
+what process to follow before it may proceed:
+
+```
+repodoc: refusing to move add-csv-export → review. 2 gates must be satisfied first:
+
+1. All tests passing (tests-passing) — no recorded green run of `bun run test`
+   Run `bun run check-types && bun run lint && bun run test` from the repo root.
+   Only when every command exits 0, record the summary with gate-pass.
+
+2. change-review skill run (change-review) — no recorded green run of `claude /change-review`
+   Stage the change and run the `change-review` skill over the staged diff. Fix
+   every bug/issue finding, re-run until clean, then record the result with gate-pass.
+
+Do the work above, then re-run this move. Record a green script run with
+`repodoc card gate-pass <board> add-csv-export <gate> "<result>"`; set a field with `repodoc card set`.
+Only a human may authorise `--override --reason <why>`.
+```
 
 ## An agent's session
 

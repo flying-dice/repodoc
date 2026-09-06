@@ -196,8 +196,13 @@ describe('repodoc card gates', () => {
             id: 'done',
             name: 'Done',
             color: '#000',
+            prompt: 'Card is done. Set live false and progress 100.',
             enter: [
-              { id: 'tests', script: 'bun test' },
+              {
+                id: 'tests',
+                script: 'bun test',
+                prompt: 'Run `bun test` from the repo root. Only when it exits 0, record it with gate-pass.',
+              },
               { id: 'reviewed', field: 'reviewed-by', check: 'nonempty' },
             ],
           },
@@ -216,28 +221,52 @@ describe('repodoc card gates', () => {
     assert.ok(r.out.includes('FAIL  reviewed'));
   });
 
-  test('move refuses failing gates, then succeeds once evidence and fields are in place', () => {
+  test('move refuses failing gates and feeds the agent each gate\'s prompt, then succeeds once satisfied', () => {
     const refused = run('card', 'move', 'b', 'card', 'done');
     assert.strictEqual(refused.code, 1);
-    assert.ok(refused.err.includes('unsatisfied gates'));
+    assert.ok(refused.err.includes('2 gates must be satisfied first'));
+    assert.ok(refused.err.includes('Run `bun test` from the repo root.'), refused.err);
+    // A gate without a prompt gets a generated instruction naming its field/check.
+    assert.ok(refused.err.includes('Set the `reviewed-by` field so that it satisfies `nonempty`'), refused.err);
+    assert.ok(refused.err.includes('gate-pass'));
     assert.strictEqual(fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8').includes('column: done'), false);
 
     assert.strictEqual(run('card', 'gate-pass', 'b', 'card', 'tests', '212 pass').code, 0);
     assert.strictEqual(run('card', 'set', 'b', 'card', 'reviewed-by', 'jonathan').code, 0);
     const ok = run('card', 'gates', 'b', 'card', 'done');
     assert.strictEqual(ok.code, 0, ok.out);
-    assert.strictEqual(run('card', 'move', 'b', 'card', 'done').code, 0);
+    const moved = run('card', 'move', 'b', 'card', 'done');
+    assert.strictEqual(moved.code, 0);
+    // Entering a column with a prompt prints that column's workflow.
+    assert.ok(moved.out.includes('Now that card is in Done:'), moved.out);
+    assert.ok(moved.out.includes('Set live false and progress 100.'));
     const file = fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8');
     assert.ok(file.includes('column: done'));
     assert.ok(/- \[x\] tests — 212 pass \(tester, .+\)/.test(file));
   });
 
-  test('--override records an override per failing gate and moves', () => {
-    const r = json('card', 'move', 'b', 'card', 'done', '--override') as { overridden: string[] };
+  test('gates prints the prompt of each failing gate', () => {
+    const r = run('card', 'gates', 'b', 'card', 'done');
+    assert.strictEqual(r.code, 1);
+    assert.ok(r.out.includes('FAIL  tests'));
+    assert.ok(r.out.includes('Run `bun test` from the repo root.'));
+  });
+
+  test('board show prints column prompts', () => {
+    assert.ok(run('board', 'show', 'b').out.includes('> Card is done. Set live false and progress 100.'));
+  });
+
+  test('--override needs a --reason, then records it per failing gate and moves', () => {
+    const noReason = run('card', 'move', 'b', 'card', 'done', '--override');
+    assert.strictEqual(noReason.code, 2);
+    assert.ok(noReason.err.includes('--reason'));
+    assert.ok(!fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8').includes('column: done'));
+
+    const r = json('card', 'move', 'b', 'card', 'done', '--override', '--reason', 'hotfix approved by jonathan') as { overridden: string[] };
     assert.deepStrictEqual(r.overridden, ['tests', 'reviewed']);
     const file = fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8');
     assert.ok(file.includes('column: done'));
-    assert.ok(file.includes('- [x] tests — OVERRIDDEN (tester,'));
+    assert.ok(/- \[x\] tests — OVERRIDDEN \(tester, .+\): hotfix approved by jonathan/.test(file));
     assert.ok(file.includes('- [x] reviewed — OVERRIDDEN (tester,'));
   });
 });

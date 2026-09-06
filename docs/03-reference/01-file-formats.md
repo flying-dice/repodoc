@@ -50,7 +50,7 @@ unknown, never dropped.
 
 A column may gate transitions. `enter` gates must pass to move a card INTO the
 column; `exit` gates must pass to move it OUT. Each gate has an `id`, an optional
-`label`, and exactly one of two kinds:
+`label`, an optional `prompt`, and exactly one of two kinds:
 
 - **script** — `script` names a command (e.g. `"npm test"`) that must have run
   green. Evidence-based: satisfied by a done line for the gate id in the card's
@@ -60,11 +60,24 @@ column; `exit` gates must pass to move it OUT. Each gate has an `id`, an optiona
   value; absent, it means "non-empty".
 
 ```json
+"prompt": "Set live false and progress 100, then journal what shipped.",
 "enter": [
-  { "id": "tests-passing", "script": "npm test", "label": "All tests passing" },
+  {
+    "id": "tests-passing",
+    "script": "bun run test",
+    "label": "All tests passing",
+    "prompt": "Run `bun run test` from the repo root. Only when it exits 0, record the summary with `repodoc card gate-pass`."
+  },
   { "id": "peer-review", "field": "peer-reviewed", "check": "= true", "label": "Peer reviewed" }
 ]
 ```
+
+**Prompts are the workflow.** A gate's `prompt` tells whoever must satisfy it
+what to read, run, or record; a column's `prompt` says what working in that
+column means. The CLI prints every failing gate's prompt when it refuses a move
+and the target column's prompt when a move succeeds, so an agent is handed the
+process rather than just a "no". A gate without a prompt gets a generated one
+naming its script or field.
 
 **Approvals are field gates** — a review sign-off is just a field a reviewer
 sets, checked with `= <name>`. The `check` mini-syntax:
@@ -125,8 +138,9 @@ A sentence or two of description.
   - [x] tests-passing — npm test green, 130 unit + 9 e2e (claude, 2026-07-17T02:30:00Z)
   ```
 
-  A human override is recorded on the same line with `OVERRIDDEN` and their name,
-  keeping the bypass visible in the diff.
+  A human override is recorded on the same line as
+  `OVERRIDDEN (<who>, <ISO time>): <reason>`, keeping the bypass and its
+  justification visible in the diff.
 - **Comments** are a `## Comments` work journal — one bullet per entry, oldest
   first, formatted `- **<who>** (<ISO time>): <text>`. A `path:line` or
   `path:start-end` token in the text (e.g. `src/core/store.ts:123`,

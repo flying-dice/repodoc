@@ -237,3 +237,28 @@ describe('boardConfig.normalizeBoardConfig — column gates', () => {
     assert.strictEqual(config.columns[0].exit, undefined);
   });
 });
+
+describe('boardConfig — prompts', () => {
+  test('keeps non-blank gate and column prompts, drops blank ones', () => {
+    const cfg = normalizeBoardConfig(
+      {
+        columns: [
+          {
+            id: 'review',
+            prompt: '  ',
+            enter: [
+              { id: 'a', script: 'x', prompt: 'Run x.' },
+              { id: 'b', field: 'f', prompt: '' },
+            ],
+          },
+          { id: 'done', prompt: 'Wrap up.' },
+        ],
+      },
+      'b',
+    );
+    assert.strictEqual(cfg.columns[0].prompt, undefined);
+    assert.strictEqual(cfg.columns[0].enter?.[0].prompt, 'Run x.');
+    assert.strictEqual(cfg.columns[0].enter?.[1].prompt, undefined);
+    assert.strictEqual(cfg.columns[1].prompt, 'Wrap up.');
+  });
+});

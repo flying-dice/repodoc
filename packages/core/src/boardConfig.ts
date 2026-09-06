@@ -22,6 +22,8 @@ export interface ConfigColumn {
   enter?: GateDef[];
   /** Gates a card must satisfy to move OUT of this column. */
   exit?: GateDef[];
+  /** Workflow instructions shown when a card enters this column. */
+  prompt?: string;
 }
 
 export interface BoardConfig {
@@ -129,6 +131,9 @@ function normalizeColumn(raw: unknown): ConfigColumn | undefined {
   if (typeof c.wip === 'number' && Number.isFinite(c.wip)) {
     out.wip = c.wip;
   }
+  if (typeof c.prompt === 'string' && c.prompt.trim()) {
+    out.prompt = c.prompt;
+  }
   const enter = normalizeGates(c.enter);
   if (enter.length) {
     out.enter = enter;
@@ -215,6 +220,9 @@ function normalizeGates(value: unknown): GateDef[] {
     const def: GateDef = { id };
     if (typeof g.label === 'string') {
       def.label = g.label;
+    }
+    if (typeof g.prompt === 'string' && g.prompt.trim()) {
+      def.prompt = g.prompt;
     }
     if (script !== undefined) {
       def.script = script; // precedence: when both are set, keep only script

@@ -15,7 +15,8 @@
       "id": "doing",
       "name": "In Progress",
       "color": "#5cd68a",
-      "wip": 3
+      "wip": 3,
+      "prompt": "Claim the card: `repodoc card update repodoc <card> --agent <you> --live true --status \"<one line>\" --progress <n>`. Journal meaningful progress with `repodoc card comment` including `path:line` references. Keep status and progress honest."
     },
     {
       "id": "review",
@@ -25,17 +26,20 @@
         {
           "id": "tests-passing",
           "script": "bun run test",
-          "label": "All tests passing"
+          "label": "All tests passing",
+          "prompt": "Run `bun run check-types && bun run lint && bun run test` from the repo root. Only when every command exits 0, record the summary line (e.g. \"239 pass\") with `repodoc card gate-pass repodoc <card> tests-passing \"<summary>\"`."
         },
         {
           "id": "change-review",
           "script": "claude /change-review",
-          "label": "change-review skill run"
+          "label": "change-review skill run",
+          "prompt": "Stage the change (`git add -A`) and run the `change-review` skill over the staged diff. Fix every `bug`/`issue` finding it raises and re-run until it reports none, then record the result with gate-pass."
         },
         {
           "id": "clean-code-review",
           "script": "claude /clean-code-review",
-          "label": "clean-code audit run"
+          "label": "clean-code audit run",
+          "prompt": "Run the `clean-code-review` skill over the change. It tags violations as `TODO: clean-code - <score>` markers; clear every marker scoring above 0.5 (the `refactor` skill clears one per pass), re-run the tests, then record the result with gate-pass."
         }
       ],
       "exit": [
@@ -43,14 +47,17 @@
           "id": "comments-addressed",
           "field": "comments-addressed",
           "check": "= true",
-          "label": "All review comments addressed"
+          "label": "All review comments addressed",
+          "prompt": "Every review comment on this card must be addressed. A human sets the `comments-addressed` field to true once satisfied — do not set it yourself."
         },
         {
           "id": "no-clean-code-violations",
           "script": "! grep -rn \"TODO: clean-code\" packages",
-          "label": "No clean-code violations"
+          "label": "No clean-code violations",
+          "prompt": "Run `! grep -rn \"TODO: clean-code\" packages` — it must print nothing. Clear any marker it finds, then record the run with gate-pass."
         }
-      ]
+      ],
+      "prompt": "Set `--live false` and `--progress 100`. Add a final journal comment summarising what shipped and how it was verified. A human reviews from here; respond to review comments by journaling what you changed."
     },
     {
       "id": "done",
@@ -60,15 +67,18 @@
         {
           "id": "merged-to-main",
           "script": "git merge-base --is-ancestor HEAD origin/main",
-          "label": "Merged into main"
+          "label": "Merged into main",
+          "prompt": "Only record this after the branch has actually merged: `git fetch origin main && git merge-base --is-ancestor HEAD origin/main` must exit 0."
         },
         {
           "id": "peer-review",
           "field": "peer-reviewed",
           "check": "= true",
-          "label": "Peer reviewed"
+          "label": "Peer reviewed",
+          "prompt": "A human reviewer sets `peer-reviewed` to true. Do not set it yourself."
         }
-      ]
+      ],
+      "prompt": "Nothing more to do. Do not edit the card again."
     }
   ],
   "fields": [

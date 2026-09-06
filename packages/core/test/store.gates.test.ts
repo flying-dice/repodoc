@@ -185,3 +185,16 @@ describe('store.addComment', () => {
     assert.deepStrictEqual(fs.snapshot(), before);
   });
 });
+
+describe('store.recordGateOverride — reason', () => {
+  test('appends the reason after the stamp when given', () => {
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': gatedConfig(),
+      'boards/b/01-card.md': '---\ncolumn: todo\n---\n# Card\n',
+    });
+    store.recordGateOverride('b', 'card', 'g', 'jon', 'hotfix');
+    assert.ok(fs.readFile('boards/b/01-card.md')!.includes(`- [x] g — OVERRIDDEN (jon, ${STAMP}): hotfix`));
+    store.recordGateOverride('b', 'card', 'g', 'jon');
+    assert.ok(fs.readFile('boards/b/01-card.md')!.includes(`- [x] g — OVERRIDDEN (jon, ${STAMP})\n`));
+  });
+});

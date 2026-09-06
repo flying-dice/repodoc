@@ -1,6 +1,7 @@
 import {
   BoardData,
   Card,
+  Column,
   CustomFieldValue,
   GateResult,
   Priority,
@@ -70,6 +71,9 @@ export const COMMANDS: Command[] = [
             ...(col.exit ?? []).map((g) => `exit:${g.id}`),
           ];
           lines.push('', `## ${col.name} (${col.id})${wip}${gates.length ? `  gates: ${gates.join(', ')}` : ''}`);
+          if (col.prompt) {
+            lines.push(...indent(col.prompt, '  > '));
+          }
           for (const id of col.cardIds) {
             lines.push(`  ${cardLine(id, board.cards[id])}`);
           }
@@ -187,30 +191,42 @@ export const COMMANDS: Command[] = [
   {
     group: 'card',
     name: 'move',
-    usage: 'card move <board> <card> <column> [--index <n>] [--override]',
-    summary: 'Move a card to a column (bottom unless --index). Refuses when gates fail; --override records overrides.',
+    usage: 'card move <board> <card> <column> [--index <n>] [--override --reason <why>]',
+    summary:
+      'Move a card to a column (bottom unless --index). Refuses when gates fail and prints each gate\'s instructions; --override with --reason records an override.',
     run(ctx, args, out): void {
       const [boardId, cardId, toColumn] = need(args, ['board', 'card', 'column']);
       const { board } = requireCard(ctx, boardId, cardId);
-      requireColumn(board, toColumn);
+      const target = requireColumn(board, toColumn);
       const index = intFlag(args.flags, 'index') ?? Number.MAX_SAFE_INTEGER;
       const results = ctx.store.evaluateMove(boardId, cardId, toColumn);
       const failing = results.filter((r) => !r.satisfied);
-      if (failing.length && args.flags.override !== true) {
-        throw new CommandError(
-          [`refusing to move ${cardId} → ${toColumn}; unsatisfied gates:`, ...gateLines(failing), 'Satisfy them, or pass --override to record an override.'].join('\n'),
-        );
+      const override = args.flags.override === true;
+      const reason = stringFlag(args.flags, 'reason');
+      if (failing.length && !override) {
+        throw new CommandError(refusalText(cardId, toColumn, failing));
+      }
+      if (failing.length && override && !reason?.trim()) {
+        throw new UsageError('--override requires --reason <why> (recorded on the card next to each overridden gate)');
       }
       for (const r of failing) {
-        ctx.store.recordGateOverride(boardId, cardId, r.gate.id, ctx.who);
+        ctx.store.recordGateOverride(boardId, cardId, r.gate.id, ctx.who, reason);
       }
       const moved = ctx.store.moveCard(boardId, cardId, toColumn, index);
       if (!moved.ok) {
         throw new CommandError(describe(moved.error));
       }
-      out.emit({ board: boardId, card: cardId, column: toColumn, overridden: failing.map((r) => r.gate.id) }, () => [
-        `Moved ${cardId} → ${toColumn}${failing.length ? ` (overrode ${failing.map((r) => r.gate.id).join(', ')})` : ''}`,
-      ]);
+      const overridden = failing.map((r) => r.gate.id);
+      out.emit(
+        { board: boardId, card: cardId, column: toColumn, overridden, prompt: target.prompt ?? null },
+        () => {
+          const lines = [`Moved ${cardId} → ${toColumn}${overridden.length ? ` (overrode ${overridden.join(', ')})` : ''}`];
+          if (target.prompt) {
+            lines.push('', `Now that ${cardId} is in ${target.name}:`, ...indent(target.prompt, '  '));
+          }
+          return lines;
+        },
+      );
     },
   },
   {
@@ -223,7 +239,7 @@ export const COMMANDS: Command[] = [
       const { board } = requireCard(ctx, boardId, cardId);
       requireColumn(board, toColumn);
       const results = ctx.store.evaluateMove(boardId, cardId, toColumn);
-      out.emit(results, () => (results.length ? gateLines(results) : ['No gates on this move.']));
+      out.emit(results, () => (results.length ? gateLines(results, true) : ['No gates on this move.']));
       if (results.some((r) => !r.satisfied)) {
         throw new CommandError('');
       }
@@ -420,10 +436,12 @@ function requireBoard(ctx: CommandContext, boardId: string): BoardData {
   return board;
 }
 
-function requireColumn(board: BoardData, columnId: string): void {
-  if (!board.columns.some((c) => c.id === columnId)) {
+function requireColumn(board: BoardData, columnId: string): Column {
+  const column = board.columns.find((c) => c.id === columnId);
+  if (!column) {
     throw new CommandError(`unknown column ${columnId}; columns: ${board.columns.map((c) => c.id).join(', ')}`);
   }
+  return column;
 }
 
 function requireCard(
@@ -460,8 +478,45 @@ function cardLine(id: string, card: Card | undefined): string {
   return bits.join('  ');
 }
 
-function gateLines(results: GateResult[]): string[] {
-  return results.map((r) => `${r.satisfied ? 'PASS' : 'FAIL'}  ${r.gate.id}  ${r.reason}`);
+function gateLines(results: GateResult[], withPrompts = false): string[] {
+  return results.flatMap((r) => {
+    const head = `${r.satisfied ? 'PASS' : 'FAIL'}  ${r.gate.id}  ${r.reason}`;
+    if (!withPrompts || r.satisfied || !r.gate.prompt) {
+      return [head];
+    }
+    return [head, ...indent(r.gate.prompt, '      '), ''];
+  });
+}
+
+/**
+ * The refusal an agent sees when gates block a move. Every failing gate is
+ * listed with its `prompt` so the workflow itself travels with the "no"; a gate
+ * without a prompt falls back to describing its script or field.
+ */
+function refusalText(cardId: string, toColumn: string, failing: GateResult[]): string {
+  const lines = [`refusing to move ${cardId} → ${toColumn}. ${failing.length} gate${failing.length > 1 ? 's' : ''} must be satisfied first:`, ''];
+  failing.forEach((r, i) => {
+    lines.push(`${i + 1}. ${r.gate.label ?? r.gate.id} (${r.gate.id}) — ${r.reason}`);
+    const prompt = r.gate.prompt ?? defaultPrompt(r);
+    lines.push(...indent(prompt, '   '), '');
+  });
+  lines.push(
+    'Do the work above, then re-run this move. Record a green script run with',
+    `\`repodoc card gate-pass <board> ${cardId} <gate> "<result>"\`; set a field with \`repodoc card set\`.`,
+    'Only a human may authorise \`--override --reason <why>\`.',
+  );
+  return lines.join('\n');
+}
+
+function defaultPrompt(r: GateResult): string {
+  if (r.gate.script) {
+    return `Run \`${r.gate.script}\` and, only if it exits 0, record the result with gate-pass.`;
+  }
+  return `Set the \`${r.gate.field}\` field so that it satisfies \`${r.gate.check ?? 'nonempty'}\`.`;
+}
+
+function indent(text: string, prefix: string): string[] {
+  return text.trim().split('\n').map((l) => `${prefix}${l}`);
 }
 
 function describe(error: StoreError): string {

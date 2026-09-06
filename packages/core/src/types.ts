@@ -53,6 +53,12 @@ export interface GateDef {
   field?: string;
   /** Field check expression (see mini-syntax above). */
   check?: string;
+  /**
+   * Instructions for whoever must satisfy the gate — what to read, which
+   * command or skill to run, what to record. The CLI prints this verbatim when
+   * a move is refused so an agent is fed the workflow, not just a "no".
+   */
+  prompt?: string;
 }
 
 /**
@@ -134,6 +140,8 @@ export interface Column {
   enter?: GateDef[];
   /** Gates a card must satisfy to move OUT of this column. */
   exit?: GateDef[];
+  /** Workflow instructions for a card that has just entered this column. */
+  prompt?: string;
   /** Ordered card ids. */
   cardIds: string[];
 }
