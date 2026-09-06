@@ -73,6 +73,22 @@ suite('RepoDoc webview/CLI parity e2e', () => {
     return fs.readFileSync(path.join(cardsDir, file), 'utf8');
   };
 
+  /**
+   * What the store holds right now — the value a managed editor would have been
+   * opened over, and the `base` / `baseTitle` a save must carry to be accepted.
+   */
+  const storedDesc = (cardId: string): string =>
+    api.store.getBoard(BOARD)?.cards[cardId]?.desc ?? '';
+  const storedTitle = (cardId: string): string =>
+    api.store.getBoard(BOARD)?.cards[cardId]?.title ?? '';
+
+  /** Write a card file behind the extension's back, as another author would. */
+  const writeCardFile = (slug: string, content: string): void => {
+    const file = cardFile(slug);
+    assert.ok(file, `card file for "${slug}" should exist`);
+    fs.writeFileSync(path.join(cardsDir, file), content);
+  };
+
   /** Bounce a webview->host message through the real channel, once. */
   const bounce = (message: unknown): Thenable<boolean> =>
     vscode.commands.executeCommand<boolean>('repodoc.bounceWebviewMessage', BOARD, message);
@@ -172,6 +188,7 @@ suite('RepoDoc webview/CLI parity e2e', () => {
       type: 'updateMeta',
       cardId: 'alpha',
       patch: { title: 'Alpha Renamed', priority: 'high', labels: ['bug', 'infra'] },
+      baseTitle: storedTitle('alpha'),
     });
     await waitFor(() => api.store.getBoard(BOARD)?.cards['alpha']?.priority === 'high');
 
@@ -210,6 +227,7 @@ suite('RepoDoc webview/CLI parity e2e', () => {
       type: 'updateMeta',
       cardId: 'alpha',
       patch: { status: 'busy\ncolumn: done', title: 'Alpha\nForged' },
+      baseTitle: storedTitle('alpha'),
     });
     await waitFor(() => (api.store.getBoard(BOARD)?.cards['alpha']?.status ?? '') !== '');
     const content = readCard('alpha');
@@ -326,7 +344,12 @@ suite('RepoDoc webview/CLI parity e2e', () => {
   });
 
   test('setDescription replaces only the description, keeping checklist and gates', async () => {
-    await bounce({ type: 'setDescription', cardId: 'alpha', text: 'Rewritten.\n\nSecond para.' });
+    await bounce({
+      type: 'setDescription',
+      cardId: 'alpha',
+      text: 'Rewritten.\n\nSecond para.',
+      base: storedDesc('alpha'),
+    });
     await waitFor(
       () => !!api.store.getBoard(BOARD)?.cards['alpha']?.desc?.startsWith('Rewritten.'),
     );
@@ -339,11 +362,80 @@ suite('RepoDoc webview/CLI parity e2e', () => {
   });
 
   test('setDescription with an empty string clears the description', async () => {
-    await bounce({ type: 'setDescription', cardId: 'alpha', text: '' });
+    await bounce({ type: 'setDescription', cardId: 'alpha', text: '', base: storedDesc('alpha') });
     await waitFor(() => api.store.getBoard(BOARD)?.cards['alpha']?.desc === undefined);
     const content = readCard('alpha');
     assert.ok(!content.includes('Rewritten.'));
     assert.ok(content.includes('## Checklist'), 'the sections are still there');
+  });
+
+  test('setDescription over a description that changed on disk writes nothing', async () => {
+    // The editor is opened over what the card says now...
+    const openedOver = storedDesc('alpha');
+    // ...and another author writes the file while it is open.
+    writeCardFile(
+      'alpha',
+      readCard('alpha').replace(/^(# .*\n)/m, '$1\nExternal author description must survive\n'),
+    );
+    await waitFor(() => storedDesc('alpha') === 'External author description must survive');
+
+    const before = readCard('alpha');
+    await bounce({
+      type: 'setDescription',
+      cardId: 'alpha',
+      text: 'The stale draft.',
+      base: openedOver,
+    });
+    await fence();
+    assert.strictEqual(readCard('alpha'), before, 'the newer description survives the stale save');
+
+    // The same text, re-sent over what the file says now ("Keep mine"), writes.
+    await bounce({
+      type: 'setDescription',
+      cardId: 'alpha',
+      text: 'The stale draft.',
+      base: storedDesc('alpha'),
+    });
+    await waitFor(() => storedDesc('alpha') === 'The stale draft.');
+  });
+
+  test('setDescription without a base is refused, so an old webview cannot bypass the check', async () => {
+    const before = readCard('alpha');
+    await bounce({ type: 'setDescription', cardId: 'alpha', text: 'No base at all.' });
+    await bounce({ type: 'setDescription', cardId: 'alpha', text: 'A number for a base', base: 7 });
+    await fence();
+    assert.strictEqual(readCard('alpha'), before);
+  });
+
+  test('updateMeta title over a title that changed on disk writes nothing', async () => {
+    const openedOver = storedTitle('alpha');
+    writeCardFile('alpha', readCard('alpha').replace(/^# .*$/m, '# Renamed by someone else'));
+    await waitFor(() => storedTitle('alpha') === 'Renamed by someone else');
+
+    const before = readCard('alpha');
+    await bounce({
+      type: 'updateMeta',
+      cardId: 'alpha',
+      patch: { title: 'The stale title' },
+      baseTitle: openedOver,
+    });
+    // A title patch without any base is refused for the same reason.
+    await bounce({ type: 'updateMeta', cardId: 'alpha', patch: { title: 'No base at all' } });
+    await fence();
+    assert.strictEqual(readCard('alpha'), before, 'the newer title survives the stale save');
+
+    await bounce({
+      type: 'updateMeta',
+      cardId: 'alpha',
+      patch: { title: 'The stale title' },
+      baseTitle: storedTitle('alpha'),
+    });
+    await waitFor(() => storedTitle('alpha') === 'The stale title');
+  });
+
+  test('updateMeta without a title needs no base — the controls show what is stored', async () => {
+    await bounce({ type: 'updateMeta', cardId: 'alpha', patch: { priority: 'low' } });
+    await waitFor(() => api.store.getBoard(BOARD)?.cards['alpha']?.priority === 'low');
   });
 
   test('the copyRef message puts the same reference on the clipboard as the store builds', async function () {

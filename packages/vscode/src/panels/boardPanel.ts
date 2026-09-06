@@ -3,12 +3,14 @@ import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
 import type { BoardSource } from './boardSource';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { type EditField, editBase, hasEditConflict } from './editConflict';
 import { collectGatePrompts, toBlockedGate } from './gateGuidance';
 import { localIdentity } from './identity';
 import { sanitizeMetaPatch } from './metaPatch';
 import { plantUmlServer } from './plantUml';
 import type {
   DataMessage,
+  EditConflictMessage,
   MoveBlockedMessage,
   OpenCardMessage,
   WebviewToHostMessage,
@@ -334,6 +336,11 @@ export class BoardPanel {
       }
       case 'setDescription': {
         if (typeof m['cardId'] === 'string' && typeof m['text'] === 'string') {
+          // The editor was opened over a value; refuse to write over anything
+          // else that has since landed in the file (see editConflict.ts).
+          if (this.baseIsStale(m['cardId'], 'description', m['base'])) {
+            break;
+          }
           this.source.setCardDescription?.(m['cardId'], m['text']);
         }
         break;
@@ -342,6 +349,15 @@ export class BoardPanel {
         if (typeof m['cardId'] === 'string' && m['patch'] && typeof m['patch'] === 'object') {
           const patch = sanitizeMetaPatch(m['patch'] as Record<string, unknown>);
           if (patch) {
+            // Only the title is edited over a value the webview was showing;
+            // every other key is set from a control that renders the stored
+            // value, so only a title patch carries — and needs — a base.
+            if (
+              patch.title !== undefined &&
+              this.baseIsStale(m['cardId'], 'title', m['baseTitle'])
+            ) {
+              break;
+            }
             this.source.updateCardMeta?.(m['cardId'], patch);
           }
         }
@@ -401,6 +417,31 @@ export class BoardPanel {
       default:
         break;
     }
+  }
+
+  /**
+   * Whether a save must be refused because the value it was opened over is not
+   * what the store holds now — or because it did not say what it was opened
+   * over at all. A refusal writes nothing and tells the webview what is stored
+   * instead, so it can offer Reload / Keep mine rather than losing a side.
+   */
+  private baseIsStale(cardId: string, field: EditField, rawBase: unknown): boolean {
+    const base = editBase(rawBase);
+    if (base === undefined) {
+      // A message from a webview that predates this check. Refusing it is the
+      // point: it cannot say what it was opened over, so it cannot be trusted
+      // to overwrite anything.
+      console.warn(`RepoDoc: refused a ${field} save that carried no base value.`);
+      return true;
+    }
+    const card = this.source.getBoard()?.cards[cardId];
+    const current = (field === 'title' ? card?.title : card?.desc) ?? '';
+    if (!hasEditConflict(base, current)) {
+      return false;
+    }
+    const message: EditConflictMessage = { type: 'editConflict', cardId, field, current };
+    void this.panel.webview.postMessage(message);
+    return true;
   }
 
   /**

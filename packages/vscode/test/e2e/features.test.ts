@@ -356,6 +356,13 @@ suite('RepoDoc feature sets e2e', () => {
       '',
     ].join('\n');
 
+    /**
+     * What the store holds now — the value a managed editor would have been
+     * opened over, and the `base` / `baseTitle` a save must carry to be taken.
+     */
+    const storedTitle = (id: string): string => api.store.getFeature(SET, id)?.title ?? '';
+    const storedDesc = (id: string): string => api.store.getFeature(SET, id)?.description ?? '';
+
     /** Bounce a webview->host message through the feature panel's channel. */
     const bounce = (message: unknown): Thenable<boolean> =>
       vscode.commands.executeCommand<boolean>(
@@ -374,7 +381,12 @@ suite('RepoDoc feature sets e2e', () => {
     const fence = async (): Promise<void> => {
       const marker = `Fence ${++fenceCount}`;
       assert.strictEqual(
-        await bounce({ type: 'updateMeta', cardId: 'fence', patch: { title: marker } }),
+        await bounce({
+          type: 'updateMeta',
+          cardId: 'fence',
+          patch: { title: marker },
+          baseTitle: storedTitle('fence'),
+        }),
         true,
       );
       await waitFor(() => api.store.getFeature(SET, 'fence')?.title === marker);
@@ -398,6 +410,7 @@ suite('RepoDoc feature sets e2e', () => {
           type: 'updateMeta',
           cardId: 'managed',
           patch: { title: 'Managed editing works' },
+          baseTitle: storedTitle('managed'),
         }),
         true,
       );
@@ -411,7 +424,12 @@ suite('RepoDoc feature sets e2e', () => {
     test('setDescription rewrites the prose under Feature: and nothing else', async () => {
       const before = featureFile('managed');
       assert.strictEqual(
-        await bounce({ type: 'setDescription', cardId: 'managed', text: 'Rewritten prose.' }),
+        await bounce({
+          type: 'setDescription',
+          cardId: 'managed',
+          text: 'Rewritten prose.',
+          base: storedDesc('managed'),
+        }),
         true,
       );
       await waitFor(() => api.store.getFeature(SET, 'managed')?.description === 'Rewritten prose.');
@@ -504,6 +522,7 @@ suite('RepoDoc feature sets e2e', () => {
           type: 'updateMeta',
           cardId: 'managed',
           patch: { title: 'Sneaky\n@status:proposed\nScenario: forged' },
+          baseTitle: storedTitle('managed'),
         }),
         true,
       );
@@ -512,6 +531,75 @@ suite('RepoDoc feature sets e2e', () => {
       assert.strictEqual(feature?.title, 'Sneaky @status:proposed Scenario: forged');
       assert.strictEqual(feature?.status, 'specified', 'the forged status tag never took effect');
       assert.strictEqual(feature?.scenarios.length, 2, 'no forged scenario was written');
+    });
+
+    /**
+     * The reproduction from the PR #1 review: type a description in the modal,
+     * let `repodoc feature describe` (or any other author) write the file, then
+     * press Save. The draft must NOT win by default — nothing is written, and
+     * the webview is told what the file says so a human can choose.
+     */
+    test('setDescription over prose that changed on disk writes nothing', async () => {
+      const openedOver = storedDesc('managed');
+      const external = 'External author description must survive';
+      fs.writeFileSync(
+        path.join(setDir, 'managed.feature'),
+        featureFile('managed').replace(openedOver, external),
+      );
+      await waitFor(() => storedDesc('managed') === external);
+
+      const before = featureFile('managed');
+      assert.strictEqual(
+        await bounce({
+          type: 'setDescription',
+          cardId: 'managed',
+          text: 'The stale draft.',
+          base: openedOver,
+        }),
+        true,
+      );
+      // A save that cannot say what it was typed over is refused outright.
+      await bounce({ type: 'setDescription', cardId: 'managed', text: 'No base at all.' });
+      await fence();
+      assert.strictEqual(featureFile('managed'), before, 'the external prose survives');
+
+      // "Keep mine": the same draft, re-sent over what the file says now.
+      await bounce({
+        type: 'setDescription',
+        cardId: 'managed',
+        text: 'The stale draft.',
+        base: storedDesc('managed'),
+      });
+      await waitFor(() => storedDesc('managed') === 'The stale draft.');
+      assert.strictEqual(featureFile('managed'), before.replace(external, 'The stale draft.'));
+    });
+
+    test('updateMeta over a Feature: line that changed on disk writes nothing', async () => {
+      const openedOver = storedTitle('managed');
+      fs.writeFileSync(
+        path.join(setDir, 'managed.feature'),
+        featureFile('managed').replace(`Feature: ${openedOver}`, 'Feature: Renamed elsewhere'),
+      );
+      await waitFor(() => storedTitle('managed') === 'Renamed elsewhere');
+
+      const before = featureFile('managed');
+      await bounce({
+        type: 'updateMeta',
+        cardId: 'managed',
+        patch: { title: 'The stale title' },
+        baseTitle: openedOver,
+      });
+      await bounce({ type: 'updateMeta', cardId: 'managed', patch: { title: 'No base at all' } });
+      await fence();
+      assert.strictEqual(featureFile('managed'), before, 'the external title survives');
+
+      await bounce({
+        type: 'updateMeta',
+        cardId: 'managed',
+        patch: { title: 'The stale title' },
+        baseTitle: storedTitle('managed'),
+      });
+      await waitFor(() => storedTitle('managed') === 'The stale title');
     });
   });
 });

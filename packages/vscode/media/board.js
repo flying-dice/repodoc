@@ -21,6 +21,10 @@
     showAllGates: false, // card modal: show every transition, not just this one
     openGateHow: {}, // "<colId>:<dir>:<gateId>" -> "How to satisfy" is expanded
     dismissedPrompts: {}, // "<cardId>|<colId>" -> the column prompt is dismissed
+    // {cardId, field, current} — a description/title save the host REFUSED
+    // because the file changed under the open editor. Nothing was written; the
+    // editor shows Reload / Keep mine, exactly as a scenario block does.
+    editConflict: null,
   };
 
   // Bottom of the target column — the CLI's default move index.
@@ -45,6 +49,13 @@
   var confirmRemoveKey = null; // the block asking "Remove this scenario?"
   var focusScenario = null; // id of a scenario field to focus after the next render
   var descText = ''; // uncontrolled description-editor text
+  // What the description editor was opened over, and what the title editor was
+  // opened over plus what is typed in it. The bases ride along with the save so
+  // the host can refuse to overwrite someone else's newer text; the title draft
+  // lives here (not in the DOM) so a data refresh cannot swallow it.
+  var descBase = '';
+  var titleBase = '';
+  var titleDraft = '';
   var checkText = ''; // uncontrolled checklist-composer text
   var gatePassText = {}; // "<cardId>|<gateId>" -> uncontrolled evidence input text
   var overrideReason = ''; // uncontrolled override-reason text
@@ -157,6 +168,14 @@
     );
   }
   /* ---- end of the scenario-draft mirror ---- */
+
+  /* ---- Edit conflicts (mirrors src/panels/editConflict.ts) ---- */
+  // Only the decision is mirrored: `editBase` guards an inbound message, which
+  // is the host's job, and the webview has no use for it.
+  function hasEditConflict(base, current) {
+    return base !== current;
+  }
+  /* ---- end of the edit-conflict mirror ---- */
 
   /* ---- Drag state ---- */
   var drag = {
@@ -1185,12 +1204,31 @@
     return files?.[cardId] ? files[cardId] : null;
   }
 
-  // G-2: one message carries every reserved-metadata edit.
-  function postMeta(cardId, patch) {
+  // G-2: one message carries every reserved-metadata edit. A title is the one
+  // key edited over a value the modal was showing, so it — and only it — rides
+  // with the title the editor was opened over; the host refuses the write when
+  // the file no longer says that. `baseTitle` is required whenever the patch
+  // carries a title.
+  function postMeta(cardId, patch, baseTitle) {
     if (!cardId || !can('meta')) {
       return;
     }
-    vscode.postMessage({ type: 'updateMeta', cardId: cardId, patch: patch });
+    var message = { type: 'updateMeta', cardId: cardId, patch: patch };
+    if (patch.title !== undefined) {
+      message.baseTitle = typeof baseTitle === 'string' ? baseTitle : '';
+    }
+    vscode.postMessage(message);
+  }
+
+  /** Post the title draft as one line, the way the store will store it. */
+  function saveTitle(card, base) {
+    var next = String(titleDraft).replace(/\s+/g, ' ').trim();
+    state.editingTitle = false;
+    if (next && next !== card.title) {
+      postMeta(card.id, { title: next }, base);
+    } else {
+      render();
+    }
   }
 
   function modalHead(card, col) {
@@ -1206,19 +1244,18 @@
         id: 'title-input',
         class: 'title-input',
         'aria-label': 'Card title',
+        onInput: function (e) {
+          titleDraft = e.target.value; // no render; survives a data refresh
+        },
         onChange: function (e) {
-          var next = String(e.target.value).replace(/\s+/g, ' ').trim();
-          state.editingTitle = false;
-          if (next && next !== card.title) {
-            postMeta(card.id, { title: next });
-          } else {
-            render();
-          }
+          titleDraft = e.target.value;
+          saveTitle(card, titleBase);
         },
         onKeyDown: function (e) {
           if (e.key === 'Escape') {
             e.preventDefault();
             state.editingTitle = false;
+            clearEditConflict();
             render(); // revert: the input is discarded unsaved
           } else if (e.key === 'Enter') {
             e.preventDefault();
@@ -1231,13 +1268,33 @@
           setTimeout(function () {
             if (state.editingTitle) {
               state.editingTitle = false;
+              clearEditConflict();
               render();
             }
           }, 150);
         },
       });
-      titleInput.value = card.title;
-      titleNode = titleInput;
+      titleInput.value = titleDraft;
+      var titleCurrent = editConflictCurrent(card, 'title');
+      titleNode =
+        titleCurrent === null
+          ? titleInput
+          : h('div', { class: 'modal-title-cell' }, [
+              titleInput,
+              editConflictNotice(
+                function () {
+                  titleDraft = titleCurrent;
+                  titleBase = titleCurrent;
+                  clearEditConflict();
+                  render();
+                },
+                function () {
+                  titleBase = titleCurrent;
+                  clearEditConflict();
+                  saveTitle(card, titleCurrent);
+                },
+              ),
+            ]);
     } else {
       titleNode = h(
         'div',
@@ -1247,6 +1304,9 @@
           onClick: can('meta')
             ? function () {
                 state.editingTitle = true;
+                titleDraft = card.title || '';
+                titleBase = titleDraft; // what this rename is being made over
+                clearEditConflict();
                 render();
               }
             : null,
@@ -1556,8 +1616,49 @@
     return h('div', { class: 'modal-cols' }, cells);
   }
 
+  /**
+   * The stored value an open editor has collided with, or null when it has not.
+   * Two ways to know: the data the host has since posted no longer matches what
+   * the editor was opened over, or the host refused a save and said what it
+   * holds. Either way the editor offers Reload / Keep mine instead of a side
+   * quietly losing.
+   */
+  function editConflictCurrent(card, field) {
+    var stored = (field === 'title' ? card.title : card.desc) || '';
+    if (hasEditConflict(field === 'title' ? titleBase : descBase, stored)) {
+      return stored;
+    }
+    var refused = state.editConflict;
+    if (refused && refused.cardId === card.id && refused.field === field) {
+      return refused.current;
+    }
+    return null;
+  }
+
+  function clearEditConflict() {
+    state.editConflict = null;
+  }
+
+  /** The "Changed on disk" strip — same markup and CSS as a scenario block's. */
+  function editConflictNotice(onReload, onKeepMine) {
+    return h('div', { class: 'scenario-notices' }, [
+      h('div', { class: 'scenario-notice', role: 'alert' }, [
+        h('span', {}, 'Changed on disk while you were editing.'),
+        h('button', { class: 'ghost-btn', onClick: onReload }, 'Reload'),
+        h('button', { class: 'ghost-btn', onClick: onKeepMine }, 'Keep mine'),
+      ]),
+    ]);
+  }
+
+  // Every save says what it was typed over; the host refuses it rather than
+  // overwrite a description that changed on disk in the meantime.
   function saveDescription(card) {
-    vscode.postMessage({ type: 'setDescription', cardId: card.id, text: descText });
+    vscode.postMessage({
+      type: 'setDescription',
+      cardId: card.id,
+      text: descText,
+      base: descBase,
+    });
     state.editingDesc = false;
     render();
   }
@@ -1584,14 +1685,35 @@
           } else if (e.key === 'Escape') {
             e.preventDefault();
             state.editingDesc = false;
+            clearEditConflict();
             render();
           }
         },
       });
       textarea.value = descText;
+      var descCurrent = editConflictCurrent(card, 'description');
+      var descNotice =
+        descCurrent === null
+          ? null
+          : editConflictNotice(
+              function () {
+                // Reload: start again from what the file says now.
+                descText = descCurrent;
+                descBase = descCurrent;
+                clearEditConflict();
+                render();
+              },
+              function () {
+                // Keep mine: re-send the save, now over the newer value.
+                descBase = descCurrent;
+                clearEditConflict();
+                saveDescription(card);
+              },
+            );
       return h('div', { class: 'section' }, [
         h('div', { class: 'field-label' }, 'Description'),
         textarea,
+        descNotice,
         h('div', { class: 'composer-actions' }, [
           h(
             'button',
@@ -1609,6 +1731,7 @@
               class: 'btn-secondary',
               onClick: function () {
                 state.editingDesc = false;
+                clearEditConflict();
                 render();
               },
             },
@@ -1626,6 +1749,8 @@
     var startEditing = function () {
       state.editingDesc = true;
       descText = card.desc || '';
+      descBase = descText; // what this edit is being made over
+      clearEditConflict();
       render();
     };
     if (editable) {
@@ -2982,6 +3107,7 @@
     state.editingTitle = false;
     state.editingDesc = false;
     state.addingCheck = false;
+    clearEditConflict();
     // Unsaved scenario text is NOT dropped here: like a comment draft, it
     // belongs to the card it was typed on and comes back when it is reopened.
     confirmRemoveKey = null;
@@ -3451,6 +3577,10 @@
     if (state.blocked && !board().cards[state.blocked.cardId]) {
       state.blocked = null;
     }
+    // ...and a conflict whose card is gone: there is nothing left to reconcile.
+    if (state.editConflict && !board().cards[state.editConflict.cardId]) {
+      clearEditConflict();
+    }
 
     // Build into a detached fragment FIRST. If any builder throws on an
     // unexpected card shape, the current board stays on screen instead of
@@ -3613,6 +3743,25 @@
         results: Array.isArray(msg.results) ? msg.results : [],
         overriding: false,
       };
+      if (state.data) {
+        render();
+      }
+      return;
+    }
+    if (
+      msg.type === 'editConflict' &&
+      typeof msg.cardId === 'string' &&
+      typeof msg.current === 'string'
+    ) {
+      // The save was REFUSED — nothing was written. Re-open the editor over the
+      // text that was typed and let the human choose which side wins.
+      state.editConflict = { cardId: msg.cardId, field: msg.field, current: msg.current };
+      state.openCardId = msg.cardId;
+      if (msg.field === 'title') {
+        state.editingTitle = true;
+      } else {
+        state.editingDesc = true;
+      }
       if (state.data) {
         render();
       }

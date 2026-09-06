@@ -1217,6 +1217,13 @@ input.check-box:disabled + label.check-text {
   padding: 2px 6px;
   outline: none;
 }
+/* The title editor plus, when the file moved under it, its "Changed on disk"
+   strip — the same notice a scenario block shows. */
+.modal-title-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 /* ---- Column prompt panel ("In this column") ---- */
 .col-prompt {

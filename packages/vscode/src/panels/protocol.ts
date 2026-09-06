@@ -1,4 +1,5 @@
 import type { BoardData, CardMetaPatch, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
+import type { EditField } from './editConflict';
 
 /**
  * Authoritative shapes for the board webview postMessage protocol.
@@ -114,7 +115,25 @@ export interface MoveBlockedMessage {
   results: MoveBlockedGate[];
 }
 
-export type HostToWebviewMessage = DataMessage | OpenCardMessage | MoveBlockedMessage;
+/**
+ * A save the host refused because the value changed on disk under the open
+ * editor. Nothing was written. `current` is what the store holds now, so the
+ * webview can offer Reload (take `current`) or Keep mine (re-send the save with
+ * `base` = `current`) — the same choice a scenario block offers.
+ */
+export interface EditConflictMessage {
+  type: 'editConflict';
+  cardId: string;
+  field: EditField;
+  /** The stored value the refused save collided with. */
+  current: string;
+}
+
+export type HostToWebviewMessage =
+  | DataMessage
+  | OpenCardMessage
+  | MoveBlockedMessage
+  | EditConflictMessage;
 
 /**
  * Sent by a markdown reading view (decision / doc) when a link inside the
@@ -218,6 +237,14 @@ export interface SetDescriptionMessage {
   type: 'setDescription';
   cardId: string;
   text: string;
+  /**
+   * The description the editor was opened over ('' when the card had none).
+   * The host refuses the save when the stored description no longer equals it
+   * — see `editConflict.ts` — and answers with {@link EditConflictMessage}. It
+   * is required: a message without it is rejected, so a stale webview cannot
+   * write past the check by omitting it.
+   */
+  base: string;
 }
 
 /**
@@ -254,6 +281,14 @@ export interface UpdateMetaMessage {
   type: 'updateMeta';
   cardId: string;
   patch: CardMetaPatch;
+  /**
+   * The title the title editor was opened over. Used ONLY when `patch.title` is
+   * present, and required then, exactly like {@link SetDescriptionMessage.base}
+   * — a title patch without it is rejected. Every other key of the patch is set
+   * from a control that shows the stored value as it renders, so it carries no
+   * base.
+   */
+  baseTitle?: string;
 }
 
 /**
