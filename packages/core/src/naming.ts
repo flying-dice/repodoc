@@ -48,3 +48,17 @@ export function markdownTitle(content: string, fallbackName: string): string {
   const heading = /^#\s+(.+)$/m.exec(content)?.[1];
   return heading === undefined ? titleCase(fallbackName) : heading.trim();
 }
+
+/**
+ * `base` when it is free, else the first `base-2`, `base-3`, … not in `taken`.
+ * How both cards and features de-duplicate a slug derived from a title.
+ */
+export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
+  let slug = base;
+  let suffix = 2;
+  while (taken.has(slug)) {
+    slug = `${base}-${suffix}`;
+    suffix++;
+  }
+  return slug;
+}

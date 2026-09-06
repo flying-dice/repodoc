@@ -5,8 +5,10 @@ import {
   type CardMetaPatch,
   type Column,
   type CustomFieldValue,
+  DECISION_STATUSES,
   type FeatureRecord,
   type GateResult,
+  gatePromptText,
   type Priority,
   SKILL_TARGETS,
   SkillManager,
@@ -26,8 +28,6 @@ export interface Command {
 }
 
 const PRIORITIES: readonly Priority[] = ['high', 'med', 'low'];
-
-const DECISION_STATUSES = ['Proposed', 'Accepted', 'Superseded'] as const;
 
 export const COMMANDS: Command[] = [
   {
@@ -128,22 +128,7 @@ export const COMMANDS: Command[] = [
     summary: 'List cards in board order, optionally filtered to one column.',
     run(ctx, args, out): void {
       const [boardId] = need(args, ['board']);
-      const board = requireBoard(ctx, boardId);
-      const only = stringFlag(args.flags, 'column');
-      if (only !== undefined) {
-        requireColumn(board, only);
-      }
-      const rows = board.columns
-        .filter((c) => only === undefined || c.id === only)
-        .flatMap((c) =>
-          c.cardIds.flatMap((id) => {
-            const card = board.cards[id];
-            return card === undefined ? [] : [{ column: c.id, ...card }];
-          }),
-        );
-      out.emit(rows, () =>
-        rows.length ? table(rows.map((r) => [r.column, cardLine(r.id, r)])) : ['No cards.'],
-      );
+      emitCardRows(requireBoard(ctx, boardId), args, out, 'No cards.');
     },
   },
   {
@@ -219,7 +204,7 @@ export const COMMANDS: Command[] = [
       }
       const result = ctx.store.addCard(boardId, columnId, title);
       if (!result.ok) {
-        throw new CommandError(describe(result.error));
+        throw new CommandError(storeErrorMessage(result.error));
       }
       const patch = metaPatch(args);
       if (Object.keys(patch).length) {
@@ -259,7 +244,7 @@ export const COMMANDS: Command[] = [
       }
       const moved = ctx.store.moveCard(boardId, cardId, toColumn, index);
       if (!moved.ok) {
-        throw new CommandError(describe(moved.error));
+        throw new CommandError(storeErrorMessage(moved.error));
       }
       const overridden = failing.map((r) => r.gate.id);
       out.emit(
@@ -296,9 +281,7 @@ export const COMMANDS: Command[] = [
       const { board } = requireCard(ctx, boardId, cardId);
       requireColumn(board, toColumn);
       const results = ctx.store.evaluateMove(boardId, cardId, toColumn);
-      out.emit(results, () =>
-        results.length ? gateLines(results, true) : ['No gates on this move.'],
-      );
+      out.emit(results, () => (results.length ? gateLines(results) : ['No gates on this move.']));
       if (results.some((r) => !r.satisfied)) {
         throw new CommandError('');
       }
@@ -468,22 +451,7 @@ export const COMMANDS: Command[] = [
     summary: "List a set's features in column order.",
     run(ctx, args, out): void {
       const [setId] = need(args, ['set']);
-      const board = requireFeatureSet(ctx, setId);
-      const only = stringFlag(args.flags, 'column');
-      if (only !== undefined) {
-        requireColumn(board, only);
-      }
-      const rows = board.columns
-        .filter((c) => only === undefined || c.id === only)
-        .flatMap((c) =>
-          c.cardIds.flatMap((id) => {
-            const card = board.cards[id];
-            return card === undefined ? [] : [{ column: c.id, ...card }];
-          }),
-        );
-      out.emit(rows, () =>
-        rows.length ? table(rows.map((r) => [r.column, cardLine(r.id, r)])) : ['No features.'],
-      );
+      emitCardRows(requireFeatureSet(ctx, setId), args, out, 'No features.');
     },
   },
   {
@@ -536,7 +504,7 @@ export const COMMANDS: Command[] = [
       }
       const result = ctx.store.createFeature(setId, title, columnId);
       if (!result.ok) {
-        throw new CommandError(describe(result.error));
+        throw new CommandError(storeErrorMessage(result.error));
       }
       const feature = requireFeature(ctx, setId, result.cardId);
       out.emit({ set: setId, ...feature }, () => [
@@ -557,7 +525,7 @@ export const COMMANDS: Command[] = [
       const target = requireColumn(board, toColumn);
       const moved = ctx.store.moveFeature(setId, featureId, toColumn);
       if (!moved.ok) {
-        throw new CommandError(describe(moved.error));
+        throw new CommandError(storeErrorMessage(moved.error));
       }
       out.emit(
         { set: setId, feature: featureId, column: toColumn, prompt: target.prompt ?? null },
@@ -684,7 +652,9 @@ export const COMMANDS: Command[] = [
       'Write the RepoDoc agent skill file (default: claude) so coding agents know the workflow.',
     run(ctx, args, out): void {
       const kind = (args.positionals[0] ?? 'claude') as AgentKind;
-      if (!(kind in SKILL_TARGETS)) {
+      // hasOwn, not `in`: `in` also matches inherited keys, so a kind of
+      // "toString" would pass the guard and then write `undefined`.
+      if (!Object.hasOwn(SKILL_TARGETS, kind)) {
         throw new UsageError(
           `unknown agent kind ${kind}; expected ${Object.keys(SKILL_TARGETS).join(' | ')}`,
         );
@@ -769,6 +739,33 @@ function requireFeature(ctx: CommandContext, setId: string, featureId: string): 
   return feature;
 }
 
+/**
+ * Prints the cards of a board surface in column order, honouring `--column`.
+ * Shared by `card list` and `feature list` — the same rows, different noun.
+ */
+function emitCardRows(
+  board: BoardData,
+  args: ParsedArgs,
+  out: Printer,
+  emptyMessage: string,
+): void {
+  const only = stringFlag(args.flags, 'column');
+  if (only !== undefined) {
+    requireColumn(board, only);
+  }
+  const rows = board.columns
+    .filter((c) => only === undefined || c.id === only)
+    .flatMap((c) =>
+      c.cardIds.flatMap((id) => {
+        const card = board.cards[id];
+        return card === undefined ? [] : [{ column: c.id, ...card }];
+      }),
+    );
+  out.emit(rows, () =>
+    rows.length ? table(rows.map((r) => [r.column, cardLine(r.id, r)])) : [emptyMessage],
+  );
+}
+
 function cardLine(id: string, card: Card | undefined): string {
   if (!card) {
     return id;
@@ -789,10 +786,11 @@ function cardLine(id: string, card: Card | undefined): string {
   return bits.join('  ');
 }
 
-function gateLines(results: GateResult[], withPrompts = false): string[] {
+/** One line per gate, with the authored prompt indented under a failing one. */
+function gateLines(results: GateResult[]): string[] {
   return results.flatMap((r) => {
     const head = `${r.satisfied ? 'PASS' : 'FAIL'}  ${r.gate.id}  ${r.reason}`;
-    if (!withPrompts || r.satisfied || !r.gate.prompt) {
+    if (r.satisfied || !r.gate.prompt) {
       return [head];
     }
     return [head, ...indent(r.gate.prompt, '      '), ''];
@@ -811,8 +809,7 @@ function refusalText(cardId: string, toColumn: string, failing: GateResult[]): s
   ];
   failing.forEach((r, i) => {
     lines.push(`${i + 1}. ${r.gate.label ?? r.gate.id} (${r.gate.id}) — ${r.reason}`);
-    const prompt = r.gate.prompt ?? defaultPrompt(r);
-    lines.push(...indent(prompt, '   '), '');
+    lines.push(...indent(gatePromptText(r.gate), '   '), '');
   });
   lines.push(
     'Do the work above, then re-run this move. Record a green script run with',
@@ -822,13 +819,6 @@ function refusalText(cardId: string, toColumn: string, failing: GateResult[]): s
   return lines.join('\n');
 }
 
-function defaultPrompt(r: GateResult): string {
-  if (r.gate.script) {
-    return `Run \`${r.gate.script}\` and, only if it exits 0, record the result with gate-pass.`;
-  }
-  return `Set the \`${r.gate.field}\` field so that it satisfies \`${r.gate.check ?? 'nonempty'}\`.`;
-}
-
 function indent(text: string, prefix: string): string[] {
   return text
     .trim()
@@ -836,7 +826,8 @@ function indent(text: string, prefix: string): string[] {
     .map((l) => `${prefix}${l}`);
 }
 
-function describe(error: StoreError): string {
+/** The one-line message the CLI prints for a refused store mutation. */
+function storeErrorMessage(error: StoreError): string {
   switch (error.code) {
     case 'unknown-board':
       return `unknown board ${error.boardId}`;

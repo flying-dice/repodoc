@@ -219,3 +219,15 @@ export interface FeatureSetRef {
   name: string;
   featureCount: number;
 }
+
+/** Why a store mutation was refused. Mutations never throw for these. */
+export type StoreError =
+  | { code: 'unknown-board'; boardId: string }
+  | { code: 'unknown-card'; cardId: string }
+  | { code: 'unknown-column'; columnId: string }
+  | { code: 'duplicate-slugs'; slug: string }
+  | { code: 'unreadable-card'; cardId: string };
+
+export type MoveCardResult = { ok: true } | { ok: false; error: StoreError };
+
+export type AddCardResult = { ok: true; cardId: string } | { ok: false; error: StoreError };

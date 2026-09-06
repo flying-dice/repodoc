@@ -78,14 +78,11 @@ export interface OpenCardMessage {
   cardId: string;
 }
 
-/** One unsatisfied (or satisfied) gate as reported to the webview. */
+/** One gate blocking a move, as reported to the webview. */
 export interface MoveBlockedGate {
   id: string;
   label: string;
-  satisfied: boolean;
   reason: string;
-  /** How the gate is satisfied — drives the dialog's action row. */
-  kind: 'script' | 'field';
   /** Script gates: the command that must have run green. */
   script?: string;
   /** Field gates: the inspected (custom or reserved) field id. */
@@ -149,17 +146,17 @@ export interface AddCommentMessage {
   who?: string;
 }
 
-/**
- * Open a repo file (optionally revealing a line range) from a comment link.
- * `path` is relative to the store root; the host containment-checks it before
- * opening. `line`/`endLine` are 1-based.
- */
 /** Copy the card's pasteable reference (`<scope>/<id> — <title> (<path>)`) to the clipboard. */
 export interface CopyRefMessage {
   type: 'copyRef';
   cardId: string;
 }
 
+/**
+ * Open a repo file (optionally revealing a line range) from a comment link.
+ * `path` is relative to the store root; the host containment-checks it before
+ * opening. `line`/`endLine` are 1-based.
+ */
 export interface OpenFileMessage {
   type: 'openFile';
   path: string;

@@ -17,7 +17,12 @@
  * decisions and docs.
  */
 
-import { type BoardConfig, normalizeBoardConfig } from './boardConfig';
+import {
+  type BoardConfig,
+  DEFAULT_COLUMN_COLOR,
+  readBoardConfigFile,
+  toColumns,
+} from './boardConfig';
 import {
   featureIdFromFileName,
   parseFeature,
@@ -25,15 +30,22 @@ import {
   statusFromTags,
   tagsWithoutStatus,
 } from './featureParse';
-import { slugify, titleCase } from './naming';
+import { slugify, titleCase, uniqueSlug } from './naming';
 import type { FileSystemPort } from './ports';
-import type { AddCardResult, MoveCardResult } from './store';
-import type { BoardData, Card, Column, FeatureRecord, FeatureSetRef, RepoDocConfig } from './types';
+import type {
+  AddCardResult,
+  BoardData,
+  Card,
+  FeatureRecord,
+  FeatureSetRef,
+  MoveCardResult,
+  RepoDocConfig,
+} from './types';
 
 /** The default columns of a new feature set — a specification pipeline. */
 export function defaultFeatureColumns(): BoardConfig['columns'] {
   return [
-    { id: 'proposed', name: 'Proposed', color: '#7d828b' },
+    { id: 'proposed', name: 'Proposed', color: DEFAULT_COLUMN_COLOR },
     { id: 'specified', name: 'Specified', color: '#4c8bf5' },
     { id: 'implemented', name: 'Implemented', color: '#5cd68a' },
     { id: 'verified', name: 'Verified', color: '#3fb27f' },
@@ -80,25 +92,18 @@ export class FeatureStore {
       return undefined;
     }
     const config = this.readConfig(setId);
-    const columns: Column[] = config.columns.map((c) => {
-      const column: Column = {
-        id: c.id,
-        name: c.name || titleCase(c.id),
-        color: c.color || '#7d828b',
-        cardIds: [],
-      };
-      if (c.wip !== undefined) {
-        column.wip = c.wip;
-      }
-      if (c.prompt !== undefined) {
-        column.prompt = c.prompt;
-      }
-      return column;
-    });
+    // Gates are not enforced for feature sets (Decision 10), so they are not
+    // shown either: drop enter/exit from the projection.
+    const columns = toColumns(config).map(({ enter: _enter, exit: _exit, ...column }) => column);
     const byId = new Map(columns.map((c) => [c.id, c]));
 
     const cards: Record<string, Card> = {};
     for (const record of this.list(setId)) {
+      if (cards[record.id] !== undefined) {
+        // Two files map to the same id — the first in file-name order keeps it,
+        // so an id never appears twice on the board.
+        continue;
+      }
       cards[record.id] = toCard(record);
       const column = byId.get(record.status) ?? (columns.length > 0 ? columns[0] : undefined);
       column?.cardIds.push(record.id);
@@ -134,7 +139,7 @@ export class FeatureStore {
       labels: {},
       fields: [],
     };
-    this.fs.writeFile(`features/${id}/.config.json`, `${JSON.stringify(config, null, 2)}\n`);
+    this.fs.writeFile(this.configFilePath(id), `${JSON.stringify(config, null, 2)}\n`);
     return id;
   }
 
@@ -152,16 +157,12 @@ export class FeatureStore {
       return { ok: false, error: { code: 'unknown-column', columnId: columnId ?? '' } };
     }
     const taken = new Set(this.featureFileNames(setId).map(featureIdFromFileName));
-    const base = slugify(title, 'feature');
-    let slug = base;
-    let suffix = 2;
-    while (taken.has(slug)) {
-      slug = `${base}-${suffix}`;
-      suffix++;
-    }
+    const slug = uniqueSlug(slugify(title, 'feature'), taken);
+    // The title becomes the `Feature:` line; a newline in it would forge Gherkin
+    // structure, so whitespace is collapsed as it is for a card title.
     this.fs.writeFile(
       `features/${setId}/${slug}.feature`,
-      `${STATUS_TAG_PREFIX}${column}\nFeature: ${title.trim()}\n`,
+      `${STATUS_TAG_PREFIX}${column}\nFeature: ${title.replace(/\s+/g, ' ').trim()}\n`,
     );
     return { ok: true, cardId: slug };
   }
@@ -194,6 +195,11 @@ export class FeatureStore {
     return { ok: true };
   }
 
+  /** Path of a set's `.config.json` relative to the workspace root. */
+  configFilePath(setId: string): string {
+    return `features/${setId}/.config.json`;
+  }
+
   /** Path of a feature file relative to the workspace root. */
   filePath(setId: string, featureId: string): string | undefined {
     const fileName = this.featureFileNames(setId).find(
@@ -211,15 +217,7 @@ export class FeatureStore {
   }
 
   private readConfig(setId: string): BoardConfig {
-    const raw = this.fs.readFile(`features/${setId}/.config.json`);
-    if (raw === undefined) {
-      return normalizeBoardConfig(undefined, setId);
-    }
-    try {
-      return normalizeBoardConfig(JSON.parse(raw), setId);
-    } catch {
-      return normalizeBoardConfig(undefined, setId);
-    }
+    return readBoardConfigFile(this.fs, this.configFilePath(setId), setId);
   }
 }
 

@@ -1,6 +1,6 @@
-import * as path from 'node:path';
 import {
   type AgentKind,
+  DECISION_STATUSES,
   MemFileSystemAdapter,
   NodeFileSystemAdapter,
   RepoDocStore,
@@ -13,6 +13,7 @@ import { BoardPanel, copyRefToClipboard } from './panels/boardPanel';
 import { CardBoardSource, FeatureSetSource } from './panels/boardSource';
 import { MarkdownPanel } from './panels/markdownPanel';
 import type { WebviewToHostMessage } from './panels/protocol';
+import { openRepoFile } from './repoFiles';
 import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
 
 /** Public surface returned by {@link activate}, used by e2e tests. */
@@ -143,7 +144,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       // node itself (inline action / context menu) — which may be a board or a
       // feature set; both render in the same panel behind a BoardSource.
       if (typeof arg === 'string') {
-        BoardPanel.createOrShow(context.extensionUri, store, new CardBoardSource(store, arg));
+        BoardPanel.createOrShow(context.extensionUri, root, new CardBoardSource(store, arg));
         return;
       }
       const node = arg as { kind?: string; ref?: { id?: string } } | undefined;
@@ -152,9 +153,9 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         return;
       }
       if (node?.kind === 'board') {
-        BoardPanel.createOrShow(context.extensionUri, store, new CardBoardSource(store, id));
+        BoardPanel.createOrShow(context.extensionUri, root, new CardBoardSource(store, id));
       } else if (node?.kind === 'featureSet') {
-        BoardPanel.createOrShow(context.extensionUri, store, new FeatureSetSource(store, id));
+        BoardPanel.createOrShow(context.extensionUri, root, new FeatureSetSource(store, id));
       }
     }),
 
@@ -163,16 +164,13 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     vscode.commands.registerCommand(
       'repodoc.openFeature',
       async (setId: unknown, featureId: unknown): Promise<void> => {
-        if (typeof setId !== 'string' || typeof featureId !== 'string' || !root) {
+        if (typeof setId !== 'string' || typeof featureId !== 'string') {
           return;
         }
         const relPath = store.featureFilePath(setId, featureId);
-        if (!relPath) {
-          return;
+        if (relPath) {
+          await openRepoFile(root, relPath);
         }
-        const uri = vscode.Uri.joinPath(vscode.Uri.file(root), ...relPath.split('/'));
-        const doc = await vscode.workspace.openTextDocument(uri);
-        await vscode.window.showTextDocument(doc);
       },
     ),
 
@@ -206,7 +204,12 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       'repodoc.revealCard',
       (boardId: unknown, cardId: unknown): void => {
         if (typeof boardId === 'string' && typeof cardId === 'string') {
-          BoardPanel.revealCard(context.extensionUri, store, boardId, cardId);
+          BoardPanel.revealCard(
+            context.extensionUri,
+            root,
+            new CardBoardSource(store, boardId),
+            cardId,
+          );
         }
       },
     ),
@@ -219,7 +222,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       if (node?.kind !== 'card' || !node.boardId || !node.cardId) {
         return;
       }
-      const relPath = new CardBoardSource(store, node.boardId).cardFilePath(node.cardId);
+      const relPath = store.cardFilePath(node.boardId, node.cardId);
       if (!relPath) {
         void vscode.window.showWarningMessage(
           `RepoDoc: could not find the file for card ${node.cardId}.`,
@@ -253,8 +256,12 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         if (!id) {
           return;
         }
-        const dir = node?.kind === 'featureSet' ? 'features' : 'boards';
-        await openRepoFile(root, `${dir}/${id}/.config.json`);
+        await openRepoFile(
+          root,
+          node?.kind === 'featureSet'
+            ? store.featureSetConfigFilePath(id)
+            : store.configFilePath(id),
+        );
       },
     ),
 
@@ -266,11 +273,10 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         if (!id) {
           return;
         }
-        const record = store.getDecision(id);
-        if (!record) {
-          return;
+        const relPath = store.decisionFilePath(id);
+        if (relPath) {
+          await openRepoFile(root, relPath);
         }
-        await openRepoFile(root, `decisions/${record.file}`);
       },
     ),
 
@@ -295,7 +301,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         if (!id) {
           return;
         }
-        const picked = await vscode.window.showQuickPick(['Proposed', 'Accepted', 'Superseded'], {
+        const picked = await vscode.window.showQuickPick([...DECISION_STATUSES], {
           placeHolder: 'Decision status',
         });
         if (!picked) {
@@ -324,7 +330,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         return;
       }
       const id = store.createBoard(name.trim());
-      BoardPanel.createOrShow(context.extensionUri, store, new CardBoardSource(store, id));
+      BoardPanel.createOrShow(context.extensionUri, root, new CardBoardSource(store, id));
     }),
 
     vscode.commands.registerCommand('repodoc.newDecision', async () => {
@@ -377,24 +383,3 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
 }
 
 export function deactivate(): void {}
-
-/**
- * Open a repo-relative file in an editor beside the RepoDoc views. The path is
- * containment-checked against the workspace root before opening.
- */
-async function openRepoFile(root: string | undefined, relPath: string): Promise<void> {
-  if (!root) {
-    return;
-  }
-  const rootResolved = path.resolve(root);
-  const abs = path.resolve(rootResolved, relPath);
-  if (abs !== rootResolved && !abs.startsWith(rootResolved + path.sep)) {
-    return;
-  }
-  try {
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
-    await vscode.window.showTextDocument(doc, { preview: false });
-  } catch {
-    void vscode.window.showWarningMessage(`RepoDoc: could not open ${relPath}`);
-  }
-}

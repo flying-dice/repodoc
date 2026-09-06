@@ -28,14 +28,23 @@ export type BoardsNode =
   | {
       kind: 'card';
       boardId: string;
+      columnId: string;
+      /** Position in the column — part of the TreeItem id (see getTreeItem). */
+      index: number;
       cardId: string;
       title: string;
       priority?: string;
-      agent?: string;
     }
   | { kind: 'featureSet'; ref: FeatureSetRef }
   | { kind: 'featureColumn'; setId: string; columnId: string; name: string; count: number }
-  | { kind: 'feature'; setId: string; featureId: string; title: string };
+  | {
+      kind: 'feature';
+      setId: string;
+      columnId: string;
+      index: number;
+      featureId: string;
+      title: string;
+    };
 
 export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
   constructor(private readonly store: RepoDocStore) {
@@ -84,7 +93,9 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
     }
     if (node.kind === 'feature') {
       const item = new vscode.TreeItem(node.title, vscode.TreeItemCollapsibleState.None);
-      item.id = `feature:${node.setId}:${node.featureId}`;
+      // Keyed by position, not id: two files can map to the same id, and VS
+      // Code drops the whole tree when two items share one id.
+      item.id = `feature:${node.setId}:${node.columnId}:${node.index}`;
       item.tooltip = node.title;
       item.iconPath = new vscode.ThemeIcon('file-code');
       item.contextValue = 'repodoc.feature';
@@ -109,7 +120,8 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
       return item;
     }
     const item = new vscode.TreeItem(node.title, vscode.TreeItemCollapsibleState.None);
-    item.id = `card:${node.boardId}:${node.cardId}`;
+    // Keyed by position, not id — see the feature node above.
+    item.id = `card:${node.boardId}:${node.columnId}:${node.index}`;
     item.tooltip = node.title;
     item.iconPath = new vscode.ThemeIcon('circle-filled', priorityColor(node.priority));
     item.contextValue = 'repodoc.card';
@@ -150,9 +162,11 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
       return column.cardIds
         .map((id) => board.cards[id])
         .filter((card) => !!card)
-        .map((card) => ({
+        .map((card, index) => ({
           kind: 'feature' as const,
           setId: element.setId,
+          columnId: element.columnId,
+          index,
           featureId: card.id,
           title: card.title,
         }));
@@ -179,13 +193,14 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
       return column.cardIds
         .map((id) => board.cards[id])
         .filter((card) => !!card)
-        .map((card) => ({
+        .map((card, index) => ({
           kind: 'card' as const,
           boardId: element.boardId,
+          columnId: element.columnId,
+          index,
           cardId: card.id,
           title: card.title,
           ...(card.priority !== undefined ? { priority: card.priority } : {}),
-          ...(card.agent !== undefined ? { agent: card.agent } : {}),
         }));
     }
     return [];

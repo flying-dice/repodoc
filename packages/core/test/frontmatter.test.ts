@@ -136,3 +136,11 @@ describe('frontmatter.serialize', () => {
     assert.deepStrictEqual(parsed.data['files'], ['a,b', 'c]d']);
   });
 });
+
+describe('serializeFrontmatter — newline safety', () => {
+  test('a newline inside a scalar or array item can never become a new key', () => {
+    const out = serializeFrontmatter({ status: 'x\ncolumn: done', labels: ['a\r\nb'] }, '');
+    assert.strictEqual(out, '---\nstatus: x column: done\nlabels: [a b]\n---\n');
+    assert.strictEqual(parseFrontmatter(out).data['column'], undefined);
+  });
+});

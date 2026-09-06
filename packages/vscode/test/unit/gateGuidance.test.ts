@@ -1,15 +1,7 @@
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import type { Column, GateResult } from '@repodoc/core';
-import {
-  collectGatePrompts,
-  defaultGatePrompt,
-  gateKind,
-  gatePromptKey,
-  gatePromptText,
-  nextColumnId,
-  toBlockedGate,
-} from '../../src/panels/gateGuidance';
+import { type Column, defaultGatePrompt, type GateResult, gatePromptText } from '@repodoc/core';
+import { collectGatePrompts, gatePromptKey, toBlockedGate } from '../../src/panels/gateGuidance';
 
 describe('defaultGatePrompt', () => {
   test('script gates get the CLI’s gate-pass wording', () => {
@@ -45,16 +37,8 @@ describe('defaultGatePrompt', () => {
   });
 });
 
-describe('gateKind', () => {
-  test('script wins, field otherwise, malformed gates read as field', () => {
-    assert.strictEqual(gateKind({ id: 'a', script: 's' }), 'script');
-    assert.strictEqual(gateKind({ id: 'b', field: 'f' }), 'field');
-    assert.strictEqual(gateKind({ id: 'c' }), 'field');
-  });
-});
-
 describe('toBlockedGate', () => {
-  test('carries label, reason, kind and everything the action row needs', () => {
+  test('carries label, reason and everything the action row needs', () => {
     const result: GateResult = {
       gate: { id: 'tests', label: 'Tests pass', script: 'bun run test' },
       satisfied: false,
@@ -63,9 +47,7 @@ describe('toBlockedGate', () => {
     assert.deepStrictEqual(toBlockedGate(result), {
       id: 'tests',
       label: 'Tests pass',
-      satisfied: false,
       reason: 'no recorded green run of `bun run test`',
-      kind: 'script',
       script: 'bun run test',
       // `field` / `check` are absent (not undefined-valued) for a script gate.
       prompt: 'Run `bun run test` and, only if it exits 0, record the result with gate-pass.',
@@ -79,24 +61,7 @@ describe('toBlockedGate', () => {
       reason: 'peer-reviewed = true (currently: unset)',
     });
     assert.strictEqual(gate.label, 'peer-reviewed');
-    assert.strictEqual(gate.kind, 'field');
     assert.strictEqual(gate.check, '= true');
-  });
-});
-
-describe('nextColumnId', () => {
-  const cols = ['todo', 'doing', 'review', 'done'];
-
-  test('returns the column after the current one', () => {
-    assert.strictEqual(nextColumnId(cols, 'todo'), 'doing');
-    assert.strictEqual(nextColumnId(cols, 'review'), 'done');
-  });
-
-  test('the last column, an unknown column and no column have no next', () => {
-    assert.strictEqual(nextColumnId(cols, 'done'), undefined);
-    assert.strictEqual(nextColumnId(cols, 'nope'), undefined);
-    assert.strictEqual(nextColumnId(cols, undefined), undefined);
-    assert.strictEqual(nextColumnId([], 'todo'), undefined);
   });
 });
 

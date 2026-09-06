@@ -13,14 +13,27 @@ export { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
 export { SystemClock } from './adapters/systemClock';
 export type { BoardConfig, ConfigColumn } from './boardConfig';
 export {
+  DEFAULT_COLUMN_COLOR,
   DEFAULT_LABELS,
   defaultColumns,
   normalizeBoardConfig,
   RESERVED_CARD_KEYS,
+  readBoardConfigFile,
+  toColumns,
 } from './boardConfig';
+export type { BodySection } from './cardBody';
+export {
+  appendChecklistLine,
+  appendCommentLine,
+  appendSection,
+  findSection,
+  replaceDescription,
+  replaceTitle,
+  upsertGateLine,
+} from './cardBody';
 export type { CardEntry } from './cardParse';
 export { findChecklist, findComments, findGates, parseCard } from './cardParse';
-export { DecisionStore } from './decisions';
+export { DECISION_STATUSES, DecisionStore } from './decisions';
 export { DocStore } from './docs';
 export type { ParsedFeature, ParsedScenario } from './featureParse';
 export {
@@ -32,8 +45,14 @@ export {
 } from './featureParse';
 export { defaultFeatureColumns, FeatureStore, writeStatusTag } from './features';
 export { parseFrontmatter, serializeFrontmatter } from './frontmatter';
-export { checkValue, evaluateGates, evaluateTransition } from './gates';
-export { pad, slugFromFileName, slugify, titleCase } from './naming';
+export {
+  checkValue,
+  defaultGatePrompt,
+  evaluateGates,
+  evaluateTransition,
+  gatePromptText,
+} from './gates';
+export { pad, slugFromFileName, slugify, titleCase, uniqueSlug } from './naming';
 export { computeCardOrder } from './ordering';
 export * from './ports';
 export { formatRef } from './refs';
@@ -41,6 +60,6 @@ export { seedBoardConfig } from './seed';
 export { SKILL_MD, SKILL_NAME } from './skillContent';
 export type { AgentKind } from './skillManager';
 export { SKILL_TARGETS, SkillManager } from './skillManager';
-export type { AddCardResult, CardMetaPatch, MoveCardResult, StoreError } from './store';
+export type { CardMetaPatch } from './store';
 export { RepoDocStore } from './store';
 export * from './types';

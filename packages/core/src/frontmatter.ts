@@ -143,7 +143,10 @@ function serializeValue(value: unknown): string {
   return serializeString(String(value), false);
 }
 
-function serializeString(s: string, inArray: boolean): string {
+function serializeString(raw: string, inArray: boolean): string {
+  // The frontmatter format is one key per line; a newline inside a scalar
+  // would become a new key on re-read. Collapse it so no caller can inject one.
+  const s = raw.replace(/[\r\n]+/g, ' ');
   if (needsQuote(s, inArray)) {
     return `"${s.replace(/"/g, '\\"')}"`;
   }

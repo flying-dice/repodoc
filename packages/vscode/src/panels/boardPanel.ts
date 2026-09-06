@@ -1,13 +1,12 @@
-import * as path from 'node:path';
-import type { CardMetaPatch, CustomFieldValue, Priority, RepoDocStore } from '@repodoc/core';
+import type { CardMetaPatch, CustomFieldValue, Priority } from '@repodoc/core';
 import * as vscode from 'vscode';
-import { type BoardSource, CardBoardSource } from './boardSource';
+import { openRepoFile } from '../repoFiles';
+import type { BoardSource } from './boardSource';
 import { renderMarkdownWithDiagrams } from './diagrams';
 import { collectGatePrompts, toBlockedGate } from './gateGuidance';
 import { localIdentity } from './identity';
 import { plantUmlServer } from './plantUml';
 import type {
-  BoardCapabilities,
   DataMessage,
   MoveBlockedMessage,
   OpenCardMessage,
@@ -34,7 +33,8 @@ export class BoardPanel {
   private constructor(
     private readonly panel: vscode.WebviewPanel,
     private readonly extensionUri: vscode.Uri,
-    private readonly store: RepoDocStore,
+    /** Workspace root — used only to resolve files and the comment author. */
+    private readonly root: string | undefined,
     private readonly source: BoardSource,
   ) {
     this.panel.webview.html = this.getHtml(this.panel.webview);
@@ -50,7 +50,7 @@ export class BoardPanel {
 
   public static createOrShow(
     extensionUri: vscode.Uri,
-    store: RepoDocStore,
+    root: string | undefined,
     source: BoardSource,
   ): void {
     const key = panelKey(source.kind, source.id);
@@ -75,7 +75,7 @@ export class BoardPanel {
       },
     );
 
-    BoardPanel.panels.set(key, new BoardPanel(panel, extensionUri, store, source));
+    BoardPanel.panels.set(key, new BoardPanel(panel, extensionUri, root, source));
   }
 
   /** Re-post data to every open panel and refresh panel titles. */
@@ -118,13 +118,14 @@ export class BoardPanel {
    */
   public static revealCard(
     extensionUri: vscode.Uri,
-    store: RepoDocStore,
-    boardId: string,
+    root: string | undefined,
+    source: BoardSource,
     cardId: string,
   ): void {
+    const boardId = source.id;
     const key = panelKey('board', boardId);
     const existed = BoardPanel.panels.has(key);
-    BoardPanel.createOrShow(extensionUri, store, new CardBoardSource(store, boardId));
+    BoardPanel.createOrShow(extensionUri, root, source);
     const panel = BoardPanel.panels.get(key);
     if (!panel) {
       return;
@@ -200,27 +201,13 @@ export class BoardPanel {
       descHtml,
       commentHtml,
       readingWidth: resolveReadingWidth(),
-      commentAuthor: resolveCommentAuthor(this.store.root),
-      capabilities: this.capabilities(),
+      commentAuthor: resolveCommentAuthor(this.root),
+      capabilities: this.source.capabilities,
       cardFiles,
       gatePromptHtml,
       columnPromptHtml,
     };
     void this.panel.webview.postMessage(message);
-  }
-
-  /** The optional {@link BoardSource} methods this surface implements. */
-  private capabilities(): BoardCapabilities {
-    return {
-      comments: this.source.addComment !== undefined,
-      fields: this.source.setCardField !== undefined,
-      checklist: this.source.toggleChecklistItem !== undefined,
-      checklistAdd: this.source.addChecklistItem !== undefined,
-      addColumn: this.source.addColumn !== undefined,
-      meta: this.source.updateCardMeta !== undefined,
-      description: this.source.setCardDescription !== undefined,
-      gateEvidence: this.source.recordGateEvidence !== undefined,
-    };
   }
 
   private onMessage(msg: unknown): void {
@@ -280,7 +267,7 @@ export class BoardPanel {
           const text = m['text'].trim();
           const who = sanitizeAuthor(typeof m['who'] === 'string' ? m['who'] : '');
           if (text && this.source.addComment) {
-            const author = who || resolveCommentAuthor(this.store.root);
+            const author = who || resolveCommentAuthor(this.root);
             this.source.addComment(m['cardId'], author, text);
             // Persist an edited name so it sticks across sessions.
             const config = vscode.workspace.getConfiguration('repodoc');
@@ -360,12 +347,15 @@ export class BoardPanel {
           typeof m['result'] === 'string'
         ) {
           const result = m['result'].replace(/[\r\n]/g, ' ').trim();
-          if (result) {
+          // The gate id is written into the card body, so it must name a gate
+          // the board declares — never free text from the webview.
+          const gateId = this.knownGateId(m['gateId']);
+          if (result && gateId !== undefined) {
             this.source.recordGateEvidence?.(
               m['cardId'],
-              m['gateId'],
+              gateId,
               result,
-              resolveCommentAuthor(this.store.root),
+              resolveCommentAuthor(this.root),
             );
           }
         }
@@ -380,6 +370,20 @@ export class BoardPanel {
       default:
         break;
     }
+  }
+
+  /**
+   * `raw` (CR/LF stripped) when it names a gate declared on one of the board's
+   * columns, else undefined. Recording evidence for anything else would let the
+   * webview write arbitrary lines into a card's `## Gates` section.
+   */
+  private knownGateId(raw: string): string | undefined {
+    const gateId = raw.replace(/[\r\n]/g, '');
+    const columns = this.source.getBoard()?.columns ?? [];
+    const declared = columns.some((column) =>
+      [...(column.enter ?? []), ...(column.exit ?? [])].some((gate) => gate.id === gateId),
+    );
+    return declared ? gateId : undefined;
   }
 
   /**
@@ -425,7 +429,7 @@ export class BoardPanel {
         return;
       }
       // Same identity rule as comments, so both hosts write the same name.
-      const who = resolveCommentAuthor(this.store.root);
+      const who = resolveCommentAuthor(this.root);
       for (const r of blocking) {
         this.source.recordGateOverride(cardId, r.gate.id, who, why);
       }
@@ -435,32 +439,14 @@ export class BoardPanel {
 
   /**
    * Open a repo file referenced from a comment link and reveal an optional line
-   * range. The path is resolved against — and containment-checked to — the store
-   * root; anything outside it (or any failure) is ignored with a warning.
+   * range — through the same containment-checked helper the commands use.
    */
   private async openFile(rel: string, line?: number, endLine?: number): Promise<void> {
-    const root = this.store.root;
-    if (!root) {
-      return;
-    }
-    try {
-      const rootResolved = path.resolve(root);
-      const abs = path.resolve(rootResolved, rel);
-      if (abs !== rootResolved && !abs.startsWith(rootResolved + path.sep)) {
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
-      const editor = await vscode.window.showTextDocument(doc);
-      if (line !== undefined) {
-        const start = new vscode.Position(Math.max(0, line - 1), 0);
-        const end = new vscode.Position(Math.max(0, endLine ?? line), 0);
-        const selection = new vscode.Selection(start, end);
-        editor.selection = selection;
-        editor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
-      }
-    } catch {
-      void vscode.window.showWarningMessage(`RepoDoc: could not open ${rel}`);
-    }
+    await openRepoFile(
+      this.root,
+      rel,
+      line === undefined ? undefined : { line, ...(endLine === undefined ? {} : { endLine }) },
+    );
   }
 
   private async promptAddColumn(): Promise<void> {
@@ -522,7 +508,9 @@ function sanitizeMetaPatch(raw: Record<string, unknown>): CardMetaPatch | undefi
     patch.labels = null;
     any = true;
   } else if (Array.isArray(raw['labels']) && raw['labels'].every((l) => typeof l === 'string')) {
-    patch.labels = raw['labels'] as string[];
+    // Labels are written as one frontmatter line; a newline in one would forge
+    // another key, so each is flattened exactly as the title is.
+    patch.labels = (raw['labels'] as string[]).map((l) => l.replace(/[\r\n]/g, ' ').trim());
     any = true;
   }
   if (raw['priority'] === null) {

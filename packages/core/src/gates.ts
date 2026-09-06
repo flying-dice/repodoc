@@ -13,6 +13,23 @@
 
 import type { Card, Column, CustomFieldValue, GateDef, GateResult } from './types';
 
+/**
+ * The instructions shown for a gate that declares no `prompt` of its own. Owned
+ * by core so the CLI's refusal text and the VS Code blocked-move dialog tell a
+ * reader the same thing.
+ */
+export function defaultGatePrompt(gate: GateDef): string {
+  if (gate.script) {
+    return `Run \`${gate.script}\` and, only if it exits 0, record the result with gate-pass.`;
+  }
+  return `Set the \`${gate.field}\` field so that it satisfies \`${gate.check ?? 'nonempty'}\`.`;
+}
+
+/** The gate's own prompt when authored, else the shared default wording. */
+export function gatePromptText(gate: GateDef): string {
+  return gate.prompt ?? defaultGatePrompt(gate);
+}
+
 /** Evaluates each gate against the card, in order. */
 export function evaluateGates(card: Card, gates: GateDef[]): GateResult[] {
   return gates.map((gate) => evaluateGate(card, gate));

@@ -148,7 +148,7 @@ export class MarkdownPanel {
       headingEnd === -1
         ? meta + bodyHtml
         : bodyHtml.slice(0, headingEnd + 5) + meta + bodyHtml.slice(headingEnd + 5);
-    const fileCrumb = `decisions/${decision.file}`;
+    const fileCrumb = this.store.decisionFilePath(decision.id) ?? decision.file;
     this.panel.title = MarkdownPanel.truncate(`ADR-${decision.num} — ${decision.title}`, 60);
     this.panel.webview.html = this.wrap(
       'Decisions',

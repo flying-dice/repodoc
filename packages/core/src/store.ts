@@ -1,25 +1,34 @@
 import {
   type BoardConfig,
+  DEFAULT_COLUMN_COLOR,
   DEFAULT_LABELS,
   defaultColumns,
-  normalizeBoardConfig,
+  readBoardConfigFile,
+  toColumns,
 } from './boardConfig';
+import {
+  appendChecklistLine,
+  appendCommentLine,
+  replaceDescription,
+  replaceTitle,
+  upsertGateLine,
+} from './cardBody';
 import { type CardEntry, findChecklist, parseCard } from './cardParse';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
 import { FeatureStore } from './features';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { evaluateTransition } from './gates';
-import { pad, slugFromFileName, slugify, titleCase } from './naming';
+import { pad, slugFromFileName, slugify, titleCase, uniqueSlug } from './naming';
 import { computeCardOrder } from './ordering';
 import type { ClockPort, Disposable, FileSystemPort } from './ports';
 import { formatRef } from './refs';
 import { seedBoardConfig } from './seed';
 import type {
+  AddCardResult,
   BoardData,
   BoardRef,
   Card,
-  Column,
   CustomFieldDef,
   CustomFieldValue,
   DecisionRecord,
@@ -27,21 +36,10 @@ import type {
   FeatureRecord,
   FeatureSetRef,
   GateResult,
+  MoveCardResult,
   Priority,
   RepoDocConfig,
 } from './types';
-
-/** Why a store mutation was refused. Mutations never throw for these. */
-export type StoreError =
-  | { code: 'unknown-board'; boardId: string }
-  | { code: 'unknown-card'; cardId: string }
-  | { code: 'unknown-column'; columnId: string }
-  | { code: 'duplicate-slugs'; slug: string }
-  | { code: 'unreadable-card'; cardId: string };
-
-export type MoveCardResult = { ok: true } | { ok: false; error: StoreError };
-
-export type AddCardResult = { ok: true; cardId: string } | { ok: false; error: StoreError };
 
 /**
  * The reserved, host-editable card metadata. `undefined` leaves a key alone;
@@ -142,6 +140,22 @@ export class RepoDocStore {
     return `boards/${boardId}/`;
   }
 
+  /** Path of a board's `.config.json` relative to the root, for hosts that open it. */
+  configFilePath(boardId: string): string {
+    return this.configPath(boardId);
+  }
+
+  /** Path of a feature set's `.config.json` relative to the root. */
+  featureSetConfigFilePath(setId: string): string {
+    return this.features.configFilePath(setId);
+  }
+
+  /** Path of a decision file relative to the root; undefined for an unknown id. */
+  decisionFilePath(id: string): string | undefined {
+    const record = this.decisions.get(id);
+    return record ? `decisions/${record.file}` : undefined;
+  }
+
   private configPath(boardId: string): string {
     return `boards/${boardId}/.config.json`;
   }
@@ -153,15 +167,7 @@ export class RepoDocStore {
   }
 
   private readConfig(boardId: string): BoardConfig {
-    const raw = this.fs.readFile(this.configPath(boardId));
-    if (raw === undefined) {
-      return normalizeBoardConfig(undefined, boardId);
-    }
-    try {
-      return normalizeBoardConfig(JSON.parse(raw), boardId);
-    } catch {
-      return normalizeBoardConfig(undefined, boardId);
-    }
+    return readBoardConfigFile(this.fs, this.configPath(boardId), boardId);
   }
 
   // ---- boards ----
@@ -188,31 +194,17 @@ export class RepoDocStore {
       return undefined;
     }
     const config = this.readConfig(id);
-    const columns: Column[] = config.columns.map((c) => {
-      const column: Column = {
-        id: c.id,
-        name: c.name || titleCase(c.id),
-        color: c.color || '#7d828b',
-        cardIds: [],
-      };
-      if (c.wip !== undefined) {
-        column.wip = c.wip;
-      }
-      if (c.enter !== undefined) {
-        column.enter = c.enter;
-      }
-      if (c.exit !== undefined) {
-        column.exit = c.exit;
-      }
-      if (c.prompt !== undefined) {
-        column.prompt = c.prompt;
-      }
-      return column;
-    });
+    const columns = toColumns(config);
     const byId = new Map(columns.map((c) => [c.id, c]));
 
     const cards: Record<string, Card> = {};
     for (const entry of this.readBoardCards(id)) {
+      if (cards[entry.slug] !== undefined) {
+        // Two files share this id (e.g. 01-foo.md and 02-foo.md). The first in
+        // file-name order owns the id; listing the rest would put one id in two
+        // places, which hosts key their UI by. Renaming resolves it.
+        continue;
+      }
       cards[entry.slug] = entry.card;
       // Unknown/missing column falls back to the first column so cards are
       // never invisible.
@@ -246,21 +238,16 @@ export class RepoDocStore {
       return { ok: false, error: { code: 'unknown-column', columnId } };
     }
     const entries = this.readBoardCards(boardId);
-    const taken = new Set(entries.map((e) => e.slug));
-    const base = slugify(title, 'card');
-    let slug = base;
-    let suffix = 2;
-    while (taken.has(slug)) {
-      slug = `${base}-${suffix}`;
-      suffix++;
-    }
+    const slug = uniqueSlug(slugify(title, 'card'), new Set(entries.map((e) => e.slug)));
     const maxNum = entries.reduce((max, e) => Math.max(max, e.num ?? 0), 0);
     const num = maxNum + 1;
     const width = Math.max(2, String(num).length);
     const fileName = `${pad(num, width)}-${slug}.md`;
 
     const data: Record<string, unknown> = { column: columnId, updatedAt: this.now() };
-    const body = `# ${title.trim()}\n`;
+    // The title becomes the body's `# ` heading; a newline in it would forge a
+    // section, so it is collapsed exactly as replaceTitle collapses one.
+    const body = `# ${title.replace(/\s+/g, ' ').trim()}\n`;
     this.fs.writeFile(`boards/${boardId}/${fileName}`, serializeFrontmatter(data, body));
     this.fire();
     return { ok: true, cardId: slug };
@@ -269,7 +256,7 @@ export class RepoDocStore {
   addColumn(boardId: string, name: string): void {
     const config = this.readConfig(boardId);
     const id = slugify(name);
-    config.columns.push({ id, name: name.trim() || titleCase(id), color: '#7d828b' });
+    config.columns.push({ id, name: name.trim() || titleCase(id), color: DEFAULT_COLUMN_COLOR });
     this.writeConfig(boardId, config);
   }
 
@@ -327,34 +314,26 @@ export class RepoDocStore {
    * status, progress) in one read-modify-write. The title is the body's first
    * `# ` heading, which is rewritten in place (or inserted when missing).
    * Returns whether the card exists; an empty patch still stamps `updatedAt`.
+   *
+   * Every written scalar is collapsed to one line: frontmatter is `key: value`
+   * per line, so a value carrying a newline could otherwise forge another key
+   * (e.g. a status of "busy\ncolumn: done" would move the card).
    */
   updateCardMeta(boardId: string, cardId: string, patch: CardMetaPatch): boolean {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
-    if (!fileName) {
-      return false;
-    }
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => {
-      applyMetaKey(data, 'labels', patch.labels);
+    return this.updateCard(boardId, cardId, (data, body) => {
+      applyMetaKey(data, 'labels', patch.labels?.map(oneLine) ?? patch.labels);
       applyMetaKey(data, 'priority', patch.priority);
-      applyMetaKey(data, 'agent', patch.agent);
+      applyMetaKey(data, 'agent', oneLineOrKeep(patch.agent));
       applyMetaKey(data, 'live', patch.live);
-      applyMetaKey(data, 'status', patch.status);
+      applyMetaKey(data, 'status', oneLineOrKeep(patch.status));
       applyMetaKey(data, 'progress', patch.progress);
       const nextBody = patch.title === undefined ? body : replaceTitle(body, patch.title);
       return { data, body: nextBody };
     });
-    if (changed) {
-      this.fire();
-    }
-    return changed;
   }
 
   toggleChecklistItem(boardId: string, cardId: string, itemIndex: number): void {
-    const fileName = this.cardFileNames(boardId).find((name) => slugFromFileName(name) === cardId);
-    if (!fileName) {
-      return;
-    }
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => {
+    this.updateCard(boardId, cardId, (data, body) => {
       const { indices } = findChecklist(body);
       if (itemIndex < 0 || itemIndex >= indices.length) {
         return undefined; // out of range — leave the file untouched
@@ -370,9 +349,6 @@ export class RepoDocStore {
       );
       return { data, body: bodyLines.join('\n') };
     });
-    if (changed) {
-      this.fire();
-    }
   }
 
   /**
@@ -384,18 +360,10 @@ export class RepoDocStore {
    * Returns whether the card exists.
    */
   addChecklistItem(boardId: string, cardId: string, text: string): boolean {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
-    if (!fileName) {
-      return false;
-    }
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => ({
+    return this.updateCard(boardId, cardId, (data, body) => ({
       data,
       body: appendChecklistLine(body, text),
     }));
-    if (changed) {
-      this.fire();
-    }
-    return changed;
   }
 
   /**
@@ -407,18 +375,10 @@ export class RepoDocStore {
    * `updatedAt` and fires. Returns whether the card exists.
    */
   setCardDescription(boardId: string, cardId: string, text: string): boolean {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
-    if (!fileName) {
-      return false;
-    }
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => ({
+    return this.updateCard(boardId, cardId, (data, body) => ({
       data,
       body: replaceDescription(body, text),
     }));
-    if (changed) {
-      this.fire();
-    }
-    return changed;
   }
 
   // ---- custom fields ----
@@ -447,11 +407,7 @@ export class RepoDocStore {
       }
       write = coerced.value; // may be undefined for an empty multiselect
     }
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
-    if (!fileName) {
-      return;
-    }
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => {
+    this.updateCard(boardId, cardId, (data, body) => {
       if (write === undefined) {
         delete data[fieldId];
       } else {
@@ -459,9 +415,6 @@ export class RepoDocStore {
       }
       return { data, body };
     });
-    if (changed) {
-      this.fire();
-    }
   }
 
   // ---- comments ----
@@ -474,18 +427,11 @@ export class RepoDocStore {
    * Stamps `updatedAt` and fires; an unknown card is a silent no-op.
    */
   addComment(boardId: string, cardId: string, who: string, text: string): void {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
-    if (!fileName) {
-      return;
-    }
     const at = this.now();
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => ({
+    this.updateCard(boardId, cardId, (data, body) => ({
       data,
       body: appendCommentLine(body, who, at, text),
     }));
-    if (changed) {
-      this.fire();
-    }
   }
 
   // ---- gates ----
@@ -541,18 +487,10 @@ export class RepoDocStore {
   }
 
   private recordGate(boardId: string, cardId: string, gateId: string, note: string): boolean {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
-    if (!fileName) {
-      return false;
-    }
-    const changed = this.updateCardFile(boardId, fileName, (data, body) => ({
+    return this.updateCard(boardId, cardId, (data, body) => ({
       data,
       body: upsertGateLine(body, gateId, note),
     }));
-    if (changed) {
-      this.fire();
-    }
-    return changed;
   }
 
   // ---- card file helpers ----
@@ -586,6 +524,32 @@ export class RepoDocStore {
       .listDir(`boards/${boardId}`)
       .filter((e) => e.kind === 'file' && !e.name.startsWith('.') && /\.md$/i.test(e.name))
       .map((e) => e.name);
+  }
+
+  /**
+   * Read-modify-write the file behind `cardId`: resolves the card's file name,
+   * applies `mutate` through {@link updateCardFile} and fires on a write.
+   * Returns whether the card was written — false for an unknown card, an
+   * unreadable file, or a `mutate` that declined. Every card mutator goes
+   * through here so "resolve, write, notify" exists once.
+   */
+  private updateCard(
+    boardId: string,
+    cardId: string,
+    mutate: (
+      data: Record<string, unknown>,
+      body: string,
+    ) => { data: Record<string, unknown>; body: string } | undefined,
+  ): boolean {
+    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
+    if (!fileName) {
+      return false;
+    }
+    const changed = this.updateCardFile(boardId, fileName, mutate);
+    if (changed) {
+      this.fire();
+    }
+    return changed;
   }
 
   /**
@@ -781,6 +745,20 @@ export class RepoDocStore {
   }
 }
 
+/**
+ * Collapses any CR/LF run in a frontmatter scalar to a single space. Card
+ * frontmatter is one `key: value` per line, so an unfiltered newline in a value
+ * forges a second key — a "status" of "busy\ncolumn: done" would move the card.
+ */
+function oneLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ');
+}
+
+/** {@link oneLine} for a patch value, leaving `null` / `undefined` alone. */
+function oneLineOrKeep<T>(value: T): T | string {
+  return typeof value === 'string' ? oneLine(value) : value;
+}
+
 /** Applies one {@link CardMetaPatch} key: undefined → keep, null → remove, else set. */
 function applyMetaKey(data: Record<string, unknown>, key: string, value: unknown): void {
   if (value === undefined) {
@@ -791,18 +769,6 @@ function applyMetaKey(data: Record<string, unknown>, key: string, value: unknown
   } else {
     data[key] = value;
   }
-}
-
-/** Rewrites the body's first `# ` heading to `title`, inserting one when absent. */
-function replaceTitle(body: string, title: string): string {
-  const lines = body.split('\n');
-  const idx = lines.findIndex((l) => /^#\s+/.test(l));
-  const heading = `# ${title.replace(/\s+/g, ' ').trim()}`;
-  if (idx === -1) {
-    return `${heading}\n${body.startsWith('\n') || body === '' ? '' : '\n'}${body}`;
-  }
-  lines[idx] = heading;
-  return lines.join('\n');
 }
 
 /** Formats a value as the on-disk JSON file content (pretty, trailing newline). */
@@ -823,7 +789,7 @@ function coerceFieldValue(
     case 'text':
     case 'date':
     case 'select':
-      return typeof value === 'string' ? { value } : undefined;
+      return typeof value === 'string' ? { value: oneLine(value) } : undefined;
     case 'number':
       return typeof value === 'number' && Number.isFinite(value) ? { value } : undefined;
     case 'boolean':
@@ -831,9 +797,9 @@ function coerceFieldValue(
     case 'multiselect': {
       let arr: string[] | undefined;
       if (typeof value === 'string') {
-        arr = [value];
+        arr = [oneLine(value)];
       } else if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
-        arr = value;
+        arr = value.map(oneLine);
       } else {
         return undefined;
       }
@@ -842,190 +808,4 @@ function coerceFieldValue(
     default:
       return undefined;
   }
-}
-
-/**
- * Appends a journal entry to the card body's `## Comments` section. The entry is
- * `- **<who>** (<at>): <text>` with any continuation lines of a multi-line text
- * indented two spaces. An existing section gets the entry appended after its
- * last non-blank line; when absent, a `## Comments` section is created at the
- * end of the body (which is after any `## Gates` section). Other bytes are kept.
- */
-function appendCommentLine(body: string, who: string, at: string, text: string): string {
-  const textLines = text.split('\n');
-  // Continuations are indented two spaces; blank paragraph breaks stay truly
-  // empty (the parser keeps them inside the entry when a continuation follows).
-  const block = [
-    `- **${who}** (${at}): ${textLines[0]}`,
-    ...textLines.slice(1).map((l) => (l.trim() === '' ? '' : `  ${l}`)),
-  ].join('\n');
-
-  const lines = body.split('\n');
-  const headingIdx = lines.findIndex((l) => /^##\s+comments\s*$/i.test(l));
-  if (headingIdx === -1) {
-    const trimmed = body.replace(/\s+$/, '');
-    const prefix = trimmed.length ? `${trimmed}\n\n` : '';
-    return `${prefix}## Comments\n\n${block}\n`;
-  }
-
-  // Section spans from the heading to the next heading (or end of body).
-  let end = lines.length;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    if (/^#{1,6}\s+/.test(lines[i] ?? '')) {
-      end = i;
-      break;
-    }
-  }
-  let insertAt = end;
-  while (insertAt > headingIdx + 1 && lines[insertAt - 1]?.trim() === '') {
-    insertAt--;
-  }
-  lines.splice(insertAt, 0, block);
-  return lines.join('\n');
-}
-
-/**
- * Appends `- [ ] <text>` to the card body's `## Checklist` section, after its
- * last non-blank line. When absent, a `## Checklist` section is inserted
- * right before the first `## Gates` / `## Comments` heading (or at the end of
- * the body when there is neither) — RepoDoc's mandated section order is
- * Checklist, Gates, Comments. `text` is collapsed to a single line. Other
- * bytes are preserved.
- */
-function appendChecklistLine(body: string, text: string): string {
-  const line = `- [ ] ${text.replace(/\s+/g, ' ').trim()}`;
-  const lines = body.split('\n');
-
-  const headingIdx = lines.findIndex((l) => /^##\s+checklist\s*$/i.test(l));
-  if (headingIdx !== -1) {
-    // Section spans from the heading to the next heading (or end of body).
-    let end = lines.length;
-    for (let i = headingIdx + 1; i < lines.length; i++) {
-      if (/^#{1,6}\s+/.test(lines[i] ?? '')) {
-        end = i;
-        break;
-      }
-    }
-    let insertAt = end;
-    while (insertAt > headingIdx + 1 && lines[insertAt - 1]?.trim() === '') {
-      insertAt--;
-    }
-    lines.splice(insertAt, 0, line);
-    return lines.join('\n');
-  }
-
-  // No existing section — insert a new one before Gates/Comments, else at the end.
-  let sectionIdx = lines.length;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+(gates|comments)\s*$/i.test(lines[i] ?? '')) {
-      sectionIdx = i;
-      break;
-    }
-  }
-  const before = lines.slice(0, sectionIdx);
-  while (before.length && before[before.length - 1]?.trim() === '') {
-    before.pop();
-  }
-  const after = lines.slice(sectionIdx);
-
-  const out: string[] = [...before];
-  if (out.length) {
-    out.push('');
-  }
-  out.push('## Checklist', '', line);
-  if (after.length) {
-    out.push('', ...after);
-  } else {
-    out.push('');
-  }
-  return out.join('\n');
-}
-
-/**
- * Replaces the body text between the `# ` title line and the first `## `
- * heading (or end of body) with `text`, trimmed and surrounded by a single
- * blank line on each side. A body with no `# ` heading treats position 0 as
- * the start of the description. Empty `text` removes the description
- * entirely. All other bytes are preserved.
- */
-function replaceDescription(body: string, text: string): string {
-  const clean = text.trim();
-  const lines = body.split('\n');
-  const titleIdx = lines.findIndex((l) => /^#\s+/.test(l));
-  const start = titleIdx === -1 ? 0 : titleIdx + 1;
-  let end = lines.length;
-  for (let i = start; i < lines.length; i++) {
-    if (/^##\s+/.test(lines[i] ?? '')) {
-      end = i;
-      break;
-    }
-  }
-  const before = lines.slice(0, start);
-  const after = lines.slice(end);
-  const middle = clean ? clean.split('\n') : [];
-
-  const groups = [before, middle, after].filter((g) => g.length > 0);
-  const parts: string[] = [];
-  groups.forEach((g, i) => {
-    if (i > 0) {
-      parts.push('');
-    }
-    parts.push(...g);
-  });
-  if (after.length === 0 && parts[parts.length - 1] !== '') {
-    parts.push(''); // keep the body's trailing newline
-  }
-  return parts.join('\n');
-}
-
-const GATE_SEPARATOR = ' — ';
-
-/**
- * Inserts or replaces a done `- [x] <gateId> — <note>` line in the card body's
- * `## Gates` section. An existing line for the gate is replaced in place; a new
- * gate is appended to the end of the section. When there is no `## Gates`
- * section, one is appended at the end of the body. All other bytes are
- * preserved.
- */
-function upsertGateLine(body: string, gateId: string, note: string): string {
-  const line = `- [x] ${gateId}${GATE_SEPARATOR}${note}`;
-  const lines = body.split('\n');
-
-  const headingIdx = lines.findIndex((l) => /^##\s+gates\s*$/i.test(l));
-  if (headingIdx === -1) {
-    const trimmed = body.replace(/\s+$/, '');
-    const prefix = trimmed.length ? `${trimmed}\n\n` : '';
-    return `${prefix}## Gates\n\n${line}\n`;
-  }
-
-  // Section spans from the heading to the next heading (or end of body).
-  let end = lines.length;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    if (/^#{1,6}\s+/.test(lines[i] ?? '')) {
-      end = i;
-      break;
-    }
-  }
-
-  for (let i = headingIdx + 1; i < end; i++) {
-    const m = /^\s*-\s+\[([ xX])\]\s+(.*)$/.exec(lines[i] ?? '');
-    if (m?.[2] === undefined) {
-      continue;
-    }
-    const text = m[2].trim();
-    const sep = text.indexOf(GATE_SEPARATOR);
-    const existingId = sep === -1 ? text : text.slice(0, sep).trim();
-    if (existingId === gateId) {
-      lines[i] = line;
-      return lines.join('\n');
-    }
-  }
-
-  // Append after the section's last non-blank line.
-  let insertAt = end;
-  while (insertAt > headingIdx + 1 && lines[insertAt - 1]?.trim() === '') {
-    insertAt--;
-  }
-  lines.splice(insertAt, 0, line);
-  return lines.join('\n');
 }

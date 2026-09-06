@@ -9,6 +9,12 @@ import { markdownTitle, pad, slugify, stripNumPrefix } from './naming';
 import type { FileSystemPort } from './ports';
 import type { DecisionRecord } from './types';
 
+/**
+ * The decision statuses RepoDoc recognises, in workflow order. Owned by core so
+ * the CLI's `decision status` and the VS Code quick pick offer the same set.
+ */
+export const DECISION_STATUSES = ['Proposed', 'Accepted', 'Superseded'] as const;
+
 /** Parses one decision file's text into a record. Pure — no I/O. */
 export function parseDecisionText(fileName: string, content: string): DecisionRecord {
   const id = fileName.replace(/\.md$/i, '');

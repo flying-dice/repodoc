@@ -6,6 +6,7 @@ import type {
   RepoDocConfig,
   RepoDocStore,
 } from '@repodoc/core';
+import type { BoardCapabilities } from './protocol';
 
 /**
  * What the board webview needs from whatever it is showing. Two things render
@@ -13,13 +14,15 @@ import type {
  * in which mutations they support, so the panel talks to this interface instead
  * of to the store directly.
  *
- * The OPTIONAL methods are the capabilities: a source that cannot journal
- * comments simply does not implement `addComment`, and the panel tells the
- * webview to hide that affordance (see `capabilities` in protocol.ts).
+ * Each source DECLARES what it supports in `capabilities`; the panel forwards
+ * that to the webview, which hides the affordances a surface does not have. The
+ * matching methods are optional so a source only implements what it declares.
  */
 export interface BoardSource {
   readonly kind: 'board' | 'features';
   readonly id: string;
+  /** Which editing affordances this surface supports (see protocol.ts). */
+  readonly capabilities: BoardCapabilities;
   getBoard(): BoardData | undefined;
   getConfig(): RepoDocConfig;
   /** The data directory shown in the status bar, e.g. `boards/<id>/`. */
@@ -49,6 +52,18 @@ export interface BoardSource {
 /** A `boards/<id>/` card board — the full set of board behaviours. */
 export class CardBoardSource implements BoardSource {
   readonly kind = 'board' as const;
+
+  /** A card board supports every board behaviour. */
+  readonly capabilities: BoardCapabilities = {
+    comments: true,
+    fields: true,
+    checklist: true,
+    checklistAdd: true,
+    addColumn: true,
+    meta: true,
+    description: true,
+    gateEvidence: true,
+  };
 
   constructor(
     private readonly store: RepoDocStore,
@@ -132,6 +147,21 @@ export class CardBoardSource implements BoardSource {
  */
 export class FeatureSetSource implements BoardSource {
   readonly kind = 'features' as const;
+
+  /**
+   * A feature's content is owned by its `.feature` file, so the board surface
+   * offers no editing beyond moving (the `@status:` tag) and adding a file.
+   */
+  readonly capabilities: BoardCapabilities = {
+    comments: false,
+    fields: false,
+    checklist: false,
+    checklistAdd: false,
+    addColumn: false,
+    meta: false,
+    description: false,
+    gateEvidence: false,
+  };
 
   constructor(
     private readonly store: RepoDocStore,

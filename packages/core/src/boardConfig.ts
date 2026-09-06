@@ -5,7 +5,8 @@
  */
 
 import { titleCase } from './naming';
-import type { CustomFieldDef, CustomFieldType, GateDef, LabelDef } from './types';
+import type { FileSystemPort } from './ports';
+import type { Column, CustomFieldDef, CustomFieldType, GateDef, LabelDef } from './types';
 
 /** A configured column as stored in `.config.json` (no derived card list). */
 export interface ConfigColumn {
@@ -38,8 +39,8 @@ export const RESERVED_CARD_KEYS: ReadonlySet<string> = new Set<string>([
   'column',
   'labels',
   'priority',
-  // 'agent' is legacy/reserved — the assignee concept was removed, but the key
-  // stays reserved so a custom field can never claim it.
+  // Free text naming who is working the card (see Card.agent) — reserved so a
+  // custom field can never claim it.
   'agent',
   'live',
   'status',
@@ -68,10 +69,13 @@ export const DEFAULT_LABELS: Record<string, LabelDef> = {
   perf: { name: 'perf', color: '#c9a227' },
 };
 
+/** Column dot color used when a config column declares none. */
+export const DEFAULT_COLUMN_COLOR = '#7d828b';
+
 /** The 5 default board columns, matching the design mock. */
 export function defaultColumns(): ConfigColumn[] {
   return [
-    { id: 'backlog', name: 'Backlog', color: '#7d828b' },
+    { id: 'backlog', name: 'Backlog', color: DEFAULT_COLUMN_COLOR },
     { id: 'todo', name: 'To Do', color: '#4c8bf5' },
     { id: 'doing', name: 'In Progress', color: '#5cd68a', wip: 3 },
     { id: 'review', name: 'In Review', color: '#d99a30' },
@@ -104,6 +108,56 @@ export function normalizeBoardConfig(parsed: unknown, boardId: string): BoardCon
     labels: cleanDefMap<LabelDef>(p['labels']),
     fields: normalizeFields(p['fields']),
   };
+}
+
+/**
+ * Reads and normalizes a `.config.json` through the {@link FileSystemPort}. A
+ * missing or unparsable file yields the `fallbackId` default config, so callers
+ * never have to handle "no config" separately.
+ */
+export function readBoardConfigFile(
+  fs: FileSystemPort,
+  path: string,
+  fallbackId: string,
+): BoardConfig {
+  const raw = fs.readFile(path);
+  if (raw === undefined) {
+    return normalizeBoardConfig(undefined, fallbackId);
+  }
+  try {
+    return normalizeBoardConfig(JSON.parse(raw), fallbackId);
+  } catch {
+    return normalizeBoardConfig(undefined, fallbackId);
+  }
+}
+
+/**
+ * Projects a config's columns onto the derived {@link Column} shape the panels
+ * and CLI consume: display defaults filled in, `cardIds` empty for the caller
+ * to populate. Optional keys are only present when the config declares them.
+ */
+export function toColumns(config: BoardConfig): Column[] {
+  return config.columns.map((c) => {
+    const column: Column = {
+      id: c.id,
+      name: c.name || titleCase(c.id),
+      color: c.color || DEFAULT_COLUMN_COLOR,
+      cardIds: [],
+    };
+    if (c.wip !== undefined) {
+      column.wip = c.wip;
+    }
+    if (c.enter !== undefined) {
+      column.enter = c.enter;
+    }
+    if (c.exit !== undefined) {
+      column.exit = c.exit;
+    }
+    if (c.prompt !== undefined) {
+      column.prompt = c.prompt;
+    }
+    return column;
+  });
 }
 
 /**
