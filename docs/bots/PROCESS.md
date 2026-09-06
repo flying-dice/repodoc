@@ -18,7 +18,9 @@ webview is three briefs with the interface fixed up front (types, store
 method names, message shapes), dispatched at the same time, each in its own
 worktree (`isolation: "worktree"`). The lead merges lanes and runs `verify`
 on the result. Never let two agents edit one working tree; never discard the
-tree with a global checkout while a lane is open.
+tree with a global checkout while a lane is open. A worktree branches from
+`main` by default: tell the lane which commit to base on (the PR head) and
+have it report its commit hash so the lead can cherry-pick or merge it.
 
 A brief names: objective, the files it may touch, the interface it must
 honour, the tests it must add, the verify command, and the report format.
