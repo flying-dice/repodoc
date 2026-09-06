@@ -176,12 +176,22 @@ export function addScenario(text: string, scenario: NewScenario): string {
   const parsed = parseFeature('', normalized);
   const lines = normalized.split('\n');
 
-  const last = parsed.scenarios[parsed.scenarios.length - 1];
-  const headIndent = last === undefined ? '  ' : indentOf(lines[last.headingLine] ?? '');
+  // A new scenario is appended at the feature level, so it takes the
+  // indentation of the shallowest existing scenario heading — not the last
+  // one, which may sit deeper inside a `Rule:` block.
+  const reference = parsed.scenarios.reduce<(typeof parsed.scenarios)[number] | undefined>(
+    (best, s) =>
+      best === undefined ||
+      indentOf(lines[s.headingLine] ?? '').length < indentOf(lines[best.headingLine] ?? '').length
+        ? s
+        : best,
+    undefined,
+  );
+  const headIndent = reference === undefined ? '  ' : indentOf(lines[reference.headingLine] ?? '');
   const bodyIndent =
-    last === undefined
+    reference === undefined
       ? `${headIndent}  `
-      : commonIndent(lines.slice(last.headingLine + 1, last.end)) || `${headIndent}  `;
+      : commonIndent(lines.slice(reference.headingLine + 1, reference.end)) || `${headIndent}  `;
 
   const keyword = scenario.keyword ?? DEFAULT_KEYWORD;
   const block = [

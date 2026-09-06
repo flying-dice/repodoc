@@ -361,3 +361,25 @@ describe('line endings and fixed points', () => {
     assert.strictEqual(setScenario(tabbed, 0, { name: 'S', steps: ['Given a'] }), tabbed);
   });
 });
+
+describe('addScenario after a Rule block', () => {
+  test('a new scenario takes the feature-level indentation, not the Rule-nested one', () => {
+    const src = [
+      'Feature: F',
+      '',
+      '  Scenario: First',
+      '    Given x',
+      '',
+      '  Rule: R',
+      '',
+      '    Scenario Outline: Nested',
+      '      Given a <k>',
+      '      Examples:',
+      '        | k |',
+      '        | 1 |',
+      '',
+    ].join('\n');
+    const out = addScenario(src, { name: 'Third', steps: ['Given y', 'Then z'] });
+    assert.strictEqual(out, `${src.trimEnd()}\n\n  Scenario: Third\n    Given y\n    Then z\n`);
+  });
+});
