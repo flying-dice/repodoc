@@ -33,6 +33,9 @@ export class BoardPanel {
   /** Card to open once the webview reports `ready` (see revealCard). */
   private pendingCardId: string | undefined;
 
+  private webviewReady = false;
+  private readonly pendingBounces: WebviewToHostMessage[] = [];
+
   private constructor(
     private readonly panel: vscode.WebviewPanel,
     private readonly extensionUri: vscode.Uri,
@@ -116,6 +119,12 @@ export class BoardPanel {
     const panel = BoardPanel.panels.get(panelKey(kind, boardId));
     if (!panel) {
       return false;
+    }
+    // A message posted before the webview's script has attached its listener
+    // is silently dropped; hold it until the webview reports `ready`.
+    if (!panel.webviewReady) {
+      panel.pendingBounces.push(message);
+      return true;
     }
     void panel.panel.webview.postMessage({ type: 'bounce', message });
     return true;
@@ -228,6 +237,10 @@ export class BoardPanel {
     const m = msg as Record<string, unknown>;
     switch (m['type'] as WebviewToHostMessage['type']) {
       case 'ready': {
+        this.webviewReady = true;
+        for (const queued of this.pendingBounces.splice(0)) {
+          void this.panel.webview.postMessage({ type: 'bounce', message: queued });
+        }
         this.postData();
         if (this.pendingCardId) {
           const msg: OpenCardMessage = { type: 'openCard', cardId: this.pendingCardId };
