@@ -27,6 +27,7 @@ All run from the repository root.
 
 | Command | What it does |
 | --- | --- |
+| `bun run verify` | The whole local gate: types, lint, unit tests, bundle, test emit, webview syntax |
 | `bun run check-types` | Type-checks every package |
 | `bun run lint` | Biome: lint, format check, and import sorting across the repo |
 | `bun run lint:fix` | Biome with its safe fixes applied (`biome check --write`) |

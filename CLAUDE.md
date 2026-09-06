@@ -17,19 +17,23 @@ files, with a VS Code extension and a CLI over one core. Read
 - Data this repo dogfoods: `boards/`, `features/`, `decisions/`, `docs/`.
   Team memory: `docs/bots/` (roadmap, sprints, design reviews).
 
-## Verify before every push (all from the root)
+## Verify before every report and push
 
 ```
-bun run check-types   # 3 packages, super-strict TS, must be 0 diagnostics
-bun run lint          # Biome
-bun run test          # unit suites (core, cli, vscode pure helpers)
-bun run compile && bun run --cwd packages/vscode compile-tests
-node --check packages/vscode/media/board.js
+bun run verify
 ```
 
-`bun run test:e2e` drives a real VS Code and cannot run in the sandbox
-(the download is blocked); CI runs it under xvfb. Author e2e tests so they
-type-check and compile.
+That is type checks (3 packages, super-strict, 0 diagnostics), Biome, the
+unit suites, the extension bundle, the test emit and the webview syntax
+checks, fail-fast. Quote its tail in your report. `bun run test:e2e` drives a
+real VS Code; CI runs it under xvfb, and it runs locally only when the
+environment can reach `update.code.visualstudio.com`. Author e2e tests so
+they type-check and compile.
+
+## How work is split
+
+Read `docs/bots/PROCESS.md`: one lane per package in its own worktree, the
+interface fixed in the brief, QA on each lane before merge.
 
 ## Conventions that bite
 

@@ -27,6 +27,7 @@ This is a Bun workspace:
 
 | Command | What it does |
 | --- | --- |
+| `bun run verify` | Everything below except e2e, fail-fast: run this before pushing |
 | `bun run check-types` | `tsc --noEmit` in every package |
 | `bun run lint` | Biome (lint + format check + import sorting) over the whole repo |
 | `bun run lint:fix` | Biome with its safe fixes applied |

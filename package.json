@@ -25,6 +25,7 @@
   },
   "packageManager": "bun@1.3.11",
   "scripts": {
+    "verify": "bun run check-types && bun run lint && bun run test && bun run compile && bun run --cwd packages/vscode compile-tests && node --check packages/vscode/media/board.js && node --check packages/vscode/media/mdLinks.js",
     "check-types": "bun run --filter '*' check-types",
     "lint": "biome check .",
     "test": "bun test packages/core packages/cli packages/vscode/test/unit",

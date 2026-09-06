@@ -21,9 +21,11 @@ jobs:
         with:
           node-version: 20
       - run: bun install --frozen-lockfile
-      - run: bun run check-types
-      - run: bun run lint
-      - run: bun test packages/core packages/cli packages/vscode/test/unit
+      - run: bun run verify
+      - uses: actions/cache@v4
+        with:
+          path: packages/vscode/.vscode-test/vscode-*
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('packages/vscode/package.json') }}
       - run: xvfb-run -a bun run test:e2e
       - run: bun run vsix
       - uses: actions/upload-artifact@v4
