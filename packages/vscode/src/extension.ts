@@ -300,9 +300,18 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     // G-8: change a decision's status without leaving the tree.
     vscode.commands.registerCommand(
       'repodoc.setDecisionStatus',
-      async (arg: unknown): Promise<void> => {
+      // A second argument names the status directly (automation, tests);
+      // without it, a quick pick asks the user.
+      async (arg: unknown, status?: unknown): Promise<void> => {
         const id = typeof arg === 'string' ? arg : (arg as { id?: string } | undefined)?.id;
         if (!id) {
+          return;
+        }
+        const given = typeof status === 'string' ? status : undefined;
+        if (given !== undefined) {
+          if ((DECISION_STATUSES as readonly string[]).includes(given)) {
+            store.setDecisionStatus(id, given);
+          }
           return;
         }
         const picked = await vscode.window.showQuickPick([...DECISION_STATUSES], {

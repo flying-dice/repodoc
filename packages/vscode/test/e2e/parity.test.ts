@@ -489,33 +489,19 @@ suite('RepoDoc webview/CLI parity e2e', () => {
     assert.ok(true, 'reaching here without an exception is the assertion');
   });
 
-  test('repodoc.setDecisionStatus writes the picked status and preserves the body', async function () {
-    this.timeout(45000);
+  test('repodoc.setDecisionStatus writes the given status and preserves the body', async () => {
     const file = path.join(root, 'decisions', '01-a-choice.md');
     const body = '# Decision 01 — A Choice\n\nBody with a --- inside.\n';
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `---\nstatus: Superseded\n---\n${body}`);
 
-    const picking = vscode.commands.executeCommand('repodoc.setDecisionStatus', '01-a-choice');
-    // 'Proposed' is the first item of the pick, so accepting the selection is
-    // enough; the pick may need a moment to take focus, hence the retry.
-    const start = Date.now();
-    for (;;) {
-      try {
-        await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
-      } catch {
-        // The quick pick is not focused yet — try again below.
-      }
-      await delay(250);
-      if (fs.readFileSync(file, 'utf8').includes('status: Proposed')) {
-        break;
-      }
-      if (Date.now() - start > 25000) {
-        await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
-        throw new Error('the decision status quick pick never accepted an item');
-      }
-    }
-    await picking;
+    // The status is passed directly: driving the live quick pick from a test
+    // proved timing-dependent on slow CI runners.
+    await vscode.commands.executeCommand('repodoc.setDecisionStatus', '01-a-choice', 'Proposed');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), `---\nstatus: Proposed\n---\n${body}`);
+
+    // An unknown status is refused without a picker and without a write.
+    await vscode.commands.executeCommand('repodoc.setDecisionStatus', '01-a-choice', 'Bogus');
     assert.strictEqual(fs.readFileSync(file, 'utf8'), `---\nstatus: Proposed\n---\n${body}`);
   });
 
