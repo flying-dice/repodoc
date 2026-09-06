@@ -290,14 +290,14 @@ suite('RepoDoc feature sets e2e', () => {
   });
 
   test('a feature file with no Feature: line is still visible in the tree', () => {
-    // It shows under the FIRST column even though its tag says `verified`:
-    // parseFeature only attaches pending tags when it meets a `Feature:` line.
-    // See REAL BUGS FOUND #6 — a stray file is visible but unmovable.
+    // A stray file keeps the tags it declares (its `@status:` among them), so
+    // it shows under the column the tag names, titled by its file name — the
+    // board agrees with the tag a move would rewrite.
     fs.writeFileSync(path.join(setDir, 'stray.feature'), '@status:verified\njust prose\n');
     const columns = tree.getChildren(setNode());
-    const first = columns[0];
-    assert.ok(first && first.kind === 'featureColumn' && first.columnId === 'proposed');
-    const titles = tree.getChildren(first).map((n) => (n.kind === 'feature' ? n.title : ''));
+    const verified = columns.find((c) => c.kind === 'featureColumn' && c.columnId === 'verified');
+    assert.ok(verified, 'the set has a verified column');
+    const titles = tree.getChildren(verified).map((n) => (n.kind === 'feature' ? n.title : ''));
     assert.ok(titles.includes('stray'), `the file name stands in for the title, saw ${titles}`);
   });
 });
