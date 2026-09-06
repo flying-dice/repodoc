@@ -1,0 +1,77 @@
+{
+  "version": "0.1.0",
+  "updatedAt": "2026-09-06T15:44:17.655Z",
+  "variant": "vanilla",
+  "items": {
+    "bot:architect": [
+      "/home/user/repodoc/.codex/agents/architect.toml"
+    ],
+    "bot:architect-deep": [
+      "/home/user/repodoc/.codex/agents/architect-deep.toml"
+    ],
+    "bot:designer": [
+      "/home/user/repodoc/.codex/agents/designer.toml"
+    ],
+    "bot:designer-deep": [
+      "/home/user/repodoc/.codex/agents/designer-deep.toml"
+    ],
+    "bot:developer": [
+      "/home/user/repodoc/.codex/agents/developer.toml"
+    ],
+    "bot:developer-lite": [
+      "/home/user/repodoc/.codex/agents/developer-lite.toml"
+    ],
+    "bot:lead": [
+      "/home/user/repodoc/.codex/agents/lead.toml",
+      "/home/user/repodoc/.agents/skills/lead"
+    ],
+    "bot:senior-developer": [
+      "/home/user/repodoc/.codex/agents/senior-developer.toml"
+    ],
+    "bot:senior-developer-deep": [
+      "/home/user/repodoc/.codex/agents/senior-developer-deep.toml"
+    ],
+    "bot:tester": [
+      "/home/user/repodoc/.codex/agents/tester.toml"
+    ],
+    "bot:tester-deep": [
+      "/home/user/repodoc/.codex/agents/tester-deep.toml"
+    ],
+    "skill:antigravity-harness": [
+      "/home/user/repodoc/.agents/skills/antigravity-harness"
+    ],
+    "skill:claude-harness": [
+      "/home/user/repodoc/.agents/skills/claude-harness"
+    ],
+    "skill:clean-code-review": [
+      "/home/user/repodoc/.agents/skills/clean-code-review"
+    ],
+    "skill:codex-harness": [
+      "/home/user/repodoc/.agents/skills/codex-harness"
+    ],
+    "skill:coding-styleguide": [
+      "/home/user/repodoc/.agents/skills/coding-styleguide"
+    ],
+    "skill:pre-commit": [
+      "/home/user/repodoc/.agents/skills/pre-commit"
+    ],
+    "skill:project-status": [
+      "/home/user/repodoc/.agents/skills/project-status"
+    ],
+    "skill:refactor": [
+      "/home/user/repodoc/.agents/skills/refactor"
+    ],
+    "skill:repodoc-workflow": [
+      "/home/user/repodoc/.agents/skills/repodoc-workflow"
+    ],
+    "skill:requirements-review": [
+      "/home/user/repodoc/.agents/skills/requirements-review"
+    ],
+    "skill:sprint-plan": [
+      "/home/user/repodoc/.agents/skills/sprint-plan"
+    ],
+    "skill:sprint-start": [
+      "/home/user/repodoc/.agents/skills/sprint-start"
+    ]
+  }
+}

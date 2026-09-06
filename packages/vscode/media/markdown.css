@@ -1,0 +1,220 @@
+/* RepoDoc — rendered Decision (ADR) & Docs markdown views.
+   Shared base rules (fonts, scrollbar, top-bar breadcrumb) live in base.css,
+   which is linked before this stylesheet.
+
+   THEME-NATIVE: chrome colours resolve from `--vscode-*` variables so the
+   view follows the user's theme. */
+
+/* ---- Page shell ---- */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+}
+
+/* Scrollable content area */
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--vscode-editor-background);
+}
+
+.reading-column {
+  margin: 0 auto;
+  padding: 46px 56px 90px;
+}
+.reading-column.width-narrow {
+  max-width: 760px;
+}
+.reading-column.width-wide {
+  max-width: 1100px;
+}
+.reading-column.width-full {
+  max-width: none;
+}
+
+/* Mono crumb line above the rendered markdown */
+.filecrumb {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  letter-spacing: 0.03em;
+  margin-bottom: 18px;
+  font-family: var(--font-mono);
+}
+
+/* ---- Rendered markdown typography (verbatim from the design mock) ---- */
+
+.adr-md {
+  color: var(--vscode-editor-foreground);
+  font-size: 15px;
+  line-height: 1.75;
+  font-family: var(--font-sans);
+}
+
+.adr-md h1 {
+  font-size: 30px;
+  line-height: 1.2;
+  margin: 0 0 8px;
+  color: var(--vscode-foreground);
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.adr-md h2 {
+  font-size: 19px;
+  margin: 34px 0 12px;
+  color: var(--vscode-foreground);
+  font-weight: 620;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding-bottom: 8px;
+}
+
+.adr-md h3 {
+  font-size: 15px;
+  margin: 24px 0 8px;
+  color: var(--vscode-foreground);
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.adr-md p {
+  margin: 0 0 14px;
+}
+
+.adr-md ul,
+.adr-md ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.adr-md li {
+  margin: 0 0 7px;
+}
+
+.adr-md a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.adr-md a:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+
+.adr-md strong {
+  color: var(--vscode-foreground);
+  font-weight: 640;
+}
+
+.adr-md code {
+  background: var(--vscode-textCodeBlock-background);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--vscode-textPreformat-foreground);
+}
+
+.adr-md pre {
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  overflow: auto;
+  margin: 0 0 18px;
+}
+
+.adr-md pre code {
+  background: none;
+  padding: 0;
+  /* Block code stays neutral body text (not the inline-code accent). */
+  color: var(--vscode-editor-foreground);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.adr-md blockquote {
+  margin: 0 0 16px;
+  padding: 2px 16px;
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  background: var(--vscode-textBlockQuote-background);
+  color: var(--vscode-descriptionForeground);
+}
+
+.adr-md table {
+  border-collapse: collapse;
+  margin: 0 0 18px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.adr-md th,
+.adr-md td {
+  border: 1px solid var(--vscode-panel-border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.adr-md th {
+  background: var(--vscode-keybindingTable-headerBackground);
+  color: var(--vscode-foreground);
+  font-weight: 620;
+}
+
+.adr-md hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border);
+  margin: 26px 0;
+}
+
+/* ---- Frontmatter meta table ---- */
+.fm-table {
+  border-collapse: collapse;
+  margin: 4px 0 26px;
+  font-size: 13px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+}
+.fm-table th,
+.fm-table td {
+  text-align: left;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.fm-table th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding-right: 22px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+}
+.fm-table td {
+  color: var(--vscode-editor-foreground);
+}
+.fm-table tr:last-child th,
+.fm-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---- GFM task lists and strikethrough ---- */
+.adr-md li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -20px;
+}
+.adr-md input[type="checkbox"] {
+  accent-color: var(--vscode-checkbox-selectBackground);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.adr-md del {
+  color: var(--vscode-descriptionForeground);
+}

@@ -1,0 +1,1559 @@
+/* RepoDoc kanban board — styles translated from the design mock.
+   Shared base rules (fonts, scrollbar, top-bar breadcrumb) live in base.css,
+   which is linked before this stylesheet.
+
+   THEME-NATIVE: chrome colours resolve from `--vscode-*` variables. DATA
+   colours (labels/column dots) come from the board .config.json and are
+   applied inline in board.js. */
+
+body {
+  font-size: 13px;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@keyframes livepulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+textarea::placeholder,
+input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+/* ---- Top bar ---- */
+.topbar-spacer {
+  flex: 1;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 7px;
+  padding: 0 9px;
+  height: 30px;
+  color: var(--vscode-descriptionForeground);
+}
+.search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  width: 150px;
+  font-family: inherit;
+}
+
+/* ---- Board canvas ---- */
+/* Keep the horizontal scrollbar visible so board overflow is discoverable. */
+.canvas::-webkit-scrollbar {
+  height: 12px;
+}
+.canvas::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  border-radius: 6px;
+}
+.canvas::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+  background-clip: content-box;
+}
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--vscode-editor-background);
+  padding: 18px 16px 20px;
+}
+.canvas:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+/* Holds the column strip and its right-edge overflow affordance. Sits BELOW
+   the top bar, so the fade can never cover the search field. */
+.canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.canvas-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 36px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: linear-gradient(to right, transparent, var(--vscode-editor-background));
+}
+.canvas-fade.on {
+  opacity: 1;
+}
+.canvas-inner {
+  display: flex;
+  gap: 14px;
+  height: 100%;
+  align-items: flex-start;
+}
+/* A search that matches nothing: say so where the columns would be. */
+.board-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 2px;
+}
+.board-empty-line {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.column {
+  width: 296px;
+  flex: none;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 12px;
+}
+.column.drag-target {
+  border-color: var(--vscode-focusBorder);
+}
+.col-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px 9px;
+  flex: none;
+}
+.col-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+.col-name {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--vscode-foreground);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.col-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: 20px;
+  padding: 1px 8px;
+  font-weight: 600;
+}
+.col-head-spacer {
+  flex: 1;
+}
+.wip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 20px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+}
+.wip.over {
+  color: var(--vscode-charts-red);
+  background: color-mix(in srgb, var(--vscode-charts-red) 14%, transparent);
+}
+
+.card-list {
+  flex: 1;
+  min-height: 30px;
+  overflow-y: auto;
+  padding: 2px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.placeholder {
+  height: 64px;
+  border-radius: 10px;
+  border: 2px dashed var(--vscode-focusBorder);
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+  flex: none;
+}
+
+/* ---- Card ---- */
+.card {
+  /* Derived elevation above the column surface — a foreground tint guarantees
+     visible contrast in any theme, unlike pairing two theme tokens that may
+     resolve to near-identical colours (e.g. Dark Modern). */
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background));
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  border-radius: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.card:hover {
+  border-color: color-mix(in srgb, var(--vscode-foreground) 26%, transparent);
+  background: color-mix(in srgb, var(--vscode-foreground) 9%, var(--vscode-sideBar-background));
+}
+.card.dragging {
+  opacity: 0.4;
+}
+.card:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+.card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.label-chip {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.card-titlerow {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+}
+.priority-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: none;
+}
+.card-title {
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+  flex: 1;
+}
+
+.live-block {
+  margin-top: 10px;
+  background: color-mix(in srgb, var(--vscode-focusBorder) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+.live-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vscode-charts-green);
+  flex: none;
+  animation: livepulse 1.3s ease-in-out infinite;
+}
+.live-status {
+  font-size: 11px;
+  color: var(--vscode-editor-foreground);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-pct {
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+.progress-track {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--vscode-charts-blue), var(--vscode-charts-green));
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.meta-spacer {
+  flex: 1;
+}
+.meta-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  /* Contrast text on the derived (hashed) avatar colour. */
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.meta-updated {
+  color: var(--vscode-descriptionForeground);
+}
+/* ---- Add-card composer ---- */
+.composer {
+  padding: 6px 10px 11px;
+  flex: none;
+}
+.composer textarea {
+  width: 100%;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 9px;
+  padding: 9px 10px;
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  min-height: 56px;
+  line-height: 1.4;
+}
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+.btn-primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+.btn-cancel {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 6px;
+}
+.btn-cancel:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+.add-card-btn {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12.5px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: inherit;
+}
+.add-card-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+.add-card-btn .plus {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.add-list-wrap {
+  width: 270px;
+  flex: none;
+}
+.add-list-btn {
+  width: 100%;
+  text-align: left;
+  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+  border: 1px dashed var(--vscode-widget-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+}
+.add-list-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+.add-list-btn .plus {
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* ---- Status bar ---- */
+.statusbar {
+  height: 24px;
+  flex: none;
+  background: var(--vscode-editorWidget-background);
+  border-top: 1px solid var(--vscode-panel-border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.status-spacer {
+  flex: 1;
+}
+.status-datadir {
+  font-family: var(--font-mono);
+}
+
+/* ---- Card detail modal ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  /* Overlay scrim: a translucent black reads correctly in light and dark. */
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 20px;
+  overflow-y: auto;
+}
+.modal {
+  width: 640px;
+  max-width: 100%;
+}
+.modal.width-narrow {
+  width: 640px;
+}
+.modal.width-wide {
+  width: 900px;
+}
+.modal.width-full {
+  width: min(96vw, 1400px);
+}
+.modal {
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px var(--vscode-widget-shadow);
+  overflow: hidden;
+}
+.modal-head {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.modal-head-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.modal-head-main {
+  flex: 1;
+  min-width: 0;
+}
+.modal-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.col-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 20px;
+  color: var(--vscode-editor-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  border: 1px solid var(--vscode-widget-border);
+}
+/* Where this card is and what it can do next, directly under the title. */
+.modal-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.move-next-inline {
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+.status-row-hint {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+}
+.status-row-hint-btn {
+  padding: 0;
+}
+.modal-title {
+  font-size: 20px;
+  font-weight: 640;
+  color: var(--vscode-foreground);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+  flex: none;
+}
+.modal-close:hover {
+  color: var(--vscode-foreground);
+}
+.modal-body {
+  padding: 20px 24px 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.modal-live {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.modal-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vscode-charts-green);
+  animation: livepulse 1.3s ease-in-out infinite;
+  flex: none;
+}
+.modal-live-main {
+  flex: 1;
+  min-width: 0;
+}
+.modal-live-status {
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+.modal-live-sub {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+}
+.modal-cols {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 22px;
+}
+.field-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 7px;
+}
+.priority-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 11px;
+  border-radius: 20px;
+}
+.section {
+  margin-bottom: 22px;
+}
+.section-desc {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--vscode-editor-foreground);
+}
+.checklist-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.checklist-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
+  border-radius: 6px;
+}
+.check-item:hover input.check-box:not(:checked):not(:disabled) {
+  border-color: var(--vscode-focusBorder);
+}
+.check-box {
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  border: 1px solid var(--vscode-checkbox-border);
+  background: var(--vscode-checkbox-background);
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+.check-box svg {
+  display: block;
+}
+.check-box.done {
+  border-color: var(--vscode-checkbox-selectBorder);
+  background: var(--vscode-checkbox-selectBackground);
+  color: var(--vscode-checkbox-foreground);
+}
+.check-text {
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--vscode-editor-foreground);
+}
+.check-text.done {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+/* Checklist items and boolean fields ARE native checkboxes: the box below is
+   an appearance-stripped `input`, so focus, Space and the checked state come
+   from the platform while the visual stays the design's. */
+input.check-box {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  cursor: pointer;
+}
+input.check-box:checked {
+  border-color: var(--vscode-checkbox-selectBorder);
+  background: var(--vscode-checkbox-selectBackground);
+  color: var(--vscode-checkbox-foreground);
+}
+input.check-box:checked::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 3px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input.check-box:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+input.check-box:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+label.check-text,
+label.field-bool-label {
+  cursor: pointer;
+}
+input.check-box:disabled + label.check-text {
+  cursor: default;
+}
+
+/* ---- Card-face field chips + gate chip ---- */
+.field-chip {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: 20px;
+  padding: 1px 8px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.gate-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+  flex: none;
+}
+.gate-chip.ok {
+  color: var(--vscode-charts-green);
+}
+.gate-chip .icon {
+  display: inline-flex;
+}
+
+/* ---- Column header gate glyph ---- */
+.col-gate-glyph {
+  display: inline-flex;
+  align-items: center;
+  color: var(--vscode-descriptionForeground);
+  flex: none;
+}
+
+/* ---- Modal: custom fields ---- */
+.fields-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-row-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}
+.field-input,
+.field-select {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 7px;
+  padding: 6px 9px;
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.field-input:focus,
+.field-select:focus {
+  border-color: var(--vscode-focusBorder);
+}
+.field-select {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border-color: var(--vscode-dropdown-border);
+  cursor: pointer;
+}
+.field-select option {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+}
+.field-select.unknown {
+  color: var(--vscode-editorWarning-foreground);
+  border-color: var(--vscode-editorWarning-foreground);
+}
+.field-bool {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+}
+.field-bool-label {
+  font-size: 13px;
+  color: var(--vscode-editor-foreground);
+}
+.ms-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ms-chip {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border: 1px solid transparent;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+.ms-chip:not(.on):hover {
+  border-color: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+}
+
+/* ---- Modal: gates ---- */
+.gates {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.gate-group-head {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.gate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gate-row,
+.blocked-gate {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.gate-status {
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  border: 1px solid var(--vscode-checkbox-border);
+  background: var(--vscode-checkbox-background);
+  color: var(--vscode-checkbox-foreground);
+}
+.gate-status.ok {
+  border-color: var(--vscode-charts-green);
+  color: var(--vscode-charts-green);
+  background: color-mix(in srgb, var(--vscode-charts-green) 16%, transparent);
+}
+.gate-status svg {
+  display: block;
+}
+.gate-main {
+  flex: 1;
+  min-width: 0;
+}
+.gate-label {
+  font-size: 13px;
+  color: var(--vscode-editor-foreground);
+  font-weight: 500;
+}
+.gate-note {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+}
+.gate-hint {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin-top: 3px;
+}
+
+/* ---- Modal: comments journal ---- */
+.comments-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.comments-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.comment-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.comment-who {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--vscode-foreground);
+}
+.comment-time {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.comment-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.file-link {
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+.file-link:hover {
+  text-decoration: underline;
+}
+.comment-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.comment-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  min-height: 52px;
+  line-height: 1.45;
+}
+.comment-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+/* ---- Blocked-move dialog ---- */
+.blocked-modal {
+  width: 440px;
+}
+.blocked-title {
+  font-size: 17px;
+}
+.blocked-gates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.blocked-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.btn-secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ---- Rendered-markdown description in the modal ---- */
+.content-md p {
+  margin: 0 0 10px;
+}
+.content-md p:last-child {
+  margin-bottom: 0;
+}
+.content-md ul,
+.content-md ol {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.content-md li {
+  margin: 0 0 4px;
+}
+.content-md a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+.content-md a:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+.content-md code {
+  background: var(--vscode-textCodeBlock-background);
+  color: var(--vscode-textPreformat-foreground);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.content-md pre {
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow: auto;
+  margin: 0 0 10px;
+}
+.content-md pre code {
+  background: none;
+  padding: 0;
+}
+.content-md strong {
+  color: var(--vscode-foreground);
+}
+.content-md blockquote {
+  margin: 0 0 10px;
+  padding: 2px 12px;
+  border-left: 3px solid var(--vscode-textBlockQuote-border);
+  background: var(--vscode-textBlockQuote-background);
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ---- Comment author box ---- */
+.comment-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+.comment-as {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.comment-author-input {
+  width: 120px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+.comment-composer-spacer {
+  flex: 1;
+}
+
+/* ---- Shared content-block extras (comments + descriptions) ---- */
+.comment-text.content-md {
+  margin-top: 2px;
+}
+.content-md .mermaid {
+  margin: 6px 0 12px;
+  text-align: center;
+}
+.content-md img.plantuml {
+  max-width: 100%;
+}
+.content-md table {
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.content-md th,
+.content-md td {
+  border: 1px solid var(--vscode-panel-border);
+  padding: 4px 9px;
+  text-align: left;
+}
+.content-md del {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ---- Ghost actions (modal header, disclosures, dismiss) ---- */
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 11.5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghost-btn:hover {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+.ghost-btn:focus-visible,
+.disclosure:focus-visible,
+.ms-chip:focus-visible,
+.field-bool:focus-visible,
+.status-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+.modal-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.disclosure {
+  background: none;
+  border: none;
+  padding: 4px 0 0;
+  margin: 0;
+  color: var(--vscode-textLink-foreground);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.disclosure:hover {
+  text-decoration: underline;
+}
+
+/* ---- Status bar: the data dir opens the board config ---- */
+.status-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: inherit;
+  color: var(--vscode-descriptionForeground);
+}
+.status-link:hover {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+}
+
+/* ---- Editable card title ---- */
+.modal-title.editable {
+  cursor: text;
+  border-radius: 6px;
+  margin: -2px -6px;
+  padding: 2px 6px;
+}
+.modal-title.editable:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+.title-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 8px;
+  padding: 2px 6px;
+  outline: none;
+}
+/* The title editor plus, when the file moved under it, its "Changed on disk"
+   strip — the same notice a scenario block shows. */
+.modal-title-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ---- Column prompt panel ("In this column") ---- */
+.col-prompt {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+.col-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.col-prompt-spacer {
+  flex: 1;
+}
+.col-prompt-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+}
+
+/* ---- Activity row (agent / live / status / progress) ---- */
+.activity-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+.activity-cell {
+  min-width: 110px;
+}
+.activity-cell.activity-agent,
+.activity-cell.activity-status {
+  flex: 1;
+  min-width: 160px;
+}
+.field-input-num {
+  width: 84px;
+}
+.modal-cols-labels {
+  min-width: 0;
+}
+.label-toggle {
+  border: 1px solid transparent;
+}
+
+/* ---- Description section ---- */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.section-head-spacer {
+  flex: 1;
+}
+.desc-placeholder {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  cursor: text;
+}
+
+/* ---- Checklist composer ---- */
+.check-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.check-composer .field-input {
+  flex: 1;
+}
+
+/* ---- Gate guidance (blocked dialog + modal Gates) ---- */
+.gate-id {
+  margin-left: 7px;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--font-mono);
+}
+.gate-prompt {
+  margin-top: 7px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+}
+.gate-action {
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.gate-cmd-row,
+.gate-record-row,
+.gate-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gate-record-row .field-input {
+  flex: 1;
+}
+.gate-cmd {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  color: var(--vscode-textPreformat-foreground);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.move-next {
+  margin-top: 14px;
+}
+.btn-primary[disabled],
+.btn-secondary[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Blocked-move dialog (guided checklist) ---- */
+.blocked-modal.blocked-wide {
+  width: 640px;
+}
+.blocked-lead {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 14px;
+}
+.blocked-gates {
+  gap: 18px;
+}
+.blocked-foot-note {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 14px;
+}
+.override-box {
+  border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 35%, transparent);
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+.btn-cancel-text {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.btn-cancel-text:hover {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+.blocked-actions {
+  align-items: center;
+}
+
+/* Card id + copy ref (the id is what the CLI and chat references use) */
+.card-idrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  min-height: 18px;
+}
+.card-id {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-copy {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  opacity: 0;
+}
+.card:hover .card-copy,
+.card:focus-within .card-copy,
+.card-copy:focus-visible {
+  opacity: 1;
+}
+.card-copy:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+.modal-id {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+.modal-id:hover {
+  color: var(--vscode-textLink-foreground);
+}
+
+/* ---- Scenarios (feature sets) ---- */
+.scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.scenario {
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.scenario.editing {
+  border-color: var(--vscode-focusBorder);
+}
+.scenario-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scenario-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  word-break: break-word;
+}
+.scenario-keyword {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+.scenario-name-cell {
+  flex: 1;
+  min-width: 0;
+}
+.scenario-name-cell .field-input {
+  width: 100%;
+}
+.scenario-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.scenario-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--vscode-charts-green, var(--vscode-descriptionForeground));
+}
+.scenario-confirm {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+}
+.ghost-btn.danger {
+  color: var(--vscode-errorForeground);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, transparent);
+}
+.scenario-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.scenario-tag {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.scenario-steps {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.scenario-steps.empty {
+  font-family: inherit;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+}
+.scenario-steps-label {
+  margin-bottom: 0;
+}
+.scenario-steps-input {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  min-height: 96px;
+}
+.scenario-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scenario-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.scenario-notice.error {
+  color: var(--vscode-errorForeground);
+  background: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent);
+}

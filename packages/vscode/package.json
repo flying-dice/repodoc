@@ -1,0 +1,368 @@
+{
+  "name": "repodoc",
+  "displayName": "RepoDoc",
+  "description": "Task boards, decision records, and documentation stored as plain files in your repository",
+  "version": "0.9.0",
+  "publisher": "flying-dice",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flying-dice/repodoc"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "media/icon.png",
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "repodoc",
+          "title": "RepoDoc",
+          "icon": "media/repodoc.svg"
+        }
+      ]
+    },
+    "views": {
+      "repodoc": [
+        {
+          "id": "repodoc.boards",
+          "name": "Boards",
+          "icon": "media/repodoc.svg"
+        },
+        {
+          "id": "repodoc.decisions",
+          "name": "Decisions",
+          "icon": "media/repodoc.svg"
+        },
+        {
+          "id": "repodoc.docs",
+          "name": "Docs",
+          "icon": "media/repodoc.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "repodoc.boards",
+        "contents": "No RepoDoc data found in this repo yet.\n[Initialize RepoDoc](command:repodoc.init)\nThis creates a starter board config under `boards/`. Your cards, decisions, and docs are yours to add.",
+        "when": "!repodoc.initialized"
+      },
+      {
+        "view": "repodoc.decisions",
+        "contents": "Decision records live in `decisions/` as numbered markdown files.\n[New Decision](command:repodoc.newDecision)",
+        "when": "repodoc.initialized"
+      },
+      {
+        "view": "repodoc.docs",
+        "contents": "Documentation is rendered from the markdown tree under `docs/`.\nAdd a folder, drop in a `.md` file, and it shows up here."
+      }
+    ],
+    "commands": [
+      {
+        "command": "repodoc.init",
+        "title": "Initialize Workspace",
+        "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.refresh",
+        "title": "Refresh",
+        "category": "RepoDoc",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "repodoc.openBoard",
+        "title": "Open Board",
+        "category": "RepoDoc",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "repodoc.openFeature",
+        "title": "Open Feature",
+        "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.openFeatureSource",
+        "title": "Open Feature File",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.openDecision",
+        "title": "Open Decision",
+        "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.openDoc",
+        "title": "Open Doc",
+        "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.newBoard",
+        "title": "New Board",
+        "category": "RepoDoc",
+        "icon": "$(add)"
+      },
+      {
+        "command": "repodoc.newDecision",
+        "title": "New Decision",
+        "category": "RepoDoc",
+        "icon": "$(add)"
+      },
+      {
+        "command": "repodoc.openCardFile",
+        "title": "Open Card File",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.openBoardConfig",
+        "title": "Open Board Config",
+        "category": "RepoDoc",
+        "icon": "$(json)"
+      },
+      {
+        "command": "repodoc.openDecisionSource",
+        "title": "Open Source",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.openDocSource",
+        "title": "Open Source",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.setDecisionStatus",
+        "title": "Set Status...",
+        "category": "RepoDoc",
+        "icon": "$(circle-outline)"
+      },
+      {
+        "command": "repodoc.installAgentSkill",
+        "title": "Install Agent Skill",
+        "category": "RepoDoc"
+      },
+      {
+        "command": "repodoc.openSettings",
+        "title": "RepoDoc Settings",
+        "category": "RepoDoc",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "repodoc.copyRef",
+        "title": "Copy Ref",
+        "category": "RepoDoc",
+        "icon": "$(copy)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "repodoc.openSettings",
+          "when": "view == repodoc.boards",
+          "group": "navigation@8"
+        },
+        {
+          "command": "repodoc.newBoard",
+          "when": "view == repodoc.boards",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.newDecision",
+          "when": "view == repodoc.decisions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.refresh",
+          "when": "view =~ /^repodoc\\./",
+          "group": "navigation@9"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "repodoc.openBoard",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openFeature",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openFeatureSource",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openDecision",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openDoc",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openCardFile",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openBoardConfig",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openDecisionSource",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openDocSource",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.setDecisionStatus",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "repodoc.openBoard",
+          "when": "view == repodoc.boards && viewItem == repodoc.board",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openBoard",
+          "when": "view == repodoc.boards && viewItem == repodoc.featureSet",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openBoardConfig",
+          "when": "view == repodoc.boards && viewItem == repodoc.board",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.openBoardConfig",
+          "when": "view == repodoc.boards && viewItem == repodoc.featureSet",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.openCardFile",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openCardFile",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.openDecisionSource",
+          "when": "view == repodoc.decisions && viewItem == repodoc.decision",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openDecisionSource",
+          "when": "view == repodoc.decisions && viewItem == repodoc.decision",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.setDecisionStatus",
+          "when": "view == repodoc.decisions && viewItem == repodoc.decision",
+          "group": "navigation@2"
+        },
+        {
+          "command": "repodoc.openDocSource",
+          "when": "view == repodoc.docs && viewItem == repodoc.docFile",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openDocSource",
+          "when": "view == repodoc.docs && viewItem == repodoc.docFile",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "navigation@2"
+        },
+        {
+          "command": "repodoc.openFeatureSource",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openFeatureSource",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.copyRef",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RepoDoc",
+      "properties": {
+        "repodoc.readingWidth": {
+          "type": "string",
+          "default": "wide",
+          "markdownDescription": "Width of RepoDoc's reading surfaces (Docs and Decision views, and the card view). Use a preset: `narrow` (760px), `wide` (1100px), `full` (entire editor width), or any fixed CSS length such as `500px`, `90%`, or `60rem`."
+        },
+        "repodoc.plantUmlServer": {
+          "type": "string",
+          "default": "https://www.plantuml.com/plantuml",
+          "markdownDescription": "PlantUML server used to render ```plantuml fences in Docs and Decisions. The default is the public plantuml.com server — **diagram source is sent to it**. To keep diagrams private, run your own local renderer with Docker:\n\n```\ndocker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty\n```\n\nthen set this to `http://localhost:8792`. Leave empty to show PlantUML fences as plain code."
+        },
+        "repodoc.commentAuthor": {
+          "type": "string",
+          "default": "",
+          "description": "Name used for comments you add from the card view. When empty, your git user.name is used. Editing the name in the comment composer updates this setting."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run package",
+    "compile": "bun run check-types && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "bun run check-types && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "check-types": "tsc --noEmit",
+    "test": "bun run compile-tests && bun run compile && vscode-test",
+    "vsix": "cp ../../CHANGELOG.md ../../LICENSE . && vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@repodoc/core": "workspace:*",
+    "marked": "^15.0.7",
+    "mermaid": "^11.17.2",
+    "plantuml-encoder": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^26.4.1",
+    "@types/vscode": "^1.100.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

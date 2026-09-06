@@ -1,0 +1,322 @@
+import type { BoardData, CardMetaPatch, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
+import type { EditField } from './editConflict';
+
+/**
+ * Authoritative shapes for the board webview postMessage protocol.
+ *
+ * NOTE: `media/board.js` mirrors this contract MANUALLY. The webview is
+ * deliberately build-step-free (plain JS loaded straight into the webview), so
+ * there is no shared compilation between this file and board.js. Any change to
+ * these shapes must be reflected by hand in media/board.js.
+ *
+ * Inbound (webview -> host) messages are UNTRUSTED: the discriminated unions
+ * below describe their intended shape, but callers must still validate fields
+ * at runtime before acting on them.
+ */
+
+/**
+ * What the surface being shown supports. A feature set has no comments, custom
+ * fields, checklists, or configurable columns, so the webview hides those
+ * affordances rather than posting messages the host would ignore.
+ */
+export interface BoardCapabilities {
+  comments: boolean;
+  fields: boolean;
+  checklist: boolean;
+  /** Appending new checklist items (not just toggling existing ones). */
+  checklistAdd: boolean;
+  addColumn: boolean;
+  /**
+   * Card metadata is editable. A feature set declares this too, but a feature
+   * has only ONE piece of metadata RepoDoc can write — the title, which is its
+   * `Feature:` line. Priority, labels and the activity row are card-board
+   * concepts and stay hidden there; the webview keys that off
+   * {@link BoardCapabilities.scenarios}.
+   */
+  meta: boolean;
+  /** The card body text is editable from the modal. */
+  description: boolean;
+  /** Script-gate evidence can be recorded from the UI. */
+  gateEvidence: boolean;
+  /**
+   * Cards carry Gherkin `scenarios` that can be added, edited and removed from
+   * the modal. True only for a feature set — it is also what tells the webview
+   * it is showing features rather than cards.
+   */
+  scenarios: boolean;
+}
+
+/** Messages sent from the extension host down to the webview. */
+export interface DataMessage {
+  type: 'data';
+  boardId: string;
+  board: BoardData;
+  config: RepoDocConfig;
+  /** Display path of the board's data directory, e.g. `boards/<id>/`. */
+  boardPath: string;
+  /** Card descriptions rendered to HTML (markdown, host-side), keyed by card id. */
+  descHtml: Record<string, string>;
+  /** Comment journal entries rendered to HTML (shared renderer), per card id. */
+  commentHtml: Record<string, string[]>;
+  /** Configured reading width: 'narrow' | 'wide' | 'full' (sizes the modal). */
+  readingWidth: string;
+  /** The author name prefilled in the comment composer. */
+  commentAuthor: string;
+  /** Which editing affordances this surface supports. */
+  capabilities: BoardCapabilities;
+  /**
+   * Repo-relative file backing each card (`boards/<id>/NN-slug.md`, or a
+   * feature's `.feature`), keyed by card id — the modal's "Open file" action.
+   * A card whose file cannot be resolved is simply absent.
+   */
+  cardFiles: Record<string, string>;
+  /**
+   * Gate `prompt` text rendered to HTML by the shared renderer, keyed by
+   * `<columnId>:<enter|exit>:<gateId>` (see `gatePromptKey` in
+   * `gateGuidance.ts`). Gates without an authored prompt carry the same default
+   * wording the CLI prints.
+   */
+  gatePromptHtml: Record<string, string>;
+  /** Column `prompt` text rendered to HTML, keyed by column id. */
+  columnPromptHtml: Record<string, string>;
+}
+
+/** Host-driven card open (tests / automation) — mirrors clicking the card. */
+export interface OpenCardMessage {
+  type: 'openCard';
+  cardId: string;
+}
+
+/** One gate blocking a move, as reported to the webview. */
+export interface MoveBlockedGate {
+  id: string;
+  label: string;
+  reason: string;
+  /** Script gates: the command that must have run green. */
+  script?: string;
+  /** Field gates: the inspected (custom or reserved) field id. */
+  field?: string;
+  /** Field gates: the check expression the value must satisfy. */
+  check?: string;
+  /** The gate's instructions, or the CLI's default wording when unauthored. */
+  prompt?: string;
+  /** `prompt` rendered to HTML by the shared markdown renderer. */
+  promptHtml?: string;
+}
+
+/**
+ * Sent when a `moveCard` (without override) is blocked by one or more unmet
+ * column gates. The webview surfaces the gates and can retry with override.
+ */
+export interface MoveBlockedMessage {
+  type: 'moveBlocked';
+  cardId: string;
+  toColumn: string;
+  results: MoveBlockedGate[];
+}
+
+/**
+ * A save the host refused because the value changed on disk under the open
+ * editor. Nothing was written. `current` is what the store holds now, so the
+ * webview can offer Reload (take `current`) or Keep mine (re-send the save with
+ * `base` = `current`) — the same choice a scenario block offers.
+ */
+export interface EditConflictMessage {
+  type: 'editConflict';
+  cardId: string;
+  field: EditField;
+  /** The stored value the refused save collided with. */
+  current: string;
+}
+
+export type HostToWebviewMessage =
+  | DataMessage
+  | OpenCardMessage
+  | MoveBlockedMessage
+  | EditConflictMessage;
+
+/**
+ * Sent by a markdown reading view (decision / doc) when a link inside the
+ * rendered document is clicked. The webview does not resolve anything: it
+ * forwards the raw `href`, and the host resolves it against the displayed
+ * document's repo-relative path (`panels/linkTargets.ts`), refusing whatever
+ * escapes the workspace root. Untrusted like every inbound message.
+ *
+ * Mirrored by hand in `media/mdLinks.js`.
+ */
+export interface OpenLinkMessage {
+  type: 'openLink';
+  /** The `href` attribute exactly as authored in the markdown. */
+  href: string;
+}
+
+/** Everything a markdown reading view can send to the host. */
+export type MarkdownWebviewToHostMessage = OpenLinkMessage;
+
+/** Messages sent from the webview up to the extension host. */
+export interface ReadyMessage {
+  type: 'ready';
+}
+
+export interface MoveCardMessage {
+  type: 'moveCard';
+  cardId: string;
+  toColumn: string;
+  index: number;
+  /** Force the move past any unsatisfied gates (records overrides). */
+  override?: boolean;
+  /**
+   * Why the move was overridden. Required by the host whenever `override` is
+   * true and gates are failing — the CLI requires `--reason` too, so both hosts
+   * write the same audit line.
+   */
+  reason?: string;
+}
+
+/** Set (or clear, when `value` is null) a card's custom field. */
+export interface SetFieldMessage {
+  type: 'setField';
+  cardId: string;
+  fieldId: string;
+  value: CustomFieldValue | null;
+}
+
+/** Append a journal entry to a card's `## Comments` section. */
+export interface AddCommentMessage {
+  type: 'addComment';
+  cardId: string;
+  text: string;
+  /** Author name from the composer; the host falls back to the configured
+   * comment author, then the local git identity. */
+  who?: string;
+}
+
+/** Copy the card's pasteable reference (`<scope>/<id> — <title> (<path>)`) to the clipboard. */
+export interface CopyRefMessage {
+  type: 'copyRef';
+  cardId: string;
+}
+
+/**
+ * Open a repo file (optionally revealing a line range) from a comment link.
+ * `path` is relative to the store root; the host containment-checks it before
+ * opening. `line`/`endLine` are 1-based.
+ */
+export interface OpenFileMessage {
+  type: 'openFile';
+  path: string;
+  line?: number;
+  endLine?: number;
+}
+
+export interface AddCardMessage {
+  type: 'addCard';
+  column: string;
+  title: string;
+}
+
+export interface AddColumnMessage {
+  type: 'addColumn';
+}
+
+export interface ToggleCheckMessage {
+  type: 'toggleCheck';
+  cardId: string;
+  index: number;
+}
+
+/** Append an item to a card's `## Checklist` section. */
+export interface AddChecklistItemMessage {
+  type: 'addChecklistItem';
+  cardId: string;
+  text: string;
+}
+
+/** Replace a card's description (the body above `## Checklist` / `## Gates` / `## Comments`). */
+export interface SetDescriptionMessage {
+  type: 'setDescription';
+  cardId: string;
+  text: string;
+  /**
+   * The description the editor was opened over ('' when the card had none).
+   * The host refuses the save when the stored description no longer equals it
+   * — see `editConflict.ts` — and answers with {@link EditConflictMessage}. It
+   * is required: a message without it is rejected, so a stale webview cannot
+   * write past the check by omitting it.
+   */
+  base: string;
+}
+
+/**
+ * Rewrite one scenario of a feature: its name, its body, or both. `index`
+ * counts the feature's scenarios in file order, as the host received them in
+ * `Card.scenarios` — `Rule:` and `Background:` blocks are not scenarios and
+ * cannot be addressed. `steps` is the whole body, one entry per line.
+ */
+export interface SetScenarioMessage {
+  type: 'setScenario';
+  cardId: string;
+  index: number;
+  name: string;
+  steps: string[];
+}
+
+/** Append a scenario to a feature file. */
+export interface AddScenarioMessage {
+  type: 'addScenario';
+  cardId: string;
+  name: string;
+  steps: string[];
+}
+
+/** Remove a feature's scenario, its tag lines with it. */
+export interface RemoveScenarioMessage {
+  type: 'removeScenario';
+  cardId: string;
+  index: number;
+}
+
+/** Edit reserved card metadata (title/labels/priority/agent/live/status/progress). */
+export interface UpdateMetaMessage {
+  type: 'updateMeta';
+  cardId: string;
+  patch: CardMetaPatch;
+  /**
+   * The title the title editor was opened over. Used ONLY when `patch.title` is
+   * present, and required then, exactly like {@link SetDescriptionMessage.base}
+   * — a title patch without it is rejected. Every other key of the patch is set
+   * from a control that shows the stored value as it renders, so it carries no
+   * base.
+   */
+  baseTitle?: string;
+}
+
+/**
+ * Record a green run of a script gate's command. `result` is what the human
+ * saw, e.g. "bun test green, 130 unit + 9 e2e"; the host stamps the author and
+ * time. Only a run that actually passed may be recorded.
+ */
+export interface RecordGatePassMessage {
+  type: 'recordGatePass';
+  cardId: string;
+  gateId: string;
+  result: string;
+}
+
+export type WebviewToHostMessage =
+  | ReadyMessage
+  | MoveCardMessage
+  | AddCardMessage
+  | AddColumnMessage
+  | ToggleCheckMessage
+  | AddChecklistItemMessage
+  | SetDescriptionMessage
+  | UpdateMetaMessage
+  | RecordGatePassMessage
+  | SetFieldMessage
+  | AddCommentMessage
+  | OpenFileMessage
+  | CopyRefMessage
+  | SetScenarioMessage
+  | AddScenarioMessage
+  | RemoveScenarioMessage;

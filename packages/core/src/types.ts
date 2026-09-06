@@ -1,0 +1,269 @@
+/**
+ * Shared data model for RepoDoc.
+ *
+ * All data lives inside the repository:
+ *  - `boards/<id>/.config.json`   — board name, columns, labels
+ *  - `boards/<id>/NN-slug.md`     — one card per file (frontmatter + markdown)
+ *  - `decisions/NN-slug.md`       — decision records (markdown)
+ *  - `docs/**`                    — documentation tree (plain markdown)
+ *  - `features/<id>/.config.json` — feature-set columns (a board config)
+ *  - `features/<id>/*.feature`    — Gherkin features, columned by `@status:`
+ *
+ * The in-memory shapes below (BoardData/Column/Card) are what the webview and
+ * panels consume — columns carry derived `cardIds`, cards are keyed by id.
+ */
+
+import type { ScenarioKeyword } from './featureParse';
+
+export interface LabelDef {
+  name: string;
+  color: string;
+}
+
+export type CustomFieldType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect';
+
+/** A board-defined card field, declared in `.config.json` `fields`. */
+export interface CustomFieldDef {
+  /** Frontmatter key. Must not collide with the reserved card keys. */
+  id: string;
+  /** Display label — falls back to a title-cased id. */
+  label?: string;
+  type: CustomFieldType;
+  /** Choices for select/multiselect. */
+  options?: string[];
+  /** Show the value as a chip on the card face. */
+  showOnCard?: boolean;
+}
+
+export type CustomFieldValue = string | number | boolean | string[];
+
+/**
+ * A named condition on a column transition, declared per column in config.
+ * Exactly one of `script` / `field` is set:
+ *  - script: a command that must have run green; satisfied by a done evidence
+ *    line for the gate id in the card's `## Gates` section.
+ *  - field: evaluated live against the card's (custom or reserved) field value
+ *    using the `check` mini-syntax: absent → nonempty; `empty` | `nonempty` |
+ *    `= v` | `!= v` | `> n` | `>= n` | `< n` | `<= n` | `contains v` |
+ *    `match <regex>`.
+ */
+export interface GateDef {
+  id: string;
+  /** Human label — falls back to the id. */
+  label?: string;
+  /** The command this gate requires a green run of. */
+  script?: string;
+  /** The custom-field (or reserved-field) id the gate inspects. */
+  field?: string;
+  /** Field check expression (see mini-syntax above). */
+  check?: string;
+  /**
+   * Instructions for whoever must satisfy the gate — what to read, which
+   * command or skill to run, what to record. The CLI prints this verbatim when
+   * a move is refused so an agent is fed the workflow, not just a "no".
+   */
+  prompt?: string;
+}
+
+/**
+ * One entry of the card's `## Comments` journal section:
+ * `- **who** (ISO time): text`. Agents journal their work here; text may
+ * reference files as `path/to/file.ts:12` or `:12-34`, which the UI renders
+ * as one-click links opening the file at that highlighted range.
+ */
+export interface CommentEntry {
+  who?: string;
+  at?: string;
+  text: string;
+}
+
+/** One line of the card's `## Gates` section: `- [x] <gateId> — <note>`. */
+export interface GateEvidence {
+  gateId: string;
+  done: boolean;
+  note?: string;
+}
+
+/** The evaluation of one gate for a proposed transition. */
+export interface GateResult {
+  gate: GateDef;
+  satisfied: boolean;
+  /** Human-readable reason, e.g. "checklist 3/5" or "no approval by jonathan". */
+  reason: string;
+}
+
+export interface RepoDocConfig {
+  labels: Record<string, LabelDef>;
+  /** Board-defined card fields, in display order. */
+  fields: CustomFieldDef[];
+}
+
+export interface ChecklistItem {
+  text: string;
+  done: boolean;
+}
+
+export type Priority = 'high' | 'med' | 'low';
+
+export interface Card {
+  id: string;
+  title: string;
+  labels?: string[];
+  priority?: Priority;
+  /**
+   * Free text naming who is working the card (e.g. "claude"). Renders as a
+   * derived avatar — there is no roster; any writer may add themselves.
+   */
+  agent?: string;
+  /** True while an agent is actively working the card. */
+  live?: boolean;
+  /** Live status line, e.g. "editing src/payments/stripe.ts". */
+  status?: string;
+  /** Live progress 0-100. */
+  progress?: number;
+  /** Journal entries from the card's `## Comments` section, in file order. */
+  comments?: CommentEntry[];
+  desc?: string;
+  checklist?: ChecklistItem[];
+  /** Values of board-defined custom fields, keyed by field id, typed per def. */
+  custom?: Record<string, CustomFieldValue>;
+  /** Parsed `## Gates` section lines (evidence for command/approval gates). */
+  gates?: GateEvidence[];
+  /**
+   * A feature card's scenarios, in file order — the index of one here is the
+   * index every scenario mutation takes. Absent on card boards.
+   */
+  scenarios?: FeatureScenario[];
+  /** ISO timestamp of the last change. */
+  updatedAt?: string;
+}
+
+export interface Column {
+  id: string;
+  name: string;
+  /** Header dot color, e.g. "#4c8bf5". */
+  color: string;
+  /** Optional WIP limit. */
+  wip?: number;
+  /** Gates a card must satisfy to move INTO this column. */
+  enter?: GateDef[];
+  /** Gates a card must satisfy to move OUT of this column. */
+  exit?: GateDef[];
+  /** Workflow instructions for a card that has just entered this column. */
+  prompt?: string;
+  /** Ordered card ids. */
+  cardIds: string[];
+}
+
+export interface BoardData {
+  name: string;
+  columns: Column[];
+  cards: Record<string, Card>;
+}
+
+export interface BoardRef {
+  id: string;
+  name: string;
+  cardCount: number;
+}
+
+export interface DecisionRecord {
+  /** Stable id — the file name without extension. */
+  id: string;
+  /** Number as written in the file name, e.g. "01". */
+  num: string;
+  /** File name, e.g. "01-record-decisions.md". */
+  file: string;
+  title: string;
+  /** "Accepted" | "Proposed" | "Superseded" (free-form, from the markdown). */
+  status: string;
+  /** Decision date (frontmatter `date:`), verbatim. */
+  date?: string;
+  /** Full markdown body (frontmatter excluded). */
+  body: string;
+  /** All frontmatter keys, verbatim — rendered as a table in the reading view. */
+  frontmatter?: Record<string, unknown>;
+}
+
+export interface DocNode {
+  type: 'dir' | 'file';
+  /** File-system name. */
+  name: string;
+  /** Display label — first `# ` heading for files, title-cased name for dirs. */
+  label: string;
+  /** Path relative to the workspace root, e.g. "docs/guides/agents.md". */
+  relPath: string;
+  children?: DocNode[];
+}
+
+/** One scenario of a feature file, as shown and edited on a feature card. */
+export interface FeatureScenario {
+  name: string;
+  /** Tags written directly above the scenario, e.g. `@wip`. */
+  tags: string[];
+  /** The keyword it is declared with — a rewrite keeps it as written. */
+  keyword: ScenarioKeyword;
+  /**
+   * The scenario's body, one entry per line, dedented: steps, doc strings,
+   * tables and `Examples:` verbatim. RepoDoc carries these lines, it does not
+   * interpret them — which is what lets the UI edit a scenario without
+   * discarding the Gherkin it does not understand.
+   */
+  steps: string[];
+}
+
+/** One `.feature` file in a feature set. */
+export interface FeatureRecord {
+  /** Stable id — the file name without the `.feature` extension. */
+  id: string;
+  /** File name, e.g. "gates-block-a-move.feature". */
+  file: string;
+  /** Text after `Feature:` (the file name when the line is missing). */
+  title: string;
+  /** The feature's free text, between the Feature line and the first keyword. */
+  description: string;
+  /** Feature-level tags EXCLUDING the `@status:` tag. */
+  tags: string[];
+  /** Column id from the `@status:` tag; the first column when unset/unknown. */
+  status: string;
+  scenarios: FeatureScenario[];
+}
+
+/** A `features/<set-id>/` folder as listed in the tree and the CLI. */
+export interface FeatureSetRef {
+  id: string;
+  name: string;
+  featureCount: number;
+}
+
+/** Why a store mutation was refused. Mutations never throw for these. */
+export type StoreError =
+  | { code: 'unknown-board'; boardId: string }
+  | { code: 'unknown-card'; cardId: string }
+  | { code: 'unknown-column'; columnId: string }
+  | { code: 'duplicate-slugs'; slug: string }
+  | { code: 'unreadable-card'; cardId: string };
+
+export type MoveCardResult = { ok: true } | { ok: false; error: StoreError };
+
+/**
+ * The outcome of a gate-aware move (`RepoDocStore.moveCardGated`):
+ *  - `{ ok: true, overridden }` — moved; `overridden` names the gates whose
+ *    failure was journalled as an override (empty when nothing blocked).
+ *  - `{ ok: false, blocked }`   — gates block it and no valid override was
+ *    given; NOTHING was written.
+ *  - `{ ok: false, error }`     — the move itself is impossible (unknown board /
+ *    card / column, duplicate slugs); NOTHING was written.
+ */
+export type GatedMoveResult =
+  | { ok: true; overridden: string[] }
+  | { ok: false; blocked: GateResult[] }
+  | { ok: false; error: StoreError };
+
+/** Who bypassed a gate and why — required together, never one without the other. */
+export interface GateOverride {
+  who: string;
+  reason: string;
+}
+
+export type AddCardResult = { ok: true; cardId: string } | { ok: false; error: StoreError };
