@@ -49,16 +49,23 @@ describe('parseFeature — adversarial', () => {
     // no longer claimed.
     const parsed = parseFeature('x.feature', '@wip\nScenario: S\n');
     assert.deepStrictEqual(parsed.tags, ['@wip']);
-    assert.deepStrictEqual(parsed.scenarios, [{ name: 'S', tags: [] }]);
+    assert.deepStrictEqual(
+      parsed.scenarios.map((sc) => [sc.name, sc.tags, sc.start, sc.end]),
+      [['S', [], 1, 3]],
+      "the file's own tag line is outside the scenario's span, so removing the scenario keeps it",
+    );
   });
 
   test('given a file with no Feature line, when parsed, then tags BELOW its first scenario stay with their scenario', () => {
     const parsed = parseFeature('x.feature', '@wip\nScenario: S\n@slow\nScenario: T\n');
     assert.deepStrictEqual(parsed.tags, ['@wip']);
-    assert.deepStrictEqual(parsed.scenarios, [
-      { name: 'S', tags: [] },
-      { name: 'T', tags: ['@slow'] },
-    ]);
+    assert.deepStrictEqual(
+      parsed.scenarios.map((sc) => [sc.name, sc.tags]),
+      [
+        ['S', []],
+        ['T', ['@slow']],
+      ],
+    );
   });
 
   test('given a Feature: line with no text, when parsed, then the title falls back to the file name', () => {
@@ -149,7 +156,18 @@ describe('parseFeature — adversarial', () => {
     assert.strictEqual(parsed.title, 'T');
     assert.deepStrictEqual(parsed.tags, ['@status:done', '@core']);
     assert.strictEqual(parsed.description, 'desc one\ndesc two');
-    assert.deepStrictEqual(parsed.scenarios, [{ name: 'S', tags: [] }]);
+    assert.deepStrictEqual(
+      parsed.scenarios.map((sc) => [sc.name, sc.tags, sc.steps]),
+      [['S', [], []]],
+    );
+  });
+
+  test('given a CRLF file with steps, when parsed, then no step carries a carriage return', () => {
+    const parsed = parseFeature(
+      'x.feature',
+      'Feature: T\r\n\r\n  Scenario: S\r\n    Given a\r\n    Then b\r\n',
+    );
+    assert.deepStrictEqual(parsed.scenarios[0]?.steps, ['Given a', 'Then b']);
   });
 
   test('given a second Feature line, when parsed, then the first wins and the second is description text', () => {
@@ -395,14 +413,19 @@ describe('FeatureStore through the store — adversarial', () => {
     );
   });
 
-  test('given a feature with tags and scenarios, when the board renders, then labels and a Scenarios list are derived', () => {
+  test('given a feature with tags and scenarios, when the board renders, then labels, prose and scenarios are derived', () => {
     const { store } = seed({
       'features/s/d.feature':
         '@status:done @ui\nFeature: D\n  Prose.\n\n  Scenario: First\n\n  Scenario: Second\n',
     });
     const card = required(store.getFeatureSet('s'), 'board').cards['d'];
     assert.deepStrictEqual(card?.labels, ['@ui']);
-    assert.strictEqual(card?.desc, 'Prose.\n\n## Scenarios\n\n- First\n- Second');
+    assert.strictEqual(card?.desc, 'Prose.', 'the description is the feature prose alone');
+    assert.deepStrictEqual(
+      card?.scenarios?.map((sc) => sc.name),
+      ['First', 'Second'],
+      'scenarios ride along as data, not as markdown inside the editable description',
+    );
   });
 
   test('given an unknown feature, when a ref or path is asked for, then both are undefined', () => {

@@ -18,7 +18,8 @@ import { type CardEntry, findChecklist, parseCard } from './cardParse';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
 import { applyEol, detectEol, normalizeEol } from './eol';
-import { FeatureStore } from './features';
+import type { NewScenario, ScenarioPatch } from './featureBody';
+import { type FeatureMetaPatch, FeatureStore } from './features';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { evaluateTransition } from './gates';
 import { pad, slugify, titleCase, uniqueSlug } from './naming';
@@ -928,6 +929,51 @@ export class RepoDocStore {
       this.fire();
     }
     return result;
+  }
+
+  /**
+   * Rewrites a feature's title and/or description in its `.feature` file. Only
+   * those constructs change: tags, scenarios, `Rule:` / `Background:` blocks,
+   * comments and the file's line endings are preserved, and the file is never
+   * renamed. Fires on a write. Returns whether it was written (false for an
+   * unknown set or feature, or a blank title).
+   */
+  updateFeatureMeta(setId: string, featureId: string, patch: FeatureMetaPatch): boolean {
+    return this.fireIf(this.features.updateFeatureMeta(setId, featureId, patch));
+  }
+
+  /**
+   * Rewrites one scenario of a feature — its name, its steps, or both — keeping
+   * the keyword it was declared with and its tag lines. `index` counts the
+   * feature's scenarios in file order (`Rule:` and `Background:` blocks are not
+   * scenarios). Fires on a write; false for an unknown feature, an
+   * out-of-range index, or a blank name.
+   */
+  setFeatureScenario(
+    setId: string,
+    featureId: string,
+    index: number,
+    patch: ScenarioPatch,
+  ): boolean {
+    return this.fireIf(this.features.setFeatureScenario(setId, featureId, index, patch));
+  }
+
+  /** Appends a scenario to a feature file. False for a blank name. */
+  addFeatureScenario(setId: string, featureId: string, scenario: NewScenario): boolean {
+    return this.fireIf(this.features.addFeatureScenario(setId, featureId, scenario));
+  }
+
+  /** Removes a feature's scenario (its tag lines with it). False when out of range. */
+  removeFeatureScenario(setId: string, featureId: string, index: number): boolean {
+    return this.fireIf(this.features.removeFeatureScenario(setId, featureId, index));
+  }
+
+  /** Fires listeners when `changed`, and hands the flag back to the caller. */
+  private fireIf(changed: boolean): boolean {
+    if (changed) {
+      this.fire();
+    }
+    return changed;
   }
 
   // ---- docs ----

@@ -9,19 +9,17 @@ is the longer view.
 Bun workspace with `@repodoc/core`, `@repodoc/cli`, and the extension. Agents
 mutate boards through `bunx github:flying-dice/repodoc` instead of hand-editing
 frontmatter, so gates and file formats are enforced for everyone. Decision 09.
+Also in M1: Gherkin feature sets with managed editing of title, description
+and scenarios persisted to the `.feature` file (GitHub #11, Decision 10).
 
 ## M2 — Harden the CLI for agents
 
 - `card add-checklist` / `card set-desc` so no agent write requires a hand edit.
 - A `--watch`-free `board diff` (what changed since a timestamp) for lead check-ins.
 - Publish the skill file from the CLI's own help so the two never drift.
-- Managed feature editing (GitHub #11): edit a feature's description and
-  scenarios inside RepoDoc's detail view, persisted to the `.feature` file the
-  way card edits persist to Markdown; the raw source editor stays an escape
-  hatch. Needs a Gherkin writer that preserves every byte it does not own
-  (Decision 10's no-rename, no-pollution rules) and a CLI twin
-  (`feature describe`, `feature scenario-add`). `Verified` stays a recorded
-  status, never test evidence.
+- Scenario tags, `Rule:` and `Background:` in the managed feature view
+  (today: read-only / raw-file only). `Verified` stays a recorded status,
+  never test evidence.
 
 Why next: the CLI is the agent surface now; every gap sends an agent back to
 editing files, which is what M1 set out to end.

@@ -32,6 +32,18 @@
   // never inherits it. Mirrors src/panels/commentDrafts.ts BY HAND.
   var commentDrafts = {};
   var commentWho = null; // composer author override; null = use the configured name
+  // Unsaved scenario edits, keyed "<boardId>/<cardId>/<index>" (or ".../new").
+  // They live here, not in the DOM, so a data refresh — which rebuilds the whole
+  // modal — cannot swallow what someone is halfway through typing. Mirrors
+  // src/panels/scenarioDrafts.ts BY HAND.
+  var scenarioDrafts = {};
+  var scenarioPending = {}; // key -> {cardId, index, name, steps} posted, awaiting the file
+  var lastPosted = {}; // key -> the same, kept so a late write is still recognised
+  var scenarioSaved = {}; // key -> true while the "Saved" mark shows
+  var scenarioFailed = {}; // key -> true when a save never reached the file
+  var scenarioError = {}; // key -> inline validation message
+  var confirmRemoveKey = null; // the block asking "Remove this scenario?"
+  var focusScenario = null; // id of a scenario field to focus after the next render
   var descText = ''; // uncontrolled description-editor text
   var checkText = ''; // uncontrolled checklist-composer text
   var gatePassText = {}; // "<cardId>|<gateId>" -> uncontrolled evidence input text
@@ -84,6 +96,67 @@
   function boardIdOf() {
     return state.data ? state.data.boardId : '';
   }
+
+  /* ---- Scenario drafts (mirrors src/panels/scenarioDrafts.ts) ---- */
+  var NEW_SCENARIO = 'new';
+  function scenarioDraftKey(boardId, cardId, index) {
+    return `${boardId}/${cardId}/${index}`;
+  }
+  function getScenarioDraft(drafts, key) {
+    return Object.prototype.hasOwnProperty.call(drafts, key) ? drafts[key] : undefined;
+  }
+  function setScenarioDraft(drafts, key, draft) {
+    var next = Object.assign({}, drafts);
+    next[key] = draft;
+    return next;
+  }
+  function clearScenarioDraft(drafts, key) {
+    if (!Object.prototype.hasOwnProperty.call(drafts, key)) {
+      return drafts;
+    }
+    var next = Object.assign({}, drafts);
+    delete next[key];
+    return next;
+  }
+  function clearCardDrafts(drafts, boardId, cardId) {
+    var prefix = `${boardId}/${cardId}/`;
+    var next = {};
+    Object.keys(drafts).forEach(function (key) {
+      if (key.indexOf(prefix) !== 0) {
+        next[key] = drafts[key];
+      }
+    });
+    return next;
+  }
+  function splitSteps(text) {
+    var lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+    while (lines.length > 0 && lines[0].trim() === '') {
+      lines.shift();
+    }
+    while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+      lines.pop();
+    }
+    return lines;
+  }
+  function joinSteps(steps) {
+    return (steps || []).join('\n');
+  }
+  function scenarioChangedUnderDraft(draft, stored) {
+    if (!stored) {
+      return true;
+    }
+    return draft.base.name !== stored.name || draft.base.steps !== joinSteps(stored.steps);
+  }
+  function draftMatchesStored(draft, stored) {
+    if (!stored) {
+      return false;
+    }
+    return (
+      draft.name.replace(/\s+/g, ' ').trim() === stored.name &&
+      joinSteps(splitSteps(draft.steps)) === joinSteps(stored.steps)
+    );
+  }
+  /* ---- end of the scenario-draft mirror ---- */
 
   /* ---- Drag state ---- */
   var drag = {
@@ -292,11 +365,13 @@
     return caps?.[name] !== false;
   }
   /**
-   * A feature set declares `meta: false` — its cards are `.feature` files, not
-   * cards, and the whole surface says so (composer, search, footer).
+   * A feature set is the surface whose cards carry Gherkin scenarios. It DOES
+   * declare `meta` (a feature's title is its `Feature:` line and is editable),
+   * so the flag that tells the two surfaces apart is `scenarios` — the one
+   * thing only a feature set has.
    */
   function isFeatureSet() {
-    return state.data?.capabilities?.meta === false;
+    return state.data?.capabilities?.scenarios === true;
   }
   function noun(plural) {
     if (isFeatureSet()) {
@@ -1348,8 +1423,8 @@
   // G-2 / D-7: an always-present Activity row. The old banner only appeared
   // while a card was live, so the owner was invisible the rest of the time.
   function activityRow(card) {
-    if (!can('meta')) {
-      return null; // features own agent/status in the .feature file
+    if (!can('meta') || isFeatureSet()) {
+      return null; // a .feature file has nowhere to put an agent, live flag or progress
     }
     var live = card.live === true;
     var setLive = function () {
@@ -1451,8 +1526,14 @@
 
   function modalMeta(card) {
     var cells = [];
+    // Priority and labels are card-board metadata: a feature's labels are the
+    // tags in its file, and it has no priority at all — so the row is not shown
+    // for features rather than shown empty or, worse, editable.
+    if (isFeatureSet()) {
+      return null;
+    }
     // A surface that cannot edit priority has nothing useful to say when none
-    // is set — a feature has no priority at all, so do not print "None".
+    // is set — do not print "None".
     if (can('meta') || card.priority) {
       cells.push(
         h('div', {}, [h('div', { class: 'field-label' }, 'Priority'), priorityEditor(card)]),
@@ -1564,6 +1645,436 @@
           'Add a description…',
         );
     return h('div', { class: 'section' }, [h('div', { class: 'section-head' }, head), body]);
+  }
+
+  /* ---- Scenarios (feature sets only) ---- */
+
+  function scenariosOf(card) {
+    return Array.isArray(card.scenarios) ? card.scenarios : [];
+  }
+
+  function scenarioKeyFor(cardId, index) {
+    return scenarioDraftKey(boardIdOf(), cardId, index);
+  }
+
+  /** Open an editor over a scenario (or over nothing, for the composer). */
+  function editScenario(card, index, scenario) {
+    var key = scenarioKeyFor(card.id, index);
+    var name = scenario ? scenario.name : '';
+    var steps = scenario ? joinSteps(scenario.steps) : '';
+    scenarioDrafts = setScenarioDraft(scenarioDrafts, key, {
+      name: name,
+      steps: steps,
+      // What the file said when editing started: an external change no longer
+      // matches it, and that is what the block reports instead of overwriting.
+      base: { name: name, steps: steps },
+    });
+    delete scenarioError[key];
+    delete scenarioFailed[key];
+    confirmRemoveKey = null;
+    focusScenario = `scenario-name-${index}`;
+    render();
+  }
+
+  function cancelScenario(key) {
+    scenarioDrafts = clearScenarioDraft(scenarioDrafts, key);
+    delete scenarioError[key];
+    delete scenarioFailed[key];
+    delete scenarioPending[key];
+    delete lastPosted[key];
+    render();
+  }
+
+  /**
+   * Post the draft at `key`. The draft is NOT cleared here: it stays until the
+   * file comes back saying the same thing (see reconcileScenarioSaves), so a
+   * refused or lost write leaves the text on screen rather than dropping it.
+   */
+  function saveScenario(card, key, index) {
+    var draft = getScenarioDraft(scenarioDrafts, key);
+    if (!draft) {
+      return;
+    }
+    var name = draft.name.replace(/\s+/g, ' ').trim();
+    if (!name) {
+      scenarioError[key] = 'A scenario needs a name.';
+      focusScenario = `scenario-name-${index}`;
+      render();
+      return;
+    }
+    delete scenarioError[key];
+    delete scenarioFailed[key];
+    var steps = splitSteps(draft.steps);
+    vscode.postMessage(
+      index === NEW_SCENARIO
+        ? { type: 'addScenario', cardId: card.id, name: name, steps: steps }
+        : { type: 'setScenario', cardId: card.id, index: index, name: name, steps: steps },
+    );
+    scenarioPending[key] = { cardId: card.id, index: index, name: name, steps: steps };
+    lastPosted[key] = scenarioPending[key];
+    watchScenarioSave(key);
+    render();
+  }
+
+  // A write that never arrives must not leave the block saying "Saving…"
+  // forever: after a moment it says it did not save, and keeps the text.
+  function watchScenarioSave(key) {
+    setTimeout(function () {
+      if (!scenarioPending[key]) {
+        return;
+      }
+      delete scenarioPending[key];
+      scenarioFailed[key] = true;
+      render();
+    }, 4000);
+  }
+
+  /**
+   * Match each posted scenario against what the file now says. On a match the
+   * draft is done: it is dropped and the block flashes "Saved". Called on every
+   * data message, before the render that shows it.
+   *
+   * A save that was given up on (see watchScenarioSave) is checked too: a write
+   * that simply took longer than the wait must still be recognised when it
+   * lands, rather than leaving the editor open over a file that agrees with it.
+   */
+  function reconcileScenarioSaves() {
+    Object.keys(scenarioPending).forEach(function (key) {
+      confirmScenarioSave(key, scenarioPending[key]);
+    });
+    Object.keys(scenarioFailed).forEach(function (key) {
+      var draft = getScenarioDraft(scenarioDrafts, key);
+      if (draft) {
+        confirmScenarioSave(key, lastPosted[key]);
+      }
+    });
+  }
+
+  function confirmScenarioSave(key, posted) {
+    if (!posted) {
+      return;
+    }
+    var cards = board() ? board().cards : null;
+    var card = cards ? cards[posted.cardId] : null;
+    if (!card) {
+      return;
+    }
+    var list = scenariosOf(card);
+    // A new scenario is appended, so the file's last one is the one just sent.
+    var at = posted.index === NEW_SCENARIO ? list.length - 1 : posted.index;
+    var stored = list[at];
+    var asDraft = { name: posted.name, steps: joinSteps(posted.steps), base: null };
+    if (!draftMatchesStored(asDraft, stored)) {
+      return; // not (yet) what the file says — leave the block saying "Saving…"
+    }
+    delete scenarioPending[key];
+    delete scenarioFailed[key];
+    delete lastPosted[key];
+    scenarioDrafts = clearScenarioDraft(scenarioDrafts, key);
+    flashScenarioSaved(scenarioKeyFor(posted.cardId, at));
+  }
+
+  function flashScenarioSaved(key) {
+    scenarioSaved[key] = true;
+    setTimeout(function () {
+      delete scenarioSaved[key];
+      render();
+    }, 2600);
+  }
+
+  function removeScenario(card, index) {
+    confirmRemoveKey = null;
+    vscode.postMessage({ type: 'removeScenario', cardId: card.id, index: index });
+    render();
+  }
+
+  /** The keyword + name line every block shows, editing or not. */
+  function scenarioKeywordChip(scenario) {
+    return h('span', { class: 'scenario-keyword' }, `${scenario.keyword || 'Scenario'}:`);
+  }
+
+  function scenarioTags(scenario) {
+    var tags = Array.isArray(scenario.tags) ? scenario.tags : [];
+    if (!tags.length) {
+      return null;
+    }
+    // The tags are shown, not edited: they are the file's, and RepoDoc only
+    // rewrites what it can round-trip.
+    return h(
+      'div',
+      { class: 'scenario-tags', title: 'Tags are edited in the .feature file' },
+      tags.map(function (tag) {
+        return h('span', { class: 'scenario-tag' }, tag);
+      }),
+    );
+  }
+
+  function scenarioReader(card, scenario, index, key) {
+    var actions = [];
+    if (scenarioSaved[key]) {
+      actions.push(
+        h('span', { class: 'scenario-saved', role: 'status' }, [
+          icon(ICON.check, 'icon'),
+          ' Saved',
+        ]),
+      );
+    }
+    if (confirmRemoveKey === key) {
+      actions.push(
+        h('span', { class: 'scenario-confirm' }, 'Remove this scenario?'),
+        h(
+          'button',
+          {
+            class: 'ghost-btn danger',
+            'aria-label': `Confirm removing scenario ${scenario.name}`,
+            onClick: function () {
+              removeScenario(card, index);
+            },
+          },
+          'Remove',
+        ),
+        h(
+          'button',
+          {
+            class: 'ghost-btn',
+            onClick: function () {
+              confirmRemoveKey = null;
+              render();
+            },
+          },
+          'Keep',
+        ),
+      );
+    } else {
+      actions.push(
+        h(
+          'button',
+          {
+            class: 'ghost-btn',
+            'aria-label': `Edit scenario ${scenario.name}`,
+            onClick: function () {
+              editScenario(card, index, scenario);
+            },
+          },
+          'Edit',
+        ),
+        h(
+          'button',
+          {
+            class: 'ghost-btn',
+            'aria-label': `Remove scenario ${scenario.name}`,
+            onClick: function () {
+              confirmRemoveKey = key;
+              render();
+            },
+          },
+          'Remove',
+        ),
+      );
+    }
+
+    var steps = scenario.steps || [];
+    return h('div', { class: 'scenario' }, [
+      h('div', { class: 'scenario-head' }, [
+        h('div', { class: 'scenario-title' }, [scenarioKeywordChip(scenario), ' ', scenario.name]),
+        h('div', { class: 'section-head-spacer' }),
+        h('div', { class: 'scenario-actions' }, actions),
+      ]),
+      scenarioTags(scenario),
+      steps.length
+        ? h('pre', { class: 'scenario-steps' }, steps.join('\n'))
+        : h('div', { class: 'scenario-steps empty' }, 'No steps yet.'),
+    ]);
+  }
+
+  function scenarioEditor(card, scenario, index, key, draft) {
+    var nameId = `scenario-name-${index}`;
+    var stepsId = `scenario-steps-${index}`;
+    var pending = Boolean(scenarioPending[key]);
+
+    var nameInput = h('input', {
+      id: nameId,
+      class: 'field-input',
+      placeholder: 'What the scenario proves',
+      'aria-label': 'Scenario name',
+      onInput: function (e) {
+        // No render: the draft is state, the input is already showing it.
+        scenarioDrafts = setScenarioDraft(
+          scenarioDrafts,
+          key,
+          Object.assign({}, getScenarioDraft(scenarioDrafts, key), { name: e.target.value }),
+        );
+      },
+      onKeyDown: function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveScenario(card, key, index);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelScenario(key);
+        }
+      },
+    });
+    nameInput.value = draft.name;
+
+    var stepsInput = h('textarea', {
+      id: stepsId,
+      class: 'comment-input scenario-steps-input',
+      rows: '6',
+      placeholder: 'Given a card in todo\nWhen I move it to review\nThen the move is refused',
+      'aria-label': 'Scenario steps, one per line',
+      onInput: function (e) {
+        scenarioDrafts = setScenarioDraft(
+          scenarioDrafts,
+          key,
+          Object.assign({}, getScenarioDraft(scenarioDrafts, key), { steps: e.target.value }),
+        );
+      },
+      onKeyDown: function (e) {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          saveScenario(card, key, index);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelScenario(key);
+        }
+      },
+    });
+    stepsInput.value = draft.steps;
+
+    var notices = [];
+    if (scenarioError[key]) {
+      notices.push(h('div', { class: 'scenario-notice error', role: 'alert' }, scenarioError[key]));
+    }
+    if (scenarioFailed[key]) {
+      notices.push(
+        h(
+          'div',
+          { class: 'scenario-notice error', role: 'alert' },
+          'Not saved — the file did not change. Your text is still here; try again or use Open file.',
+        ),
+      );
+    }
+    // The file moved under an open edit: neither side wins silently.
+    if (index !== NEW_SCENARIO && scenarioChangedUnderDraft(draft, scenario)) {
+      notices.push(
+        h('div', { class: 'scenario-notice', role: 'alert' }, [
+          h('span', {}, 'Changed on disk while you were editing.'),
+          h(
+            'button',
+            {
+              class: 'ghost-btn',
+              onClick: function () {
+                editScenario(card, index, scenario); // reload = start again from the file
+              },
+            },
+            'Reload',
+          ),
+          h(
+            'button',
+            {
+              class: 'ghost-btn',
+              onClick: function () {
+                var current = getScenarioDraft(scenarioDrafts, key);
+                scenarioDrafts = setScenarioDraft(
+                  scenarioDrafts,
+                  key,
+                  Object.assign({}, current, {
+                    base: {
+                      name: scenario ? scenario.name : '',
+                      steps: scenario ? joinSteps(scenario.steps) : '',
+                    },
+                  }),
+                );
+                render();
+              },
+            },
+            'Keep mine',
+          ),
+        ]),
+      );
+    }
+
+    return h('div', { class: 'scenario editing' }, [
+      h('div', { class: 'scenario-head' }, [
+        scenario
+          ? scenarioKeywordChip(scenario)
+          : h('span', { class: 'scenario-keyword' }, 'Scenario:'),
+        h('div', { class: 'scenario-name-cell' }, [nameInput]),
+      ]),
+      scenario ? scenarioTags(scenario) : null,
+      h('div', { class: 'field-label scenario-steps-label' }, 'Steps — one per line'),
+      stepsInput,
+      notices.length ? h('div', { class: 'scenario-notices' }, notices) : null,
+      h('div', { class: 'composer-actions' }, [
+        h(
+          'button',
+          {
+            class: 'btn-primary',
+            disabled: pending ? 'disabled' : null,
+            onClick: function () {
+              saveScenario(card, key, index);
+            },
+          },
+          pending ? 'Saving…' : 'Save',
+        ),
+        h(
+          'button',
+          {
+            class: 'btn-secondary',
+            onClick: function () {
+              cancelScenario(key);
+            },
+          },
+          'Cancel',
+        ),
+      ]),
+    ]);
+  }
+
+  /** The composer at the end of the list: the same editor over nothing. */
+  function scenarioComposer(card) {
+    var key = scenarioKeyFor(card.id, NEW_SCENARIO);
+    var draft = getScenarioDraft(scenarioDrafts, key);
+    if (draft) {
+      return scenarioEditor(card, null, NEW_SCENARIO, key, draft);
+    }
+    return h(
+      'button',
+      {
+        class: 'add-card-btn',
+        onClick: function () {
+          editScenario(card, NEW_SCENARIO, null);
+        },
+      },
+      [h('span', { class: 'plus' }, '+'), ' Add scenario'],
+    );
+  }
+
+  /**
+   * The feature's scenarios, each editable in place. Only a surface that
+   * declares `scenarios` has them; a card board never renders this section.
+   */
+  function modalScenarios(card) {
+    if (!isFeatureSet()) {
+      return null;
+    }
+    var list = scenariosOf(card);
+    var blocks = list.map(function (scenario, index) {
+      var key = scenarioKeyFor(card.id, index);
+      var draft = getScenarioDraft(scenarioDrafts, key);
+      return draft
+        ? scenarioEditor(card, scenario, index, key, draft)
+        : scenarioReader(card, scenario, index, key);
+    });
+    blocks.push(scenarioComposer(card));
+    return h('div', { class: 'section' }, [
+      h('div', { class: 'section-head' }, [
+        h('div', { class: 'field-label', style: 'margin-bottom:0;' }, 'Scenarios'),
+        list.length ? h('span', { class: 'checklist-count' }, String(list.length)) : null,
+      ]),
+      h('div', { class: 'scenario-list' }, blocks),
+    ]);
   }
 
   function saveChecklistItem(card) {
@@ -2440,6 +2951,7 @@
       activityRow(card),
       modalMeta(card),
       modalDescription(card),
+      modalScenarios(card),
       modalFields(card),
       modalChecklist(card),
       modalGates(card, col),
@@ -2470,6 +2982,9 @@
     state.editingTitle = false;
     state.editingDesc = false;
     state.addingCheck = false;
+    // Unsaved scenario text is NOT dropped here: like a comment draft, it
+    // belongs to the card it was typed on and comes back when it is reopened.
+    confirmRemoveKey = null;
     render();
   }
 
@@ -2926,8 +3441,10 @@
       return;
     }
 
-    // Drop a stale open card.
+    // Drop a stale open card, and any scenario text typed on it — the file it
+    // belonged to is gone, so there is nowhere left to save it.
     if (state.openCardId && !board().cards[state.openCardId]) {
+      scenarioDrafts = clearCardDrafts(scenarioDrafts, boardIdOf(), state.openCardId);
       state.openCardId = null;
     }
     // ...and a blocked dialog whose card disappeared underneath it.
@@ -3026,6 +3543,13 @@
     if (state.addingCheck && focusEnd(document.getElementById('check-composer'))) {
       return;
     }
+    if (focusScenario) {
+      var field = document.getElementById(focusScenario);
+      focusScenario = null;
+      if (focusEnd(field)) {
+        return;
+      }
+    }
     var want = state.blocked ? 'blocked' : state.openCardId ? 'modal' : null;
     if (want !== focusedDialog) {
       focusedDialog = want;
@@ -3042,6 +3566,14 @@
 
   function applyData(payload) {
     state.data = payload;
+    // Confirm posted scenario edits against what the file now says BEFORE the
+    // render, so a block that landed shows "Saved" in the same frame.
+    try {
+      reconcileScenarioSaves();
+    } catch (saveErr) {
+      // eslint-disable-next-line no-console
+      console.error('RepoDoc: scenario save reconciliation failed', saveErr);
+    }
     render();
   }
 

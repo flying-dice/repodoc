@@ -14,7 +14,15 @@ import {
   SkillManager,
   type StoreError,
 } from '../../core/src/index';
-import { boolFlag, CommandError, intFlag, type ParsedArgs, stringFlag, UsageError } from './args';
+import {
+  boolFlag,
+  CommandError,
+  intFlag,
+  type ParsedArgs,
+  stringFlag,
+  stringFlags,
+  UsageError,
+} from './args';
 import type { CommandContext } from './context';
 import { type Printer, table } from './output';
 
@@ -512,13 +520,15 @@ export const COMMANDS: Command[] = [
           lines.push('', feature.description);
         }
         if (feature.scenarios.length) {
-          lines.push(
-            '',
-            '## Scenarios',
-            ...feature.scenarios.map(
-              (s) => `- ${s.name}${s.tags.length ? `  ${s.tags.join(' ')}` : ''}`,
-            ),
-          );
+          // The index is printed because it is the argument every scenario
+          // command takes — `feature scenario-set <set> <feature> <index>`.
+          lines.push('', '## Scenarios');
+          feature.scenarios.forEach((s, index) => {
+            lines.push(
+              `[${index}] ${s.keyword}: ${s.name}${s.tags.length ? `  ${s.tags.join(' ')}` : ''}`,
+              ...s.steps.map((step) => `    ${step}`),
+            );
+          });
         }
         return lines;
       });
@@ -575,6 +585,127 @@ export const COMMANDS: Command[] = [
           return lines;
         },
       );
+    },
+  },
+  {
+    group: 'feature',
+    name: 'rename',
+    usage: 'feature rename <set> <feature> <title>',
+    summary: 'Rewrite the Feature: line. Every other byte of the file is preserved.',
+    run(ctx, args, out): void {
+      const [setId, featureId, title] = need(args, ['set', 'feature', 'title']);
+      requireFeature(ctx, setId, featureId);
+      if (!title.trim()) {
+        throw new UsageError('a feature needs a title');
+      }
+      if (!ctx.store.updateFeatureMeta(setId, featureId, { title })) {
+        throw new CommandError(`could not write features/${setId}/${featureId}.feature`);
+      }
+      const feature = requireFeature(ctx, setId, featureId);
+      out.emit({ set: setId, feature: featureId, title: feature.title }, () => [
+        `Renamed ${featureId} → ${feature.title}`,
+      ]);
+    },
+  },
+  {
+    group: 'feature',
+    name: 'describe',
+    usage: 'feature describe <set> <feature> <text>',
+    summary:
+      "Replace the feature's description — the free text under Feature:. An empty text clears it.",
+    run(ctx, args, out): void {
+      const [setId, featureId, text] = need(args, ['set', 'feature', 'text']);
+      const before = requireFeature(ctx, setId, featureId);
+      if (!ctx.store.updateFeatureMeta(setId, featureId, { description: text })) {
+        // The one reason a known feature refuses a description: there is no
+        // `Feature:` line for it to sit under.
+        throw new CommandError(
+          `features/${setId}/${before.file} has no \`Feature:\` line to describe — add one with \`repodoc feature rename ${setId} ${featureId} "<title>"\``,
+        );
+      }
+      const feature = requireFeature(ctx, setId, featureId);
+      out.emit({ set: setId, feature: featureId, description: feature.description }, () => [
+        feature.description ? `Described ${featureId}` : `Cleared the description of ${featureId}`,
+      ]);
+    },
+  },
+  {
+    group: 'feature',
+    name: 'scenario-add',
+    usage: 'feature scenario-add <set> <feature> <name> [--step "Given …"]…',
+    summary: 'Append a scenario. Repeat --step for each line of its body.',
+    run(ctx, args, out): void {
+      const [setId, featureId, name] = need(args, ['set', 'feature', 'name']);
+      requireFeature(ctx, setId, featureId);
+      if (!name.trim()) {
+        throw new UsageError('a scenario needs a name');
+      }
+      if (args.flags['step'] === true) {
+        throw new UsageError('--step expects text, e.g. --step "Given a card in todo"');
+      }
+      const steps = stringFlags(args, 'step');
+      if (!ctx.store.addFeatureScenario(setId, featureId, { name, steps })) {
+        throw new CommandError(`could not write features/${setId}/${featureId}.feature`);
+      }
+      const feature = requireFeature(ctx, setId, featureId);
+      const index = feature.scenarios.length - 1;
+      out.emit({ set: setId, feature: featureId, index, name, steps }, () => [
+        `Added scenario [${index}] ${name} to ${featureId}`,
+      ]);
+    },
+  },
+  {
+    group: 'feature',
+    name: 'scenario-set',
+    usage: 'feature scenario-set <set> <feature> <index> [--name <name>] [--step "Given …"]…',
+    summary:
+      "Rewrite a scenario's name and/or its body (every --step replaces the whole body). The keyword and its tags are kept.",
+    run(ctx, args, out): void {
+      const [setId, featureId, rawIndex] = need(args, ['set', 'feature', 'index']);
+      requireFeature(ctx, setId, featureId);
+      const index = scenarioIndex(rawIndex);
+      const name = stringFlag(args.flags, 'name');
+      if (args.flags['step'] === true) {
+        throw new UsageError('--step expects text, e.g. --step "Given a card in todo"');
+      }
+      // `--step ""` is how a body is cleared: the flag was given, with nothing in it.
+      const steps = stringFlags(args, 'step');
+      const hasSteps = steps.length > 0;
+      if (name === undefined && !hasSteps) {
+        throw new UsageError('nothing to change: pass --name and/or --step');
+      }
+      if (name !== undefined && !name.trim()) {
+        throw new UsageError('a scenario needs a name');
+      }
+      const patch = {
+        ...(name === undefined ? {} : { name }),
+        ...(hasSteps ? { steps } : {}),
+      };
+      if (!ctx.store.setFeatureScenario(setId, featureId, index, patch)) {
+        throw new CommandError(unknownScenario(ctx, setId, featureId, index));
+      }
+      const scenario = requireFeature(ctx, setId, featureId).scenarios[index];
+      out.emit({ set: setId, feature: featureId, index, ...scenario }, () => [
+        `Updated scenario [${index}] ${scenario?.name ?? ''} of ${featureId}`,
+      ]);
+    },
+  },
+  {
+    group: 'feature',
+    name: 'scenario-remove',
+    usage: 'feature scenario-remove <set> <feature> <index>',
+    summary: 'Remove a scenario and the tag lines above it. Nothing else in the file changes.',
+    run(ctx, args, out): void {
+      const [setId, featureId, rawIndex] = need(args, ['set', 'feature', 'index']);
+      requireFeature(ctx, setId, featureId);
+      const index = scenarioIndex(rawIndex);
+      const removed = requireFeature(ctx, setId, featureId).scenarios[index];
+      if (!ctx.store.removeFeatureScenario(setId, featureId, index)) {
+        throw new CommandError(unknownScenario(ctx, setId, featureId, index));
+      }
+      out.emit({ set: setId, feature: featureId, index, name: removed?.name ?? null }, () => [
+        `Removed scenario [${index}] ${removed?.name ?? ''} from ${featureId}`,
+      ]);
     },
   },
   {
@@ -771,6 +902,27 @@ function requireFeature(ctx: CommandContext, setId: string, featureId: string): 
     );
   }
   return feature;
+}
+
+/** A scenario index positional: a non-negative integer, or a usage error. */
+function scenarioIndex(raw: string): number {
+  const index = Number(raw);
+  if (!Number.isInteger(index) || index < 0) {
+    throw new UsageError(`<index> expects a scenario index (0 or more), got "${raw}"`);
+  }
+  return index;
+}
+
+/** The refusal for an index no scenario answers to, naming the ones that exist. */
+function unknownScenario(
+  ctx: CommandContext,
+  setId: string,
+  featureId: string,
+  index: number,
+): string {
+  const scenarios = requireFeature(ctx, setId, featureId).scenarios;
+  const known = scenarios.length ? `0-${scenarios.length - 1}` : 'none';
+  return `no scenario ${index} in ${featureId} (scenarios: ${known}; see \`repodoc feature show ${setId} ${featureId}\`)`;
 }
 
 /**

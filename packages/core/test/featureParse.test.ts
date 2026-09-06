@@ -66,7 +66,20 @@ describe('parseFeature', () => {
     assert.strictEqual(parsed.title, 'Commented');
     assert.deepStrictEqual(parsed.tags, ['@status:proposed']);
     assert.strictEqual(parsed.description, 'The description.');
-    assert.deepStrictEqual(parsed.scenarios, [{ name: 'One', tags: ['@wip'] }]);
+    assert.deepStrictEqual(parsed.scenarios, [
+      {
+        name: 'One',
+        tags: ['@wip'],
+        keyword: 'Scenario',
+        headingLine: 9,
+        // The tag line above it is part of its span; the description above that is not.
+        start: 8,
+        end: 11,
+        steps: [],
+      },
+    ]);
+    assert.deepStrictEqual(parsed.descriptionSpan, { start: 5, end: 8 });
+    assert.strictEqual(parsed.featureLine, 4);
   });
 
   test('a file with no Feature line still parses, titled after the file', () => {
@@ -74,7 +87,18 @@ describe('parseFeature', () => {
     assert.strictEqual(parsed.title, 'no-feature-line');
     assert.deepStrictEqual(parsed.tags, []);
     assert.strictEqual(parsed.description, '');
-    assert.deepStrictEqual(parsed.scenarios, [{ name: 'Orphan', tags: [] }]);
+    assert.deepStrictEqual(parsed.scenarios, [
+      {
+        name: 'Orphan',
+        tags: [],
+        keyword: 'Scenario',
+        headingLine: 0,
+        start: 0,
+        end: 2,
+        steps: [],
+      },
+    ]);
+    assert.strictEqual(parsed.featureLine, undefined, 'there is no Feature: line');
   });
 
   test('an empty file yields the file name and nothing else', () => {
@@ -82,6 +106,8 @@ describe('parseFeature', () => {
     assert.deepStrictEqual(parsed, {
       title: 'empty',
       description: '',
+      descriptionSpan: { start: 0, end: 0 },
+      featureLine: undefined,
       tags: [],
       scenarios: [],
     });

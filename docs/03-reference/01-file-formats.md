@@ -1,8 +1,9 @@
 # File formats
 
 This is the exact on-disk schema RepoDoc reads and writes. It is the same format
-the extension's core parses — the parsers live in `src/core/` (`frontmatter.ts`,
-`cardParse.ts`, `boardConfig.ts`, `decisions.ts`, `docs.ts`, `featureParse.ts`).
+the extension's core parses — the parsers live in `packages/core/src/`
+(`frontmatter.ts`, `cardParse.ts`, `boardConfig.ts`, `decisions.ts`, `docs.ts`,
+`featureParse.ts`) and the writers beside them (`cardBody.ts`, `featureBody.ts`).
 
 ## Board config — `boards/<board-id>/.config.json`
 
@@ -211,10 +212,44 @@ Feature: Gates block a move
 - A feature's id is its file name without `.feature`.
 
 On the board, a feature's card shows the text after `Feature:` as its title, its
-non-`@status:` tags as labels, and a description made of the feature's free text
-followed by a `## Scenarios` list of every `Scenario:` / `Scenario Outline:` /
-`Example:` name. Features have no checklist, comments, custom fields, or gate
+non-`@status:` tags as labels, the free text under `Feature:` as its description,
+and every `Scenario:` / `Scenario Outline:` / `Scenario Template:` / `Example:`
+with its steps. Features have no checklist, comments, custom fields, or gate
 evidence, so the webview hides those affordances.
+
+### Managed edits
+
+The title, the description and the scenarios are editable from the card view and
+from the CLI (`feature rename`, `feature describe`, `feature scenario-add` /
+`scenario-set` / `scenario-remove`). Both hosts go through the same writers, and
+those writers rewrite ONE construct at a time:
+
+| Edit | What is rewritten |
+| --- | --- |
+| Title | the name on the `Feature:` line (a file without one gets a `Feature:` line below its tags) |
+| Description | the lines between `Feature:` and the first tag or keyword line (refused when the file has no `Feature:` line — rename it first, which writes one) |
+| Scenario name | the text after the keyword on that scenario's heading line |
+| Scenario steps | the body lines under that heading, down to the blank line before the next block |
+| Add scenario | a new block appended at the end of the file |
+| Remove scenario | that block and the tag lines directly above it |
+
+Everything else is preserved byte for byte: feature and scenario tags (including
+`@status:`), `Rule:` and `Background:` blocks, comments, indentation (a block is
+rewritten at the indentation it was found at) and the file's own line endings — a
+CRLF file stays CRLF. Scenario indexes count only scenarios, so a `Rule:` or a
+`Background:` can never be addressed, let alone overwritten, by a scenario edit.
+
+A scenario's body — steps, doc strings, tables and an outline's `Examples:` — is
+carried verbatim and never interpreted. It is shown in full when the scenario is
+edited and written back as given, which is why a managed edit cannot silently
+discard the Gherkin RepoDoc does not model: nothing is hidden from the editor,
+and only what the editor was shown is replaced. Titles and scenario names are
+collapsed to a single line so they cannot forge a second `Feature:` line, a
+`@status:` tag, or a step.
+
+Scenario TAGS are shown but not editable, and `Rule:` / `Background:` blocks are
+not shown at all: for those, and for anything else, **Open file** in the card
+view (or a feature in the Boards tree) opens the `.feature` itself.
 
 ## Decision — `decisions/NN-slug.md`
 

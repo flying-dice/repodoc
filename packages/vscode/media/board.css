@@ -1432,3 +1432,121 @@ input.check-box:disabled + label.check-text {
 .modal-id:hover {
   color: var(--vscode-textLink-foreground);
 }
+
+/* ---- Scenarios (feature sets) ---- */
+.scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.scenario {
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.scenario.editing {
+  border-color: var(--vscode-focusBorder);
+}
+.scenario-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scenario-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  word-break: break-word;
+}
+.scenario-keyword {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+.scenario-name-cell {
+  flex: 1;
+  min-width: 0;
+}
+.scenario-name-cell .field-input {
+  width: 100%;
+}
+.scenario-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.scenario-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--vscode-charts-green, var(--vscode-descriptionForeground));
+}
+.scenario-confirm {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+}
+.ghost-btn.danger {
+  color: var(--vscode-errorForeground);
+  border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, transparent);
+}
+.scenario-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.scenario-tag {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.scenario-steps {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.scenario-steps.empty {
+  font-family: inherit;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+}
+.scenario-steps-label {
+  margin-bottom: 0;
+}
+.scenario-steps-input {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  min-height: 96px;
+}
+.scenario-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scenario-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.scenario-notice.error {
+  color: var(--vscode-errorForeground);
+  background: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent);
+}

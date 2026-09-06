@@ -50,6 +50,11 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `feature show <set> <feature>` | Title, status, tags, description and scenarios. |
 | `feature create <set> <title> [--column <id>]` | New `<slug>.feature` holding a `@status:` tag and a `Feature:` line; first column unless `--column`. |
 | `feature move <set> <feature> <column>` | Rewrite the feature's `@status:` tag — the file is never renamed — and print the target column's `prompt`. Gates are not enforced for features. |
+| `feature rename <set> <feature> <title>` | Rewrite the `Feature:` line. Every other byte of the file is preserved. |
+| `feature describe <set> <feature> <text>` | Replace the free text under `Feature:`. An empty `""` clears it. |
+| `feature scenario-add <set> <feature> <name> [--step "Given …"]…` | Append a scenario; repeat `--step` for each line of its body. |
+| `feature scenario-set <set> <feature> <index> [--name <name>] [--step "…"]…` | Rewrite a scenario's name and/or its whole body. The keyword and its tag lines are kept. `--step ""` empties the body. |
+| `feature scenario-remove <set> <feature> <index>` | Remove a scenario and the tag lines above it. |
 | `decision list` / `decision show <id>` / `decision create <title>` | Decision records. |
 | `decision status <id> <Proposed\|Accepted\|Superseded>` | Set a decision's status. |
 | `docs tree` / `docs show <relPath>` | The documentation tree. |

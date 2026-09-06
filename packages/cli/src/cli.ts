@@ -41,7 +41,7 @@ export function runCli(argv: string[], cwd: string, io: Io): number {
     const ctx = buildContext(args, cwd, { mayCreateRoot: command.group === 'init' });
     command.run(
       ctx,
-      { positionals, flags: args.flags },
+      { positionals, flags: args.flags, multi: args.multi },
       makePrinter(ctx.json, io.stdout, io.stderr),
     );
     return 0;

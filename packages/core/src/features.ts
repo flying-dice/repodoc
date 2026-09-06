@@ -25,6 +25,15 @@ import {
 } from './boardConfig';
 import { detectEol } from './eol';
 import {
+  addScenario,
+  type NewScenario,
+  removeScenario,
+  type ScenarioPatch,
+  setFeatureDescription,
+  setFeatureTitle,
+  setScenario,
+} from './featureBody';
+import {
   featureIdFromFileName,
   featureTagRegionEnd,
   parseFeature,
@@ -43,6 +52,17 @@ import type {
   MoveCardResult,
   RepoDocConfig,
 } from './types';
+
+/**
+ * The feature metadata a managed edit may change. A feature has no frontmatter:
+ * the title IS the `Feature:` line and the description IS the free text under
+ * it, so this is the whole of it. An absent key is left alone; an empty
+ * `description` removes the description.
+ */
+export interface FeatureMetaPatch {
+  title?: string;
+  description?: string;
+}
 
 /** The default columns of a new feature set — a specification pipeline. */
 export function defaultFeatureColumns(): BoardConfig['columns'] {
@@ -203,6 +223,114 @@ export class FeatureStore {
     return { ok: true };
   }
 
+  /**
+   * Rewrites a feature's title (the `Feature:` line) and/or its description
+   * (the free text under it). Every other byte of the file — its tags, its
+   * scenarios, its `Rule:` and `Background:` blocks, its comments and its line
+   * endings — is preserved. Returns whether it was written: an unknown set or
+   * feature, an unreadable file, or a blank title, writes nothing.
+   *
+   * A description needs a `Feature:` line to hang off, so describing a file
+   * that has none is refused rather than written somewhere it would not be read
+   * back from. (A patch that also carries a title is fine: the title inserts
+   * the line first.)
+   */
+  updateFeatureMeta(setId: string, featureId: string, patch: FeatureMetaPatch): boolean {
+    const title = patch.title === undefined ? undefined : oneLine(patch.title);
+    if (patch.title !== undefined && title === '') {
+      return false; // a feature must keep a name; an empty Feature: line has none
+    }
+    return this.editFeatureFile(setId, featureId, (text) => {
+      let next = text;
+      if (title !== undefined) {
+        next = setFeatureTitle(next, title);
+      }
+      if (patch.description !== undefined) {
+        if (parseFeature(featureId, next).featureLine === undefined) {
+          return undefined; // nothing to hang a description off — write nothing
+        }
+        next = setFeatureDescription(next, patch.description);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Rewrites the scenario at `index` (as counted by {@link parseFeature} —
+   * `Rule:` and `Background:` blocks are not scenarios and cannot be reached).
+   * Its keyword, its tag lines and every other scenario are preserved. Returns
+   * whether it was written: an unknown feature, an out-of-range index, or a
+   * blank name, writes nothing.
+   */
+  setFeatureScenario(
+    setId: string,
+    featureId: string,
+    index: number,
+    patch: ScenarioPatch,
+  ): boolean {
+    const name = patch.name === undefined ? undefined : oneLine(patch.name);
+    if (patch.name !== undefined && name === '') {
+      return false; // a nameless scenario cannot be told apart on the board
+    }
+    if (!Number.isInteger(index) || index < 0) {
+      return false;
+    }
+    return this.editFeatureFile(setId, featureId, (text) =>
+      setScenario(text, index, { ...patch, ...(name === undefined ? {} : { name }) }),
+    );
+  }
+
+  /** Appends a scenario at the end of the file. False for a blank name. */
+  addFeatureScenario(setId: string, featureId: string, scenario: NewScenario): boolean {
+    const name = oneLine(scenario.name);
+    if (name === '') {
+      return false;
+    }
+    return this.editFeatureFile(setId, featureId, (text) =>
+      addScenario(text, { ...scenario, name }),
+    );
+  }
+
+  /** Removes the scenario at `index`, its tags with it. False when out of range. */
+  removeFeatureScenario(setId: string, featureId: string, index: number): boolean {
+    if (!Number.isInteger(index) || index < 0) {
+      return false;
+    }
+    return this.editFeatureFile(setId, featureId, (text) => removeScenario(text, index));
+  }
+
+  /**
+   * Read-modify-write one `.feature` file: resolves the feature's path, applies
+   * `edit`, and writes the result. Returns whether a write happened — an
+   * unknown set or feature, an unreadable file, or an `edit` that declined
+   * (an out-of-range scenario index) leaves the file untouched. Every managed
+   * feature edit goes through here so "resolve, write" exists once; firing is
+   * the store's job, as it is for `move`.
+   */
+  private editFeatureFile(
+    setId: string,
+    featureId: string,
+    edit: (text: string) => string | undefined,
+  ): boolean {
+    if (!this.fs.exists(`features/${setId}`)) {
+      return false;
+    }
+    const path = this.filePath(setId, featureId);
+    if (path === undefined) {
+      return false;
+    }
+    const content = this.fs.readFile(path);
+    if (content === undefined) {
+      return false;
+    }
+    const next = edit(content);
+    if (next === undefined) {
+      return false;
+    }
+    this.fs.writeFile(path, next);
+    return true;
+  }
+
   /** Path of a set's `.config.json` relative to the workspace root. */
   configFilePath(setId: string): string {
     return `features/${setId}/.config.json`;
@@ -237,6 +365,14 @@ export class FeatureStore {
   }
 }
 
+/**
+ * A title or scenario name as ONE line, as the writers demand: a newline in it
+ * would forge Gherkin structure (a second `Feature:`, a `@status:` tag, a step).
+ */
+function oneLine(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 /** Builds a {@link FeatureRecord}, resolving the status tag against `columnIds`. */
 function toRecord(
   fileName: string,
@@ -254,13 +390,24 @@ function toRecord(
     description: parsed.description,
     tags: tagsWithoutStatus(parsed.tags),
     status,
-    scenarios: parsed.scenarios.map((s) => ({ name: s.name, tags: s.tags })),
+    scenarios: parsed.scenarios.map((s) => ({
+      name: s.name,
+      tags: s.tags,
+      keyword: s.keyword,
+      steps: s.steps,
+    })),
   };
 }
 
 /**
- * A feature as a board card: its non-status tags are the labels and its
- * description is followed by a `## Scenarios` list. Features carry no
+ * A feature as a board card: its non-status tags are the labels, its
+ * description is the feature's free text, and its scenarios ride along as
+ * structured data.
+ *
+ * The scenarios used to be appended to `desc` as a `## Scenarios` markdown
+ * list. They are not any more: the description is EDITABLE now, and an editor
+ * that showed that list would write it back into the `Feature:` free text as
+ * prose — duplicating every scenario and losing its steps. Features carry no
  * checklist, comments, gates, or custom fields.
  */
 function toCard(record: FeatureRecord): Card {
@@ -268,15 +415,11 @@ function toCard(record: FeatureRecord): Card {
   if (record.tags.length) {
     card.labels = record.tags;
   }
-  const blocks: string[] = [];
   if (record.description) {
-    blocks.push(record.description);
+    card.desc = record.description;
   }
   if (record.scenarios.length) {
-    blocks.push(['## Scenarios', '', ...record.scenarios.map((s) => `- ${s.name}`)].join('\n'));
-  }
-  if (blocks.length) {
-    card.desc = blocks.join('\n\n');
+    card.scenarios = record.scenarios;
   }
   return card;
 }

@@ -186,7 +186,7 @@ suite('RepoDoc feature sets e2e', () => {
     assert.deepStrictEqual(item.command?.arguments, [SET, 'gates-block-a-move']);
   });
 
-  test('a feature set surface declares none of the card-board editing capabilities', () => {
+  test('a feature set declares the Gherkin affordances and none of the card ones', () => {
     // BoardPanel.postData sends `source.capabilities` straight to the webview,
     // so this IS the payload the feature panel renders from.
     const features = new FeatureSetSource(api.store, SET);
@@ -196,15 +196,19 @@ suite('RepoDoc feature sets e2e', () => {
       checklist: false,
       checklistAdd: false,
       addColumn: false,
-      meta: false,
-      description: false,
+      // Editable: the title (the `Feature:` line), the prose under it, and the
+      // scenarios. Everything else belongs to a card board.
+      meta: true,
+      description: true,
       gateEvidence: false,
+      scenarios: true,
     });
     const cards = new CardBoardSource(api.store, BOARD);
     assert.strictEqual(cards.capabilities.comments, true, 'a card board keeps every capability');
     assert.strictEqual(cards.capabilities.fields, true);
     assert.strictEqual(cards.capabilities.checklist, true);
     assert.strictEqual(cards.capabilities.addColumn, true);
+    assert.strictEqual(cards.capabilities.scenarios, false, 'cards are markdown, not Gherkin');
 
     // The feature surface also refuses to gate a move (no gates on features).
     assert.deepStrictEqual(features.evaluateMove(), []);
@@ -229,7 +233,23 @@ suite('RepoDoc feature sets e2e', () => {
     assert.deepStrictEqual(Object.keys(board.cards).sort(), ['gates-block-a-move', 'untagged']);
     const card = board.cards['gates-block-a-move'];
     assert.deepStrictEqual(card?.labels, ['@core'], 'the @status: tag is not shown as a label');
-    assert.ok(card?.desc?.includes('## Scenarios'), 'scenarios are listed on the card');
+    assert.strictEqual(
+      card?.desc,
+      'A card may not enter a column whose enter gates fail.',
+      'the description is the feature prose alone — it is editable, so it holds no rendered list',
+    );
+    assert.deepStrictEqual(
+      card?.scenarios,
+      [
+        {
+          name: 'The move is refused',
+          tags: [],
+          keyword: 'Scenario',
+          steps: ['Then it stays put'],
+        },
+      ],
+      'scenarios reach the webview as data it can edit',
+    );
   });
 
   test('repodoc.openFeature opens the .feature file itself in an editor', async () => {
@@ -299,5 +319,199 @@ suite('RepoDoc feature sets e2e', () => {
     assert.ok(verified, 'the set has a verified column');
     const titles = tree.getChildren(verified).map((n) => (n.kind === 'feature' ? n.title : ''));
     assert.ok(titles.includes('stray'), `the file name stands in for the title, saw ${titles}`);
+  });
+
+  /**
+   * Managed editing end to end: every message is posted through the REAL
+   * webview->host channel (the extension bounces it back through the feature
+   * panel's webview) and asserted against the bytes on disk. The fixture below
+   * is deliberately full of Gherkin RepoDoc does not model — a comment, feature
+   * tags, a `Background:`, a `Rule:`, scenario tags, a doc string, an
+   * `Examples:` table — because the promise being tested is that none of it
+   * moves when one construct is edited.
+   */
+  suite('managed edits', () => {
+    const MANAGED = [
+      '# language: en',
+      '@status:specified @core',
+      'Feature: Managed editing',
+      '',
+      '  Prose under the feature.',
+      '',
+      '  Background:',
+      '    Given a board',
+      '',
+      '  @slow',
+      '  Scenario: The first one',
+      '    When I edit it',
+      '    Then only it changes',
+      '',
+      '  Rule: A rule survives',
+      '',
+      '    Scenario Outline: The second one',
+      '      When I move with a <kind> gate',
+      '      Examples:',
+      '        | kind   |',
+      '        | script |',
+      '',
+    ].join('\n');
+
+    /** Bounce a webview->host message through the feature panel's channel. */
+    const bounce = (message: unknown): Thenable<boolean> =>
+      vscode.commands.executeCommand<boolean>(
+        'repodoc.bounceWebviewMessage',
+        SET,
+        message,
+        'features',
+      );
+
+    /**
+     * Post a message with a known effect and wait for it. The channel preserves
+     * order, so once the fence has landed, every message posted before it has
+     * been handled — that is how "nothing happened" is asserted without sleeping.
+     */
+    let fenceCount = 0;
+    const fence = async (): Promise<void> => {
+      const marker = `Fence ${++fenceCount}`;
+      assert.strictEqual(
+        await bounce({ type: 'updateMeta', cardId: 'fence', patch: { title: marker } }),
+        true,
+      );
+      await waitFor(() => api.store.getFeature(SET, 'fence')?.title === marker);
+    };
+
+    suiteSetup(async function () {
+      this.timeout(30000);
+      fs.writeFileSync(path.join(setDir, 'managed.feature'), MANAGED);
+      fs.writeFileSync(path.join(setDir, 'fence.feature'), '@status:proposed\nFeature: Fence\n');
+      // The panel must be open for the bounce channel to exist.
+      await vscode.commands.executeCommand('repodoc.openBoard', setNode());
+      await waitFor(() =>
+        findTab((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Spec Set'),
+      );
+      await waitFor(() => api.store.getFeature(SET, 'managed')?.title === 'Managed editing');
+    });
+
+    test('updateMeta rewrites the Feature line and nothing else', async () => {
+      assert.strictEqual(
+        await bounce({
+          type: 'updateMeta',
+          cardId: 'managed',
+          patch: { title: 'Managed editing works' },
+        }),
+        true,
+      );
+      await waitFor(() => api.store.getFeature(SET, 'managed')?.title === 'Managed editing works');
+      assert.strictEqual(
+        featureFile('managed'),
+        MANAGED.replace('Feature: Managed editing', 'Feature: Managed editing works'),
+      );
+    });
+
+    test('setDescription rewrites the prose under Feature: and nothing else', async () => {
+      const before = featureFile('managed');
+      assert.strictEqual(
+        await bounce({ type: 'setDescription', cardId: 'managed', text: 'Rewritten prose.' }),
+        true,
+      );
+      await waitFor(() => api.store.getFeature(SET, 'managed')?.description === 'Rewritten prose.');
+      assert.strictEqual(
+        featureFile('managed'),
+        before.replace('  Prose under the feature.', '  Rewritten prose.'),
+      );
+    });
+
+    test('setScenario rewrites one scenario, leaving Rule, Background and siblings alone', async () => {
+      const before = featureFile('managed');
+      assert.strictEqual(
+        await bounce({
+          type: 'setScenario',
+          cardId: 'managed',
+          index: 0,
+          name: 'The first one, renamed',
+          steps: ['When I edit it', 'Then only it changes', 'And nothing else does'],
+        }),
+        true,
+      );
+      await waitFor(
+        () => api.store.getFeature(SET, 'managed')?.scenarios[0]?.name === 'The first one, renamed',
+      );
+      assert.strictEqual(
+        featureFile('managed'),
+        before
+          .replace('Scenario: The first one', 'Scenario: The first one, renamed')
+          .replace(
+            '    Then only it changes\n',
+            '    Then only it changes\n    And nothing else does\n',
+          ),
+      );
+      const text = featureFile('managed');
+      assert.ok(text.includes('  @slow\n'), 'the scenario keeps its tags');
+      assert.ok(text.includes('  Background:\n    Given a board'), 'the Background is untouched');
+      assert.ok(text.includes('  Rule: A rule survives'), 'the Rule is untouched');
+      assert.ok(
+        text.includes('        | script |'),
+        'the sibling outline keeps its Examples table',
+      );
+    });
+
+    test('addScenario appends, and removeScenario takes it back out', async () => {
+      const before = featureFile('managed');
+      assert.strictEqual(
+        await bounce({
+          type: 'addScenario',
+          cardId: 'managed',
+          name: 'A third one',
+          steps: ['Given a new scenario', 'Then it is appended'],
+        }),
+        true,
+      );
+      await waitFor(() => api.store.getFeature(SET, 'managed')?.scenarios.length === 3);
+      assert.strictEqual(
+        featureFile('managed'),
+        `${before.trimEnd()}\n\n  Scenario: A third one\n    Given a new scenario\n    Then it is appended\n`,
+      );
+
+      assert.strictEqual(
+        await bounce({ type: 'removeScenario', cardId: 'managed', index: 2 }),
+        true,
+      );
+      await waitFor(() => api.store.getFeature(SET, 'managed')?.scenarios.length === 2);
+      assert.strictEqual(
+        featureFile('managed'),
+        before,
+        'removing what was added gives the file back byte for byte',
+      );
+    });
+
+    test('an invalid scenario message writes nothing', async () => {
+      const before = featureFile('managed');
+      await bounce({ type: 'setScenario', cardId: 'managed', index: -1, name: 'X', steps: [] });
+      await bounce({ type: 'setScenario', cardId: 'managed', index: 1.5, name: 'X', steps: [] });
+      await bounce({ type: 'setScenario', cardId: 'managed', index: 0, name: '   ', steps: [] });
+      await bounce({ type: 'setScenario', cardId: 'managed', index: 0, name: 'X', steps: 'nope' });
+      await bounce({ type: 'setScenario', cardId: 'managed', index: 99, name: 'X', steps: [] });
+      await bounce({ type: 'addScenario', cardId: 'managed', name: '', steps: [] });
+      await bounce({ type: 'removeScenario', cardId: 'managed', index: 99 });
+      await bounce({ type: 'removeScenario', cardId: 'nope', index: 0 });
+      await fence();
+      assert.strictEqual(featureFile('managed'), before);
+    });
+
+    test('a title arriving with newlines cannot forge Gherkin', async () => {
+      assert.strictEqual(
+        await bounce({
+          type: 'updateMeta',
+          cardId: 'managed',
+          patch: { title: 'Sneaky\n@status:proposed\nScenario: forged' },
+        }),
+        true,
+      );
+      await waitFor(() => (api.store.getFeature(SET, 'managed')?.title ?? '').startsWith('Sneaky'));
+      const feature = api.store.getFeature(SET, 'managed');
+      assert.strictEqual(feature?.title, 'Sneaky @status:proposed Scenario: forged');
+      assert.strictEqual(feature?.status, 'specified', 'the forged status tag never took effect');
+      assert.strictEqual(feature?.scenarios.length, 2, 'no forged scenario was written');
+    });
   });
 });

@@ -5,8 +5,10 @@ import type {
   GatedMoveResult,
   GateOverride,
   GateResult,
+  NewScenario,
   RepoDocConfig,
   RepoDocStore,
+  ScenarioPatch,
 } from '@repodoc/core';
 import type { BoardCapabilities } from './protocol';
 
@@ -58,6 +60,10 @@ export interface BoardSource {
   addChecklistItem?(cardId: string, text: string): void;
   setCardDescription?(cardId: string, text: string): void;
   updateCardMeta?(cardId: string, patch: CardMetaPatch): void;
+  /** Rewrite one Gherkin scenario of a feature (`capabilities.scenarios`). */
+  setScenario?(cardId: string, index: number, patch: ScenarioPatch): void;
+  addScenario?(cardId: string, scenario: NewScenario): void;
+  removeScenario?(cardId: string, index: number): void;
   recordGateEvidence?(cardId: string, gateId: string, result: string, who: string): void;
   addColumn?(name: string): void;
 }
@@ -76,6 +82,7 @@ export class CardBoardSource implements BoardSource {
     meta: true,
     description: true,
     gateEvidence: true,
+    scenarios: false, // cards are markdown, not Gherkin
   };
 
   constructor(
@@ -154,17 +161,22 @@ export class CardBoardSource implements BoardSource {
 }
 
 /**
- * A `features/<id>/` feature set. Moving rewrites a feature's `@status:` tag and
- * adding writes a new `.feature` file; features carry no comments, custom
- * fields, checklists, or gates, and columns come from the set's config, so
- * those methods are deliberately absent.
+ * A `features/<id>/` feature set. Moving rewrites a feature's `@status:` tag,
+ * adding writes a new `.feature` file, and the managed edits below rewrite the
+ * `Feature:` line, the prose under it and individual scenarios — each of them
+ * touching only that construct and leaving the rest of the file byte for byte.
+ * Features carry no comments, custom fields, checklists, or gates, and columns
+ * come from the set's config, so those methods are deliberately absent.
  */
 export class FeatureSetSource implements BoardSource {
   readonly kind = 'features' as const;
 
   /**
-   * A feature's content is owned by its `.feature` file, so the board surface
-   * offers no editing beyond moving (the `@status:` tag) and adding a file.
+   * A feature is Gherkin, so the affordances are Gherkin-shaped: the title (the
+   * `Feature:` line), the description (the prose under it) and the scenarios.
+   * `meta` is true for the TITLE alone — priority, labels and the activity row
+   * are card-board metadata a `.feature` file has nowhere to put, and the
+   * webview hides them on a surface that declares `scenarios`.
    */
   readonly capabilities: BoardCapabilities = {
     comments: false,
@@ -172,9 +184,10 @@ export class FeatureSetSource implements BoardSource {
     checklist: false,
     checklistAdd: false,
     addColumn: false,
-    meta: false,
-    description: false,
+    meta: true,
+    description: true,
     gateEvidence: false,
+    scenarios: true,
   };
 
   constructor(
@@ -216,5 +229,35 @@ export class FeatureSetSource implements BoardSource {
 
   cardFilePath(featureId: string): string | undefined {
     return this.store.featureFilePath(this.id, featureId);
+  }
+
+  /**
+   * The title is the `Feature:` line. Every other key of a card patch (labels,
+   * priority, agent, live, status, progress) is a card-board concept with no
+   * home in a `.feature` file, and is ignored rather than invented — the
+   * webview does not offer them here either.
+   */
+  updateCardMeta(featureId: string, patch: CardMetaPatch): void {
+    if (patch.title === undefined) {
+      return;
+    }
+    this.store.updateFeatureMeta(this.id, featureId, { title: patch.title });
+  }
+
+  /** The description is the free text between `Feature:` and the first keyword. */
+  setCardDescription(featureId: string, text: string): void {
+    this.store.updateFeatureMeta(this.id, featureId, { description: text });
+  }
+
+  setScenario(featureId: string, index: number, patch: ScenarioPatch): void {
+    this.store.setFeatureScenario(this.id, featureId, index, patch);
+  }
+
+  addScenario(featureId: string, scenario: NewScenario): void {
+    this.store.addFeatureScenario(this.id, featureId, scenario);
+  }
+
+  removeScenario(featureId: string, index: number): void {
+    this.store.removeFeatureScenario(this.id, featureId, index);
   }
 }

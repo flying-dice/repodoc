@@ -39,14 +39,29 @@ export { DECISION_STATUSES, DecisionStore } from './decisions';
 export { DocStore } from './docs';
 export type { Eol } from './eol';
 export { applyEol, detectEol, normalizeEol } from './eol';
-export type { ParsedFeature, ParsedScenario } from './featureParse';
+export type { NewScenario, ScenarioPatch } from './featureBody';
 export {
+  addScenario,
+  removeScenario,
+  setFeatureDescription,
+  setFeatureTitle,
+  setScenario,
+} from './featureBody';
+export type {
+  LineSpan,
+  ParsedFeature,
+  ParsedScenario,
+  ScenarioKeyword,
+} from './featureParse';
+export {
+  commonIndent,
   featureIdFromFileName,
   parseFeature,
   STATUS_TAG_PREFIX,
   statusFromTags,
   tagsWithoutStatus,
 } from './featureParse';
+export type { FeatureMetaPatch } from './features';
 export { defaultFeatureColumns, FeatureStore, writeStatusTag } from './features';
 export type { Frontmatter, FrontmatterEntry } from './frontmatter';
 export { parseFrontmatter, serializeFrontmatter } from './frontmatter';

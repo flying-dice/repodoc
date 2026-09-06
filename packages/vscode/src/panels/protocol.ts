@@ -26,15 +26,23 @@ export interface BoardCapabilities {
   checklistAdd: boolean;
   addColumn: boolean;
   /**
-   * Reserved card metadata (title, labels, priority, agent, live, status,
-   * progress) is editable. False for feature sets: a feature's title and tags
-   * are owned by the `.feature` file, so they are edited there.
+   * Card metadata is editable. A feature set declares this too, but a feature
+   * has only ONE piece of metadata RepoDoc can write — the title, which is its
+   * `Feature:` line. Priority, labels and the activity row are card-board
+   * concepts and stay hidden there; the webview keys that off
+   * {@link BoardCapabilities.scenarios}.
    */
   meta: boolean;
   /** The card body text is editable from the modal. */
   description: boolean;
   /** Script-gate evidence can be recorded from the UI. */
   gateEvidence: boolean;
+  /**
+   * Cards carry Gherkin `scenarios` that can be added, edited and removed from
+   * the modal. True only for a feature set — it is also what tells the webview
+   * it is showing features rather than cards.
+   */
+  scenarios: boolean;
 }
 
 /** Messages sent from the extension host down to the webview. */
@@ -212,6 +220,35 @@ export interface SetDescriptionMessage {
   text: string;
 }
 
+/**
+ * Rewrite one scenario of a feature: its name, its body, or both. `index`
+ * counts the feature's scenarios in file order, as the host received them in
+ * `Card.scenarios` — `Rule:` and `Background:` blocks are not scenarios and
+ * cannot be addressed. `steps` is the whole body, one entry per line.
+ */
+export interface SetScenarioMessage {
+  type: 'setScenario';
+  cardId: string;
+  index: number;
+  name: string;
+  steps: string[];
+}
+
+/** Append a scenario to a feature file. */
+export interface AddScenarioMessage {
+  type: 'addScenario';
+  cardId: string;
+  name: string;
+  steps: string[];
+}
+
+/** Remove a feature's scenario, its tag lines with it. */
+export interface RemoveScenarioMessage {
+  type: 'removeScenario';
+  cardId: string;
+  index: number;
+}
+
 /** Edit reserved card metadata (title/labels/priority/agent/live/status/progress). */
 export interface UpdateMetaMessage {
   type: 'updateMeta';
@@ -244,4 +281,7 @@ export type WebviewToHostMessage =
   | SetFieldMessage
   | AddCommentMessage
   | OpenFileMessage
-  | CopyRefMessage;
+  | CopyRefMessage
+  | SetScenarioMessage
+  | AddScenarioMessage
+  | RemoveScenarioMessage;

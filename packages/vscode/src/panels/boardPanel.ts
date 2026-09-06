@@ -101,11 +101,17 @@ export class BoardPanel {
   }
 
   /**
-   * Test/automation: ask an open board's webview to re-post `message` through
+   * Test/automation: ask an open surface's webview to re-post `message` through
    * the real webview->host channel. Returns false when no panel is open.
+   * `kind` selects the surface — a feature set and a board may share an id, and
+   * a feature set's panel is keyed under `features:` (see {@link panelKey}).
    */
-  public static postBounce(boardId: string, message: WebviewToHostMessage): boolean {
-    const panel = BoardPanel.panels.get(panelKey('board', boardId));
+  public static postBounce(
+    boardId: string,
+    message: WebviewToHostMessage,
+    kind: BoardSource['kind'] = 'board',
+  ): boolean {
+    const panel = BoardPanel.panels.get(panelKey(kind, boardId));
     if (!panel) {
       return false;
     }
@@ -362,6 +368,30 @@ export class BoardPanel {
         }
         break;
       }
+      case 'setScenario': {
+        const index = scenarioIndex(m['index']);
+        const name = scenarioName(m['name']);
+        const steps = stepArray(m['steps']);
+        if (typeof m['cardId'] === 'string' && index !== undefined && name && steps) {
+          this.source.setScenario?.(m['cardId'], index, { name, steps });
+        }
+        break;
+      }
+      case 'addScenario': {
+        const name = scenarioName(m['name']);
+        const steps = stepArray(m['steps']);
+        if (typeof m['cardId'] === 'string' && name && steps) {
+          this.source.addScenario?.(m['cardId'], { name, steps });
+        }
+        break;
+      }
+      case 'removeScenario': {
+        const index = scenarioIndex(m['index']);
+        if (typeof m['cardId'] === 'string' && index !== undefined) {
+          this.source.removeScenario?.(m['cardId'], index);
+        }
+        break;
+      }
       case 'toggleCheck': {
         if (typeof m['cardId'] === 'string' && typeof m['index'] === 'number') {
           this.source.toggleChecklistItem?.(m['cardId'], m['index']);
@@ -479,6 +509,33 @@ export class BoardPanel {
       extraImgSrc: ['https:', 'data:', 'http://localhost:*', 'http://127.0.0.1:*'],
     });
   }
+}
+
+/**
+ * A scenario index from the webview: a non-negative integer, else undefined.
+ * The index addresses a line span in a user's source file, so a float or a
+ * negative number is refused rather than coerced into addressing something.
+ */
+function scenarioIndex(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** A scenario name: one non-empty line, or undefined. */
+function scenarioName(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  // One line: a newline in a name would forge Gherkin structure. Core collapses
+  // it too — this is the host refusing to pass on what it cannot mean.
+  const name = value.replace(/\s+/g, ' ').trim();
+  return name === '' ? undefined : name;
+}
+
+/** A scenario body: an array of strings (possibly empty), or undefined. */
+function stepArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string')
+    ? (value as string[])
+    : undefined;
 }
 
 /** Panel identity: two surfaces may share an id, so the kind is part of it. */

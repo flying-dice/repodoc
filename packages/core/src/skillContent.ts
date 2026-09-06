@@ -36,8 +36,11 @@ extension watches them and updates its UI live — you never reload anything.
   columns (same shape as a board config). A feature's column is the
   \`@status:<columnId>\` tag on its Feature tag line. Move one with
   \`repodoc feature move <set> <feature> <column>\` — it rewrites ONLY that tag.
-  NEVER rename or renumber a \`.feature\` file: test runners reference them by
-  path.
+  Edit the content with \`feature rename\` / \`describe\` / \`scenario-add\` /
+  \`scenario-set\` / \`scenario-remove\`: each rewrites just the construct it
+  names and leaves every other byte — tags, \`Rule:\`, \`Background:\`, doc
+  strings, tables, comments — exactly as it was. NEVER rename or renumber a
+  \`.feature\` file: test runners reference them by path.
 
 ## Card file anatomy
 
@@ -164,6 +167,11 @@ bunx github:flying-dice/repodoc feature list <set> [--column <id>]
 bunx github:flying-dice/repodoc feature show <set> <feature>
 bunx github:flying-dice/repodoc feature create <set> "<title>" [--column <id>]
 bunx github:flying-dice/repodoc feature move <set> <feature> <column>
+bunx github:flying-dice/repodoc feature rename <set> <feature> "<title>"
+bunx github:flying-dice/repodoc feature describe <set> <feature> "<text>"    # "" clears
+bunx github:flying-dice/repodoc feature scenario-add <set> <feature> "<name>" --step "Given …" --step "Then …"
+bunx github:flying-dice/repodoc feature scenario-set <set> <feature> <index> [--name "<name>"] [--step "…"]…
+bunx github:flying-dice/repodoc feature scenario-remove <set> <feature> <index>
 \`\`\`
 
 Add \`--json\` to any command for machine-readable output, and \`--who <name>\`

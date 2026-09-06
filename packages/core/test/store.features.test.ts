@@ -64,16 +64,24 @@ describe('feature sets', () => {
     assert.strictEqual(board.columns[1]?.prompt, 'Write the scenarios.');
   });
 
-  test('a feature card carries its non-status tags and a ## Scenarios list', () => {
+  test('a feature card carries its non-status tags, its prose and its scenarios', () => {
     const { store } = seeded();
     const card = store.getFeatureSet('repodoc')?.cards['gates'];
     assert.deepStrictEqual(card, {
       id: 'gates',
       title: 'Gates block a move',
       labels: ['@core'],
-      desc:
-        'A move into a gated column is refused until every gate passes.\n\n' +
-        '## Scenarios\n\n- The move is refused',
+      // The description is the feature's free text ALONE: it is editable, and a
+      // rendered scenario list in it would be written back as prose.
+      desc: 'A move into a gated column is refused until every gate passes.',
+      scenarios: [
+        {
+          name: 'The move is refused',
+          tags: ['@slow'],
+          keyword: 'Scenario',
+          steps: ['Given a failing gate', 'Then the move is refused'],
+        },
+      ],
     });
   });
 
@@ -93,7 +101,14 @@ describe('feature sets', () => {
       description: 'A move into a gated column is refused until every gate passes.',
       tags: ['@core'],
       status: 'specified',
-      scenarios: [{ name: 'The move is refused', tags: ['@slow'] }],
+      scenarios: [
+        {
+          name: 'The move is refused',
+          tags: ['@slow'],
+          keyword: 'Scenario',
+          steps: ['Given a failing gate', 'Then the move is refused'],
+        },
+      ],
     });
   });
 
@@ -196,5 +211,173 @@ describe('moveFeature', () => {
     expect(fired).toBe(3);
     store.moveFeature('repodoc', 'gates', 'nowhere');
     expect(fired).toBe(3);
+  });
+});
+
+/**
+ * Managed editing: the UI and the CLI change a feature's title, description and
+ * scenarios without opening the file. The store's job is to write the right
+ * file and to leave everything it was not asked about exactly as it was.
+ */
+describe('managed feature edits', () => {
+  test('updateFeatureMeta rewrites the Feature line and the prose, and nothing else', () => {
+    const { store, fs } = seeded();
+    assert.strictEqual(
+      store.updateFeatureMeta('repodoc', 'gates', {
+        title: 'Gates refuse a move',
+        description: 'Rewritten prose.',
+      }),
+      true,
+    );
+    assert.strictEqual(
+      fs.readFile('features/repodoc/gates.feature'),
+      GATES_FEATURE.replace('Feature: Gates block a move', 'Feature: Gates refuse a move').replace(
+        '  A move into a gated column is refused until every gate passes.',
+        '  Rewritten prose.',
+      ),
+      'the comment, the tags and the scenario survive untouched',
+    );
+  });
+
+  test('a title-only patch leaves the description alone, and the reverse', () => {
+    const { store, fs } = seeded();
+    store.updateFeatureMeta('repodoc', 'gates', { title: 'Renamed' });
+    assert.strictEqual(
+      fs.readFile('features/repodoc/gates.feature'),
+      GATES_FEATURE.replace('Gates block a move', 'Renamed'),
+    );
+    store.updateFeatureMeta('repodoc', 'gates', { description: '' });
+    assert.strictEqual(
+      fs.readFile('features/repodoc/gates.feature'),
+      GATES_FEATURE.replace('Gates block a move', 'Renamed').replace(
+        '\n\n  A move into a gated column is refused until every gate passes.\n',
+        '\n',
+      ),
+      'an empty description clears it and keeps one blank line',
+    );
+    assert.strictEqual(store.getFeature('repodoc', 'gates')?.title, 'Renamed');
+  });
+
+  test('setFeatureScenario rewrites one scenario, keyword and tags intact', () => {
+    const { store, fs } = seeded();
+    assert.strictEqual(
+      store.setFeatureScenario('repodoc', 'gates', 0, {
+        name: 'The move is refused loudly',
+        steps: ['Given a failing gate', 'When I move', 'Then it is refused'],
+      }),
+      true,
+    );
+    assert.strictEqual(
+      fs.readFile('features/repodoc/gates.feature'),
+      [
+        '# a leading comment',
+        '@status:specified @core',
+        'Feature: Gates block a move',
+        '',
+        '  A move into a gated column is refused until every gate passes.',
+        '',
+        '  @slow',
+        '  Scenario: The move is refused loudly',
+        '    Given a failing gate',
+        '    When I move',
+        '    Then it is refused',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  test('addFeatureScenario appends and removeFeatureScenario takes it back out', () => {
+    const { store, fs } = seeded();
+    assert.strictEqual(
+      store.addFeatureScenario('repodoc', 'gates', {
+        name: 'An override lets it through',
+        steps: ['Given an override', 'Then it moves'],
+      }),
+      true,
+    );
+    const added = fs.readFile('features/repodoc/gates.feature') as string;
+    assert.strictEqual(
+      added,
+      `${GATES_FEATURE.trimEnd()}\n\n  Scenario: An override lets it through\n    Given an override\n    Then it moves\n`,
+    );
+    assert.deepStrictEqual(
+      store.getFeature('repodoc', 'gates')?.scenarios.map((sc) => sc.name),
+      ['The move is refused', 'An override lets it through'],
+    );
+    assert.strictEqual(store.removeFeatureScenario('repodoc', 'gates', 1), true);
+    assert.strictEqual(
+      fs.readFile('features/repodoc/gates.feature'),
+      GATES_FEATURE,
+      'removing what was added gives the original file back',
+    );
+  });
+
+  test('a feature file with no Feature: line refuses a description', () => {
+    // There is nowhere to put it: a description is the text UNDER `Feature:`,
+    // and prose written above the first scenario would never be read back.
+    const { store, fs } = makeStore({
+      'features/s/.config.json': CONFIG,
+      'features/s/stray.feature': '@status:proposed\n  Scenario: Orphan\n',
+    });
+    assert.strictEqual(store.updateFeatureMeta('s', 'stray', { description: 'Prose.' }), false);
+    assert.strictEqual(
+      fs.readFile('features/s/stray.feature'),
+      '@status:proposed\n  Scenario: Orphan\n',
+    );
+    // A title comes with a `Feature:` line, so the pair lands together.
+    assert.strictEqual(
+      store.updateFeatureMeta('s', 'stray', { title: 'Now titled', description: 'Prose.' }),
+      true,
+    );
+    assert.strictEqual(
+      fs.readFile('features/s/stray.feature'),
+      '@status:proposed\nFeature: Now titled\n\n  Prose.\n\n  Scenario: Orphan\n',
+    );
+  });
+
+  test('an unknown set, feature, index or blank name writes nothing', () => {
+    const { store, fs } = seeded();
+    const before = fs.readFile('features/repodoc/gates.feature');
+    assert.strictEqual(store.updateFeatureMeta('nope', 'gates', { title: 'X' }), false);
+    assert.strictEqual(store.updateFeatureMeta('repodoc', 'nope', { title: 'X' }), false);
+    assert.strictEqual(store.updateFeatureMeta('repodoc', 'gates', { title: '   ' }), false);
+    assert.strictEqual(store.setFeatureScenario('repodoc', 'gates', 1, { name: 'X' }), false);
+    assert.strictEqual(store.setFeatureScenario('repodoc', 'gates', -1, { name: 'X' }), false);
+    assert.strictEqual(store.setFeatureScenario('repodoc', 'gates', 1.5, { name: 'X' }), false);
+    assert.strictEqual(store.setFeatureScenario('repodoc', 'gates', 0, { name: '' }), false);
+    assert.strictEqual(store.addFeatureScenario('repodoc', 'gates', { name: ' ' }), false);
+    assert.strictEqual(store.removeFeatureScenario('repodoc', 'gates', 4), false);
+    assert.strictEqual(fs.readFile('features/repodoc/gates.feature'), before);
+  });
+
+  test('managed edits fire onDidChange; refusals do not', () => {
+    const { store } = seeded();
+    let fired = 0;
+    store.onDidChange(() => {
+      fired++;
+    });
+    store.updateFeatureMeta('repodoc', 'gates', { title: 'Renamed' });
+    store.setFeatureScenario('repodoc', 'gates', 0, { name: 'Also renamed' });
+    store.addFeatureScenario('repodoc', 'gates', { name: 'Third' });
+    store.removeFeatureScenario('repodoc', 'gates', 1);
+    expect(fired).toBe(4);
+    store.updateFeatureMeta('repodoc', 'nope', { title: 'X' });
+    store.setFeatureScenario('repodoc', 'gates', 9, { name: 'X' });
+    store.removeFeatureScenario('repodoc', 'gates', 9);
+    expect(fired).toBe(4);
+  });
+
+  test('a CRLF feature file stays CRLF through a managed edit', () => {
+    const { store, fs } = makeStore({
+      'features/s/.config.json': CONFIG,
+      'features/s/crlf.feature':
+        '@status:proposed\r\nFeature: C\r\n\r\n  Scenario: S\r\n    Given a\r\n',
+    });
+    store.updateFeatureMeta('s', 'crlf', { title: 'Renamed', description: 'Prose.' });
+    store.setFeatureScenario('s', 'crlf', 0, { steps: ['Given a', 'Then b'] });
+    assert.strictEqual(
+      fs.readFile('features/s/crlf.feature'),
+      '@status:proposed\r\nFeature: Renamed\r\n\r\n  Prose.\r\n\r\n  Scenario: S\r\n    Given a\r\n    Then b\r\n',
+    );
   });
 });

@@ -190,11 +190,15 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     // webview so the real webview->host channel is exercised.
     vscode.commands.registerCommand(
       'repodoc.bounceWebviewMessage',
-      (boardId: unknown, message: unknown): boolean => {
+      (boardId: unknown, message: unknown, kind: unknown): boolean => {
         if (typeof boardId !== 'string' || !message || typeof message !== 'object') {
           return false;
         }
-        return BoardPanel.postBounce(boardId, message as WebviewToHostMessage);
+        return BoardPanel.postBounce(
+          boardId,
+          message as WebviewToHostMessage,
+          kind === 'features' ? 'features' : 'board',
+        );
       },
     ),
 

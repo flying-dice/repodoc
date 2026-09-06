@@ -3,7 +3,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { parseArgs } from '../src/args';
+import { parseArgs, stringFlags } from '../src/args';
 import { runCli } from '../src/cli';
 import { resolveRoot } from '../src/context';
 
@@ -47,6 +47,15 @@ describe('parseArgs', () => {
     assert.deepStrictEqual(p.positionals, ['a', 'b', '--lit']);
     assert.deepStrictEqual(p.flags, { x: '1', y: '2', z: true, w: false });
     assert.deepStrictEqual(parseArgs(['--flag']).flags, { flag: true });
+  });
+
+  test('a repeated flag keeps every value in order, and last-wins in flags', () => {
+    const p = parseArgs(['--step', 'Given a', '--step=Then b', '--step', 'And c']);
+    assert.deepStrictEqual(stringFlags(p, 'step'), ['Given a', 'Then b', 'And c']);
+    assert.strictEqual(p.flags['step'], 'And c', 'single-value readers still see the last one');
+    assert.deepStrictEqual(stringFlags(p, 'nothing'), []);
+    // A bare `--step` is a boolean, not a value: it contributes nothing.
+    assert.deepStrictEqual(stringFlags(parseArgs(['--step']), 'step'), []);
   });
 });
 
@@ -471,7 +480,9 @@ describe('repodoc feature', () => {
     assert.ok(text.out.includes('status: specified'));
     assert.ok(text.out.includes('tags: @core'));
     assert.ok(text.out.includes('A gated move is refused.'));
-    assert.ok(text.out.includes('- The move is refused'));
+    // The 0-based index is printed: it is the argument the scenario commands take.
+    assert.ok(text.out.includes('[0] Scenario: The move is refused'));
+    assert.ok(text.out.includes('    Given a failing gate'));
     const shown = json('feature', 'show', 'spec', 'gates') as {
       status: string;
       scenarios: Array<{ name: string }>;
@@ -526,6 +537,139 @@ describe('repodoc feature', () => {
     const missing = run('feature', 'move', 'spec');
     assert.strictEqual(missing.code, 2);
     assert.ok(missing.err.includes('missing arguments: <feature> <column>'));
+  });
+
+  test('feature rename rewrites the Feature line and nothing else', () => {
+    const renamed = json('feature', 'rename', 'spec', 'gates', 'Gates refuse a move') as {
+      title: string;
+    };
+    assert.strictEqual(renamed.title, 'Gates refuse a move');
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      gates.replace('Feature: Gates block a move', 'Feature: Gates refuse a move'),
+    );
+  });
+
+  test('feature describe replaces the prose, and an empty text clears it', () => {
+    assert.strictEqual(run('feature', 'describe', 'spec', 'gates', 'New prose.').code, 0);
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      gates.replace('  A gated move is refused.', '  New prose.'),
+    );
+    const cleared = run('feature', 'describe', 'spec', 'gates', '');
+    assert.strictEqual(cleared.code, 0);
+    assert.ok(cleared.out.includes('Cleared the description'));
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      gates.replace('\n\n  A gated move is refused.\n', '\n'),
+    );
+  });
+
+  test('feature scenario-add appends a scenario with one line per --step', () => {
+    const added = json(
+      'feature',
+      'scenario-add',
+      'spec',
+      'gates',
+      'An override lets it through',
+      '--step',
+      'Given an override',
+      '--step',
+      'Then the card moves',
+    ) as { index: number };
+    assert.strictEqual(added.index, 1);
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      `${gates.trimEnd()}\n\n  Scenario: An override lets it through\n    Given an override\n    Then the card moves\n`,
+    );
+  });
+
+  test('feature scenario-set rewrites a name and/or a body', () => {
+    assert.strictEqual(
+      run('feature', 'scenario-set', 'spec', 'gates', '0', '--name', 'It is refused').code,
+      0,
+    );
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      gates.replace('Scenario: The move is refused', 'Scenario: It is refused'),
+      'the body is left alone when only --name is given',
+    );
+    assert.strictEqual(
+      run(
+        'feature',
+        'scenario-set',
+        'spec',
+        'gates',
+        '0',
+        '--step',
+        'Given a failing gate',
+        '--step',
+        'Then it stays put',
+      ).code,
+      0,
+    );
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      gates
+        .replace('Scenario: The move is refused', 'Scenario: It is refused')
+        .replace('    Given a failing gate\n', '    Given a failing gate\n    Then it stays put\n'),
+    );
+  });
+
+  test('feature scenario-remove takes the scenario out and leaves the rest', () => {
+    assert.strictEqual(run('feature', 'scenario-remove', 'spec', 'gates', '0').code, 0);
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      '@status:specified @core\nFeature: Gates block a move\n\n  A gated move is refused.\n',
+    );
+  });
+
+  test('an unknown feature exits 1, a blank name or bad index exits 2', () => {
+    const before = fs.readFileSync(featurePath('gates.feature'), 'utf8');
+    assert.strictEqual(run('feature', 'rename', 'spec', 'nope', 'X').code, 1);
+    assert.strictEqual(run('feature', 'describe', 'nope', 'gates', 'X').code, 1);
+    assert.strictEqual(run('feature', 'scenario-remove', 'spec', 'gates', '4').code, 1);
+    assert.strictEqual(run('feature', 'scenario-set', 'spec', 'gates', '4', '--name', 'X').code, 1);
+
+    assert.strictEqual(run('feature', 'rename', 'spec', 'gates', '   ').code, 2);
+    assert.strictEqual(run('feature', 'scenario-add', 'spec', 'gates', ' ').code, 2);
+    assert.strictEqual(run('feature', 'scenario-set', 'spec', 'gates', 'x', '--name', 'Y').code, 2);
+    assert.strictEqual(
+      run('feature', 'scenario-set', 'spec', 'gates', '-1', '--name', 'Y').code,
+      2,
+    );
+    const nothing = run('feature', 'scenario-set', 'spec', 'gates', '0');
+    assert.strictEqual(nothing.code, 2);
+    assert.ok(nothing.err.includes('nothing to change'));
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      before,
+      'a refused command writes nothing',
+    );
+  });
+
+  test('feature describe refuses a file with no Feature: line and says why', () => {
+    fs.writeFileSync(featurePath('stray.feature'), '@status:proposed\n  Scenario: Orphan\n');
+    const refused = run('feature', 'describe', 'spec', 'stray', 'Prose.');
+    assert.strictEqual(refused.code, 1);
+    assert.ok(refused.err.includes('has no `Feature:` line'), refused.err);
+    assert.ok(refused.err.includes('feature rename'), 'it names the way out');
+    assert.strictEqual(
+      fs.readFileSync(featurePath('stray.feature'), 'utf8'),
+      '@status:proposed\n  Scenario: Orphan\n',
+    );
+  });
+
+  test('a multi-line title or scenario name cannot forge Gherkin', () => {
+    run('feature', 'rename', 'spec', 'gates', 'Sneaky\n@status:proposed\nScenario: forged');
+    const text = fs.readFileSync(featurePath('gates.feature'), 'utf8');
+    assert.ok(text.includes('Feature: Sneaky @status:proposed Scenario: forged'));
+    const shown = json('feature', 'show', 'spec', 'gates') as {
+      status: string;
+      scenarios: Array<{ name: string }>;
+    };
+    assert.strictEqual(shown.status, 'specified', 'the forged status tag never took effect');
+    assert.strictEqual(shown.scenarios.length, 1, 'the forged scenario was never written');
   });
 });
 

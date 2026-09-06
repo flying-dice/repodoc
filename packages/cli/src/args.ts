@@ -5,15 +5,29 @@
  * Grammar: positionals in order; `--name value`, `--name=value`, or a bare
  * `--name` (boolean `true`). `--no-name` sets `false`. A lone `--` ends flag
  * parsing so values that start with `-` can be passed as positionals.
+ *
+ * A flag given more than once keeps LAST-WINS semantics in `flags`, and every
+ * value it was given, in order, in `multi` — which is how a repeatable flag
+ * (`--step "Given a" --step "Then b"`) is read, through {@link stringFlags}.
  */
 export interface ParsedArgs {
   positionals: string[];
   flags: Record<string, string | boolean>;
+  /** Every string value each flag was given, in order. See {@link stringFlags}. */
+  multi: Record<string, string[]>;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const positionals: string[] = [];
   const flags: Record<string, string | boolean> = {};
+  // Null prototype: a flag named `constructor` must not resolve to Object.prototype.
+  const multi: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
+  const record = (name: string, value: string): void => {
+    flags[name] = value;
+    const seen = multi[name] ?? [];
+    seen.push(value);
+    multi[name] = seen;
+  };
   let onlyPositionals = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -31,7 +45,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const body = arg.slice(2);
     const eq = body.indexOf('=');
     if (eq !== -1) {
-      flags[body.slice(0, eq)] = body.slice(eq + 1);
+      record(body.slice(0, eq), body.slice(eq + 1));
       continue;
     }
     if (body.startsWith('no-')) {
@@ -40,19 +54,28 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
     const next = argv[i + 1];
     if (next !== undefined && !next.startsWith('--')) {
-      flags[body] = next;
+      record(body, next);
       i++;
     } else {
       flags[body] = true;
     }
   }
-  return { positionals, flags };
+  return { positionals, flags, multi };
 }
 
 /** String flag, or `undefined` when absent or given as a bare boolean. */
 export function stringFlag(flags: ParsedArgs['flags'], name: string): string | undefined {
   const v = flags[name];
   return typeof v === 'string' ? v : undefined;
+}
+
+/**
+ * Every value a repeatable flag was given, in order — `[]` when it was absent
+ * or given as a bare boolean. Takes the whole {@link ParsedArgs} (not just
+ * `flags`) because the repeats live alongside the last-wins map.
+ */
+export function stringFlags(args: ParsedArgs, name: string): string[] {
+  return args.multi[name] ?? [];
 }
 
 /** Boolean flag: `--x` / `--x=true` → true, `--no-x` / `--x=false` → false. */

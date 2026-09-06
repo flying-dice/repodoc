@@ -13,6 +13,8 @@
  * panels consume — columns carry derived `cardIds`, cards are keyed by id.
  */
 
+import type { ScenarioKeyword } from './featureParse';
+
 export interface LabelDef {
   name: string;
   color: string;
@@ -127,6 +129,11 @@ export interface Card {
   custom?: Record<string, CustomFieldValue>;
   /** Parsed `## Gates` section lines (evidence for command/approval gates). */
   gates?: GateEvidence[];
+  /**
+   * A feature card's scenarios, in file order — the index of one here is the
+   * index every scenario mutation takes. Absent on card boards.
+   */
+  scenarios?: FeatureScenario[];
   /** ISO timestamp of the last change. */
   updatedAt?: string;
 }
@@ -189,11 +196,20 @@ export interface DocNode {
   children?: DocNode[];
 }
 
-/** One scenario of a feature file, as shown on a feature card. */
+/** One scenario of a feature file, as shown and edited on a feature card. */
 export interface FeatureScenario {
   name: string;
   /** Tags written directly above the scenario, e.g. `@wip`. */
   tags: string[];
+  /** The keyword it is declared with — a rewrite keeps it as written. */
+  keyword: ScenarioKeyword;
+  /**
+   * The scenario's body, one entry per line, dedented: steps, doc strings,
+   * tables and `Examples:` verbatim. RepoDoc carries these lines, it does not
+   * interpret them — which is what lets the UI edit a scenario without
+   * discarding the Gherkin it does not understand.
+   */
+  steps: string[];
 }
 
 /** One `.feature` file in a feature set. */

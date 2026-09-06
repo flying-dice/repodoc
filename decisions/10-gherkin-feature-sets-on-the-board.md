@@ -40,6 +40,26 @@ The sidecar design is deferred, not rejected. If feature-level gates or a
 journal are wanted, a `<file>.feature.md` sidecar can be added without
 changing where the status lives.
 
+## Addendum — managed editing (0.9.0)
+
+The first iteration made a feature's content read-only in RepoDoc: the board
+showed it and *Open file* was the only way to change it. It is now editable —
+the `Feature:` line, the free text under it, and each scenario's name and body —
+from both the card view and the CLI (`feature rename|describe|scenario-add|
+scenario-set|scenario-remove`).
+
+This does not move where anything lives. The `.feature` file remains the single
+source of truth and is still never renamed. Every managed edit rewrites ONLY the
+construct it names, measured as a line span by the parser that rendered it, so
+what the editor showed is exactly what the save replaces: tags (including
+`@status:`), `Rule:` and `Background:` blocks, comments, indentation and the
+file's line endings are preserved byte for byte, and a scenario's steps, doc
+strings and `Examples:` are carried verbatim rather than interpreted. Scenario
+tags stay read-only in the UI, and *Open file* stays the escape hatch for them
+and for any Gherkin the UI does not render.
+
+The sidecar is still deferred: nothing here needs one.
+
 ## Consequences
 
 - Feature files stay valid, runnable Gherkin; the only RepoDoc footprint is one
