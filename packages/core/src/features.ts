@@ -99,7 +99,8 @@ export class FeatureStore {
     const columns = toColumns(config).map(({ enter: _enter, exit: _exit, ...column }) => column);
     const byId = new Map(columns.map((c) => [c.id, c]));
 
-    const cards: Record<string, Card> = {};
+    // Null prototype: a card id like `constructor` must never resolve to Object.prototype.
+    const cards: Record<string, Card> = Object.create(null) as Record<string, Card>;
     for (const record of this.list(setId)) {
       if (cards[record.id] !== undefined) {
         // Two files map to the same id — the first in file-name order keeps it,

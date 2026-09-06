@@ -208,11 +208,13 @@ export const COMMANDS: Command[] = [
       if (!columnId) {
         throw new CommandError(`board ${boardId} has no columns`);
       }
+      // Validate every flag before anything is written, so a bad --priority
+      // never leaves a half-made card behind.
+      const patch = metaPatch(args);
       const result = ctx.store.addCard(boardId, columnId, title);
       if (!result.ok) {
         throw new CommandError(storeErrorMessage(result.error));
       }
-      const patch = metaPatch(args);
       if (Object.keys(patch).length) {
         ctx.store.updateCardMeta(boardId, result.cardId, patch);
       }

@@ -227,7 +227,8 @@ export class RepoDocStore {
     const columns = toColumns(config);
     const byId = new Map(columns.map((c) => [c.id, c]));
 
-    const cards: Record<string, Card> = {};
+    // Null prototype: a card id like `constructor` must never resolve to Object.prototype.
+    const cards: Record<string, Card> = Object.create(null) as Record<string, Card>;
     for (const entry of this.readBoardCards(id)) {
       if (cards[entry.slug] !== undefined) {
         // Two files share this id (e.g. 01-foo.md and 02-foo.md). The first in

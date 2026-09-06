@@ -827,3 +827,23 @@ describe('CLI global behaviour — adversarial', () => {
     assert.match(run('help').out, /Usage: repodoc <command>/);
   });
 });
+describe('repodoc card create — validation happens before any write', () => {
+  test('given an invalid --priority, when creating, then no card file is written and exit is 2', () => {
+    run('init');
+    const dir = path.join(root, 'boards/project-backlog');
+    const before = fs.readdirSync(dir).sort();
+    assert.strictEqual(
+      run('card', 'create', 'project-backlog', 'Example', '--priority', 'urgent').code,
+      2,
+    );
+    assert.strictEqual(
+      run('card', 'create', 'project-backlog', 'Example', '--progress', '250').code,
+      2,
+    );
+    assert.strictEqual(
+      run('card', 'create', 'project-backlog', 'Example', '--live', 'maybe').code,
+      2,
+    );
+    assert.deepStrictEqual(fs.readdirSync(dir).sort(), before);
+  });
+});

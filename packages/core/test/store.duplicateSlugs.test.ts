@@ -89,3 +89,30 @@ describe('duplicate ids on a board', () => {
     assert.strictEqual(required(board.cards['login'], 'feature login').title, 'First');
   });
 });
+
+describe('cards keyed by Object.prototype names', () => {
+  test('a card or feature named `constructor` is a real card, not a prototype member', () => {
+    const { store } = makeStore({
+      'boards/b/.config.json': JSON.stringify({
+        name: 'B',
+        columns: [{ id: 'todo', name: 'To Do', color: '#000' }],
+        labels: {},
+        fields: [],
+      }),
+      'boards/b/01-constructor.md': '---\ncolumn: todo\n---\n# Constructor\n',
+      'features/s/.config.json': JSON.stringify({
+        name: 'S',
+        columns: [{ id: 'proposed', name: 'P', color: '#000' }],
+      }),
+      'features/s/constructor.feature': 'Feature: Constructor\n',
+    });
+    const board = required(store.getBoard('b'), 'board');
+    assert.deepStrictEqual(required(board.columns[0], 'column').cardIds, ['constructor']);
+    assert.strictEqual(board.cards['constructor']?.title, 'Constructor');
+    assert.strictEqual(store.getBoard('b')?.cards['toString'], undefined);
+    const set = required(store.getFeatureSet('s'), 'set');
+    assert.deepStrictEqual(required(set.columns[0], 'column').cardIds, ['constructor']);
+    assert.strictEqual(store.addCard('b', 'todo', 'hasOwnProperty').ok, true);
+    assert.strictEqual(store.getBoard('b')?.cards['hasownproperty']?.title, 'hasOwnProperty');
+  });
+});
