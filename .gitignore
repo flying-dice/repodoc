@@ -4,3 +4,4 @@ node_modules
 .vscode-test/
 *.vsix
 **/media/mermaid.min.js
+.claude/worktrees/
