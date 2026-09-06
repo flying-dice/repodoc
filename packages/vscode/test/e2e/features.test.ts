@@ -10,7 +10,9 @@ import { type BoardsNode, BoardsTreeProvider } from '../../src/trees';
  * Feature sets end to end: the Boards tree renders set → columns → features,
  * `repodoc.openBoard` opens the same kanban panel for a set, the surface
  * declares none of the card-board editing capabilities, and the feature
- * commands (`openFeature`, `copyRef`) act on the real `.feature` files.
+ * commands route: `openFeature` opens the set's panel and the feature's managed
+ * detail modal, `openFeatureSource` opens the raw `.feature` file, and
+ * `copyRef` copies the reference to it.
  *
  * The tree provider and the board sources are constructed here over the SAME
  * store the extension exposes: they are the objects the extension registers
@@ -55,6 +57,18 @@ function findTab(predicate: (tab: vscode.Tab) => boolean): vscode.Tab | undefine
     }
   }
   return undefined;
+}
+
+function countTabs(predicate: (tab: vscode.Tab) => boolean): number {
+  let count = 0;
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      if (predicate(tab)) {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }
 
 /** True when this environment has a working clipboard (headless hosts may not). */
@@ -169,7 +183,7 @@ suite('RepoDoc feature sets e2e', () => {
     );
   });
 
-  test('a feature column expands to feature nodes that open the .feature file', () => {
+  test('a feature column expands to feature nodes bound to the managed open', () => {
     const columns = tree.getChildren(setNode());
     const specified = columns.find((c) => c.kind === 'featureColumn' && c.columnId === 'specified');
     assert.ok(specified, 'the specified column is present');
@@ -252,8 +266,50 @@ suite('RepoDoc feature sets e2e', () => {
     );
   });
 
-  test('repodoc.openFeature opens the .feature file itself in an editor', async () => {
+  test('repodoc.openFeature opens the set panel and its modal, not the .feature file', async () => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
     await vscode.commands.executeCommand('repodoc.openFeature', SET, 'gates-block-a-move');
+    await waitFor(() =>
+      findTab((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Spec Set'),
+    );
+
+    // The feature panel is the surface that got the request: the bounce
+    // channel only answers for a panel keyed `features:<set>`.
+    assert.strictEqual(
+      await vscode.commands.executeCommand<boolean>(
+        'repodoc.bounceWebviewMessage',
+        SET,
+        { type: 'ready' },
+        'features',
+      ),
+      true,
+      'a feature-set panel is open for the set',
+    );
+
+    // The raw source stays shut: that is now `repodoc.openFeatureSource`.
+    await delay(500);
+    assert.strictEqual(
+      findTab(
+        (t) =>
+          t.input instanceof vscode.TabInputText && t.label.endsWith('gates-block-a-move.feature'),
+      ),
+      undefined,
+      'the .feature file is not opened by the managed route',
+    );
+
+    // Invoked again it reveals the same panel rather than opening a second tab.
+    await vscode.commands.executeCommand('repodoc.openFeature', SET, 'untagged');
+    await delay(500);
+    assert.strictEqual(
+      countTabs((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Spec Set'),
+      1,
+      'the open panel is reused',
+    );
+  });
+
+  test('repodoc.openFeatureSource opens the .feature file itself in an editor', async () => {
+    await vscode.commands.executeCommand('repodoc.openFeatureSource', SET, 'gates-block-a-move');
     const opened = await waitFor(() => {
       const active = vscode.window.activeTextEditor?.document.uri.fsPath;
       return active?.endsWith('gates-block-a-move.feature') ? active : undefined;
@@ -261,10 +317,86 @@ suite('RepoDoc feature sets e2e', () => {
     assert.ok(opened.startsWith(setDir), 'the file opened is the one inside the feature set');
   });
 
-  test('repodoc.openFeature with an unknown feature does nothing', async () => {
+  test('repodoc.openFeatureSource also takes the tree node itself', async () => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    const columns = tree.getChildren(setNode());
+    const specified = columns.find((c) => c.kind === 'featureColumn' && c.columnId === 'specified');
+    assert.ok(specified);
+    const feature = tree.getChildren(specified)[0];
+    assert.ok(feature && feature.kind === 'feature');
+
+    await vscode.commands.executeCommand('repodoc.openFeatureSource', feature);
+    const opened = await waitFor(() => {
+      const active = vscode.window.activeTextEditor?.document.uri.fsPath;
+      return active?.endsWith('gates-block-a-move.feature') ? active : undefined;
+    });
+    assert.ok(opened.startsWith(setDir));
+  });
+
+  test('repodoc.openFeature / openFeatureSource with an unknown feature do nothing', async () => {
     await vscode.commands.executeCommand('repodoc.openFeature', SET, 'does-not-exist');
     await vscode.commands.executeCommand('repodoc.openFeature', undefined, undefined);
+    await vscode.commands.executeCommand('repodoc.openFeatureSource', SET, 'does-not-exist');
+    await vscode.commands.executeCommand('repodoc.openFeatureSource', undefined, undefined);
+    await vscode.commands.executeCommand('repodoc.openFeatureSource', { kind: 'board' });
     assert.ok(true, 'reaching here without an exception is the assertion');
+  });
+
+  /**
+   * Panels are keyed by kind AND id, so a board and a feature set sharing an id
+   * never collide: the feature route must land on the `features:` panel even
+   * when a card board with the same id already has one open.
+   */
+  test('a feature set and a board sharing an id open separate panels', async function () {
+    this.timeout(30000);
+    const sharedBoard = path.join(root, 'boards', 'shared');
+    fs.mkdirSync(sharedBoard, { recursive: true });
+    fs.writeFileSync(
+      path.join(sharedBoard, '.config.json'),
+      JSON.stringify({
+        name: 'Shared Board',
+        columns: [{ id: 'todo', name: 'To Do', color: '#4c8bf5' }],
+        labels: {},
+        fields: [],
+      }),
+    );
+    const sharedSet = path.join(root, 'features', 'shared');
+    fs.mkdirSync(sharedSet, { recursive: true });
+    fs.writeFileSync(
+      path.join(sharedSet, '.config.json'),
+      JSON.stringify({
+        name: 'Shared Set',
+        columns: [{ id: 'proposed', name: 'Proposed', color: '#7d828b' }],
+        labels: {},
+        fields: [],
+      }),
+    );
+    fs.writeFileSync(path.join(sharedSet, 'shared-one.feature'), 'Feature: Shared one\n');
+    await waitFor(() => api.store.getFeature('shared', 'shared-one')?.title === 'Shared one');
+
+    await vscode.commands.executeCommand('repodoc.openBoard', 'shared');
+    await waitFor(() =>
+      findTab((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Shared Board'),
+    );
+
+    await vscode.commands.executeCommand('repodoc.openFeature', 'shared', 'shared-one');
+    await waitFor(() =>
+      findTab((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Shared Set'),
+    );
+    assert.ok(
+      findTab((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Shared Board'),
+      'the card board panel is still open — the set did not take its tab over',
+    );
+    assert.strictEqual(
+      await vscode.commands.executeCommand<boolean>(
+        'repodoc.bounceWebviewMessage',
+        'shared',
+        { type: 'ready' },
+        'features',
+      ),
+      true,
+      'the panel that answers under the features key is the one that opened',
+    );
   });
 
   test('repodoc.copyRef on a feature node copies the pasteable reference', async function () {

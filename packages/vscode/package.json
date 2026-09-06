@@ -86,6 +86,12 @@
         "category": "RepoDoc"
       },
       {
+        "command": "repodoc.openFeatureSource",
+        "title": "Open Feature File",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "repodoc.openDecision",
         "title": "Open Decision",
         "category": "RepoDoc"
@@ -188,6 +194,10 @@
           "when": "false"
         },
         {
+          "command": "repodoc.openFeatureSource",
+          "when": "false"
+        },
+        {
           "command": "repodoc.openDecision",
           "when": "false"
         },
@@ -285,6 +295,16 @@
           "command": "repodoc.copyRef",
           "when": "view == repodoc.boards && viewItem == repodoc.card",
           "group": "navigation@2"
+        },
+        {
+          "command": "repodoc.openFeatureSource",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openFeatureSource",
+          "when": "view == repodoc.boards && viewItem == repodoc.feature",
+          "group": "navigation@1"
         },
         {
           "command": "repodoc.copyRef",

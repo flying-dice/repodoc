@@ -93,10 +93,16 @@ export class BoardPanel {
 
   /**
    * Open a card's detail modal in an already-open board panel (tests /
-   * automation). Returns false when the board has no open panel.
+   * automation). Returns false when the board has no open panel. `kind`
+   * selects the surface — a feature set and a board may share an id (see
+   * {@link panelKey}).
    */
-  public static postOpenCard(boardId: string, cardId: string): boolean {
-    const panel = BoardPanel.panels.get(panelKey('board', boardId));
+  public static postOpenCard(
+    boardId: string,
+    cardId: string,
+    kind: BoardSource['kind'] = 'board',
+  ): boolean {
+    const panel = BoardPanel.panels.get(panelKey(kind, boardId));
     if (!panel) {
       return false;
     }
@@ -141,7 +147,7 @@ export class BoardPanel {
     cardId: string,
   ): void {
     const boardId = source.id;
-    const key = panelKey('board', boardId);
+    const key = panelKey(source.kind, boardId);
     const existed = BoardPanel.panels.has(key);
     BoardPanel.createOrShow(extensionUri, root, source);
     const panel = BoardPanel.panels.get(key);
@@ -151,7 +157,7 @@ export class BoardPanel {
     if (existed) {
       // Live webview — the message lands now; queuing it would re-pop the
       // modal on a later webview reload.
-      BoardPanel.postOpenCard(boardId, cardId);
+      BoardPanel.postOpenCard(boardId, cardId, source.kind);
     } else {
       panel.pendingCardId = cardId;
     }

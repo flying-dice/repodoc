@@ -159,15 +159,47 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       }
     }),
 
-    // Internal (not contributed to the palette): open a feature's `.feature`
-    // file in the editor. Used by feature items in the Boards tree.
+    // Internal (not contributed to the palette): open (or reveal) the feature
+    // set's panel and show the feature's managed detail modal. Used by feature
+    // items in the Boards tree. Raw source lives behind
+    // `repodoc.openFeatureSource`.
     vscode.commands.registerCommand(
       'repodoc.openFeature',
-      async (setId: unknown, featureId: unknown): Promise<void> => {
+      (setId: unknown, featureId: unknown): void => {
         if (typeof setId !== 'string' || typeof featureId !== 'string') {
           return;
         }
-        const relPath = store.featureFilePath(setId, featureId);
+        BoardPanel.revealCard(
+          context.extensionUri,
+          root,
+          new FeatureSetSource(store, setId),
+          featureId,
+        );
+      },
+    ),
+
+    // Open a feature's `.feature` file in the editor. Contributed as an inline
+    // and context-menu action on feature items in the Boards tree; invoked
+    // with the ids or with the tree node itself.
+    vscode.commands.registerCommand(
+      'repodoc.openFeatureSource',
+      async (arg: unknown, featureId: unknown): Promise<void> => {
+        let setId: string | undefined;
+        let id: string | undefined;
+        if (typeof arg === 'string' && typeof featureId === 'string') {
+          setId = arg;
+          id = featureId;
+        } else {
+          const node = arg as { kind?: string; setId?: string; featureId?: string } | undefined;
+          if (node?.kind === 'feature') {
+            setId = node.setId;
+            id = node.featureId;
+          }
+        }
+        if (!setId || !id) {
+          return;
+        }
+        const relPath = store.featureFilePath(setId, id);
         if (relPath) {
           await openRepoFile(root, relPath);
         }
