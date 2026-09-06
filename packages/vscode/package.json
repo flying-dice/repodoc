@@ -193,17 +193,17 @@
   "dependencies": {
     "@repodoc/core": "workspace:*",
     "marked": "^15.0.7",
-    "mermaid": "^11.16.0",
+    "mermaid": "^11.17.2",
     "plantuml-encoder": "^1.4.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.4.1",
     "@types/vscode": "^1.100.0",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.3.2",
-    "esbuild": "^0.25.3",
-    "typescript": "^5.8.3"
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
   }
 }

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.12/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/out",
+      "!**/node_modules",
+      "!**/.vscode-test",
+      "!**/media/mermaid.min.js",
+      "!**/*.vsix",
+      "!.claude",
+      "!.agents",
+      "!.codex",
+      "!VS Code Trello Extension",
+      "!.playwright-mcp"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noConsole": "off"
+      },
+      "style": {
+        "useBlockStatements": "error",
+        "noNonNullAssertion": "off",
+        "useConst": "error",
+        "useImportType": "error"
+      },
+      "complexity": {
+        "noForEach": "off"
+      },
+      "recommended": true
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/media/*.js"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "useConst": "off"
+          },
+          "suspicious": {
+            "noVar": "off"
+          }
+        }
+      }
+    }
+  ]
+}
