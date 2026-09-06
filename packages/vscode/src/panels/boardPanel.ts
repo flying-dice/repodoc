@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { CustomFieldValue, RepoDocStore } from '@repodoc/core';
+import { type BoardSource, CardBoardSource } from './boardSource';
 import { resolveReadingWidth } from './readingWidth';
 import { renderMarkdownWithDiagrams } from './diagrams';
 import { plantUmlServer } from './plantUml';
 import { buildWebviewHtml } from './webviewHtml';
 import {
+  BoardCapabilities,
   DataMessage,
   MoveBlockedMessage,
   OpenCardMessage,
@@ -14,7 +16,9 @@ import {
 import { localIdentity } from './identity';
 
 /**
- * A single kanban board rendered in a webview. One panel is kept per board id.
+ * A kanban surface rendered in a webview — a card board or a feature set,
+ * behind the {@link BoardSource} interface. One panel is kept per
+ * `<kind>:<id>`.
  */
 export class BoardPanel {
   public static readonly viewType = 'repodoc.board';
@@ -30,7 +34,7 @@ export class BoardPanel {
     private readonly panel: vscode.WebviewPanel,
     private readonly extensionUri: vscode.Uri,
     private readonly store: RepoDocStore,
-    private readonly boardId: string,
+    private readonly source: BoardSource,
   ) {
     this.panel.webview.html = this.getHtml(this.panel.webview);
 
@@ -46,17 +50,18 @@ export class BoardPanel {
   public static createOrShow(
     extensionUri: vscode.Uri,
     store: RepoDocStore,
-    boardId: string,
+    source: BoardSource,
   ): void {
-    const existing = BoardPanel.panels.get(boardId);
+    const key = panelKey(source.kind, source.id);
+    const existing = BoardPanel.panels.get(key);
     if (existing) {
       existing.panel.reveal(vscode.ViewColumn.One);
       return;
     }
 
     const mediaUri = vscode.Uri.joinPath(extensionUri, 'media');
-    const board = store.getBoard(boardId);
-    const title = board ? board.name : boardId;
+    const board = source.getBoard();
+    const title = board ? board.name : source.id;
 
     const panel = vscode.window.createWebviewPanel(
       BoardPanel.viewType,
@@ -69,7 +74,7 @@ export class BoardPanel {
       },
     );
 
-    BoardPanel.panels.set(boardId, new BoardPanel(panel, extensionUri, store, boardId));
+    BoardPanel.panels.set(key, new BoardPanel(panel, extensionUri, store, source));
   }
 
   /** Re-post data to every open panel and refresh panel titles. */
@@ -84,7 +89,7 @@ export class BoardPanel {
    * automation). Returns false when the board has no open panel.
    */
   public static postOpenCard(boardId: string, cardId: string): boolean {
-    const panel = BoardPanel.panels.get(boardId);
+    const panel = BoardPanel.panels.get(panelKey('board', boardId));
     if (!panel) {
       return false;
     }
@@ -98,7 +103,7 @@ export class BoardPanel {
    * the real webview->host channel. Returns false when no panel is open.
    */
   public static postBounce(boardId: string, message: WebviewToHostMessage): boolean {
-    const panel = BoardPanel.panels.get(boardId);
+    const panel = BoardPanel.panels.get(panelKey('board', boardId));
     if (!panel) {
       return false;
     }
@@ -116,9 +121,10 @@ export class BoardPanel {
     boardId: string,
     cardId: string,
   ): void {
-    const existed = BoardPanel.panels.has(boardId);
-    BoardPanel.createOrShow(extensionUri, store, boardId);
-    const panel = BoardPanel.panels.get(boardId);
+    const key = panelKey('board', boardId);
+    const existed = BoardPanel.panels.has(key);
+    BoardPanel.createOrShow(extensionUri, store, new CardBoardSource(store, boardId));
+    const panel = BoardPanel.panels.get(key);
     if (!panel) {
       return;
     }
@@ -132,7 +138,7 @@ export class BoardPanel {
   }
 
   private dispose(): void {
-    BoardPanel.panels.delete(this.boardId);
+    BoardPanel.panels.delete(panelKey(this.source.kind, this.source.id));
     while (this.disposables.length) {
       const d = this.disposables.pop();
       if (d) {
@@ -142,12 +148,12 @@ export class BoardPanel {
   }
 
   private postData(): void {
-    const board = this.store.getBoard(this.boardId);
+    const board = this.source.getBoard();
     if (!board) {
       return;
     }
     this.panel.title = board.name;
-    const config = this.store.getBoardConfig(this.boardId);
+    const config = this.source.getConfig();
 
     // Every content block (descriptions, comment journal entries) is rendered
     // through the one shared renderer used by the Docs and Decision views:
@@ -167,16 +173,27 @@ export class BoardPanel {
 
     const message: DataMessage = {
       type: 'data',
-      boardId: this.boardId,
+      boardId: this.source.id,
       board,
       config,
-      boardPath: this.store.displayPath(this.boardId),
+      boardPath: this.source.displayPath(),
       descHtml,
       commentHtml,
       readingWidth: resolveReadingWidth(),
       commentAuthor: resolveCommentAuthor(this.store.root),
+      capabilities: this.capabilities(),
     };
     void this.panel.webview.postMessage(message);
+  }
+
+  /** The optional {@link BoardSource} methods this surface implements. */
+  private capabilities(): BoardCapabilities {
+    return {
+      comments: this.source.addComment !== undefined,
+      fields: this.source.setCardField !== undefined,
+      checklist: this.source.toggleChecklistItem !== undefined,
+      addColumn: this.source.addColumn !== undefined,
+    };
   }
 
   private onMessage(msg: unknown): void {
@@ -216,8 +233,7 @@ export class BoardPanel {
             typeof value === 'boolean' ||
             (Array.isArray(value) && value.every((v) => typeof v === 'string'));
           if (ok) {
-            this.store.setCardField(
-              this.boardId,
+            this.source.setCardField?.(
               m.cardId,
               m.fieldId,
               (value as CustomFieldValue | null) ?? undefined,
@@ -230,9 +246,9 @@ export class BoardPanel {
         if (typeof m.cardId === 'string' && typeof m.text === 'string') {
           const text = m.text.trim();
           const who = sanitizeAuthor(typeof m.who === 'string' ? m.who : '');
-          if (text) {
+          if (text && this.source.addComment) {
             const author = who || resolveCommentAuthor(this.store.root);
-            this.store.addComment(this.boardId, m.cardId, author, text);
+            this.source.addComment(m.cardId, author, text);
             // Persist an edited name so it sticks across sessions.
             const config = vscode.workspace.getConfiguration('repodoc');
             if (who && who !== (config.get<string>('commentAuthor') ?? '').trim()) {
@@ -266,7 +282,7 @@ export class BoardPanel {
         if (typeof m.column === 'string' && typeof m.title === 'string') {
           const title = m.title.trim();
           if (title) {
-            this.store.addCard(this.boardId, m.column, title);
+            this.source.addCard(m.column, title);
           }
         }
         break;
@@ -277,7 +293,7 @@ export class BoardPanel {
       }
       case 'toggleCheck': {
         if (typeof m.cardId === 'string' && typeof m.index === 'number') {
-          this.store.toggleChecklistItem(this.boardId, m.cardId, m.index);
+          this.source.toggleChecklistItem?.(m.cardId, m.index);
         }
         break;
       }
@@ -298,7 +314,7 @@ export class BoardPanel {
     index: number,
     override: boolean,
   ): void {
-    const results = this.store.evaluateMove(this.boardId, cardId, toColumn);
+    const results = this.source.evaluateMove(cardId, toColumn);
     const blocking = results.filter((r) => !r.satisfied);
     if (blocking.length && !override) {
       const message: MoveBlockedMessage = {
@@ -318,10 +334,10 @@ export class BoardPanel {
     if (blocking.length && override) {
       const who = localIdentity(this.store.root);
       for (const r of blocking) {
-        this.store.recordGateOverride(this.boardId, cardId, r.gate.id, who);
+        this.source.recordGateOverride(cardId, r.gate.id, who);
       }
     }
-    this.store.moveCard(this.boardId, cardId, toColumn, index);
+    this.source.moveCard(cardId, toColumn, index);
   }
 
   /**
@@ -355,9 +371,12 @@ export class BoardPanel {
   }
 
   private async promptAddColumn(): Promise<void> {
+    if (!this.source.addColumn) {
+      return;
+    }
     const name = await vscode.window.showInputBox({ prompt: 'List name' });
     if (name && name.trim()) {
-      this.store.addColumn(this.boardId, name.trim());
+      this.source.addColumn(name.trim());
     }
   }
 
@@ -375,6 +394,11 @@ export class BoardPanel {
       extraImgSrc: ['https:', 'data:', 'http://localhost:*', 'http://127.0.0.1:*'],
     });
   }
+}
+
+/** Panel identity: two surfaces may share an id, so the kind is part of it. */
+function panelKey(kind: BoardSource['kind'], id: string): string {
+  return `${kind}:${id}`;
 }
 
 /** The comment author: the setting when set, else the local git identity. */

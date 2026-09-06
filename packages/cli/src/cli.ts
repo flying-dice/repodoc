@@ -65,7 +65,7 @@ export function helpText(group?: string): string {
     ...list.flatMap((c) => [`  repodoc ${c.usage}`, `      ${c.summary}`]),
     '',
     'Global flags:',
-    '  --root <dir>   Workspace root (default: nearest dir with boards/, decisions/ or docs/, else git root).',
+    '  --root <dir>   Workspace root (default: nearest dir with boards/, decisions/, docs/ or features/, else git root).',
     '  --who <name>   Author for comments and gate evidence (default: $REPODOC_AUTHOR, git user.name, OS user).',
     '  --json         Machine-readable output.',
     '',

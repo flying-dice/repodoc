@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BoardRef, DecisionRecord, DocNode, RepoDocStore } from '@repodoc/core';
+import { BoardRef, DecisionRecord, DocNode, FeatureSetRef, RepoDocStore } from '@repodoc/core';
 
 /**
  * Base class for tree providers that expose a `refresh()` which fires the
@@ -17,7 +17,11 @@ abstract class RefreshableTreeProvider<T> implements vscode.TreeDataProvider<T> 
   abstract getChildren(element?: T): T[];
 }
 
-/** A node in the rich Boards tree: board → columns → cards. */
+/**
+ * A node in the rich Boards tree: board → columns → cards, then the feature
+ * sets after them — set → columns → features. Feature nodes open the
+ * `.feature` file itself; there is no card modal for a feature.
+ */
 export type BoardsNode =
   | { kind: 'board'; ref: BoardRef }
   | { kind: 'column'; boardId: string; columnId: string; name: string; count: number }
@@ -28,7 +32,10 @@ export type BoardsNode =
       title: string;
       priority?: string;
       agent?: string;
-    };
+    }
+  | { kind: 'featureSet'; ref: FeatureSetRef }
+  | { kind: 'featureColumn'; setId: string; columnId: string; name: string; count: number }
+  | { kind: 'feature'; setId: string; featureId: string; title: string };
 
 export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
   constructor(private readonly store: RepoDocStore) {
@@ -49,6 +56,45 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
         command: 'repodoc.openBoard',
         title: 'Open Board',
         arguments: [node.ref.id],
+      };
+      return item;
+    }
+    if (node.kind === 'featureSet') {
+      const item = new vscode.TreeItem(node.ref.name, vscode.TreeItemCollapsibleState.Collapsed);
+      item.id = `featureSet:${node.ref.id}`;
+      item.description = String(node.ref.featureCount);
+      item.iconPath = new vscode.ThemeIcon('beaker');
+      item.contextValue = 'repodoc.featureSet';
+      item.command = {
+        command: 'repodoc.openBoard',
+        title: 'Open Feature Set',
+        arguments: [node],
+      };
+      return item;
+    }
+    if (node.kind === 'featureColumn') {
+      const item = new vscode.TreeItem(
+        node.name,
+        node.count > 0
+          ? vscode.TreeItemCollapsibleState.Collapsed
+          : vscode.TreeItemCollapsibleState.None,
+      );
+      item.id = `featureColumn:${node.setId}:${node.columnId}`;
+      item.description = String(node.count);
+      item.iconPath = new vscode.ThemeIcon('layout-panel-left');
+      item.contextValue = 'repodoc.column';
+      return item;
+    }
+    if (node.kind === 'feature') {
+      const item = new vscode.TreeItem(node.title, vscode.TreeItemCollapsibleState.None);
+      item.id = `feature:${node.setId}:${node.featureId}`;
+      item.tooltip = node.title;
+      item.iconPath = new vscode.ThemeIcon('file-code');
+      item.contextValue = 'repodoc.feature';
+      item.command = {
+        command: 'repodoc.openFeature',
+        title: 'Open Feature',
+        arguments: [node.setId, node.featureId],
       };
       return item;
     }
@@ -80,7 +126,39 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
 
   getChildren(element?: BoardsNode): BoardsNode[] {
     if (!element) {
-      return this.store.listBoards().map((ref) => ({ kind: 'board' as const, ref }));
+      return [
+        ...this.store.listBoards().map((ref) => ({ kind: 'board' as const, ref })),
+        ...this.store.listFeatureSets().map((ref) => ({ kind: 'featureSet' as const, ref })),
+      ];
+    }
+    if (element.kind === 'featureSet') {
+      const board = this.store.getFeatureSet(element.ref.id);
+      if (!board) {
+        return [];
+      }
+      return board.columns.map((c) => ({
+        kind: 'featureColumn' as const,
+        setId: element.ref.id,
+        columnId: c.id,
+        name: c.name,
+        count: c.cardIds.length,
+      }));
+    }
+    if (element.kind === 'featureColumn') {
+      const board = this.store.getFeatureSet(element.setId);
+      const column = board?.columns.find((c) => c.id === element.columnId);
+      if (!board || !column) {
+        return [];
+      }
+      return column.cardIds
+        .map((id) => board.cards[id])
+        .filter((card) => !!card)
+        .map((card) => ({
+          kind: 'feature' as const,
+          setId: element.setId,
+          featureId: card.id,
+          title: card.title,
+        }));
     }
     if (element.kind === 'board') {
       const board = this.store.getBoard(element.ref.id);

@@ -3,6 +3,7 @@ import {
   Card,
   Column,
   CustomFieldValue,
+  FeatureRecord,
   GateResult,
   Priority,
   SKILL_TARGETS,
@@ -336,6 +337,131 @@ export const COMMANDS: Command[] = [
     },
   },
   {
+    group: 'feature',
+    name: 'sets',
+    usage: 'feature sets',
+    summary: 'List feature sets with feature counts.',
+    run(ctx, _args, out): void {
+      const sets = ctx.store.listFeatureSets();
+      out.emit(sets, () =>
+        sets.length
+          ? table(sets.map((s) => [s.id, s.name, `${s.featureCount} features`]))
+          : ['No feature sets. Run `repodoc feature set-create <name>`.'],
+      );
+    },
+  },
+  {
+    group: 'feature',
+    name: 'set-create',
+    usage: 'feature set-create <name>',
+    summary: 'Create a feature set with the default specification columns.',
+    run(ctx, args, out): void {
+      const [name] = need(args, ['name']);
+      const id = ctx.store.createFeatureSet(name);
+      out.emit({ id, name }, () => [`Created feature set ${id} (features/${id}/.config.json)`]);
+    },
+  },
+  {
+    group: 'feature',
+    name: 'list',
+    usage: 'feature list <set> [--column <id>]',
+    summary: 'List a set\'s features in column order.',
+    run(ctx, args, out): void {
+      const [setId] = need(args, ['set']);
+      const board = requireFeatureSet(ctx, setId);
+      const only = stringFlag(args.flags, 'column');
+      if (only !== undefined) {
+        requireColumn(board, only);
+      }
+      const rows = board.columns
+        .filter((c) => only === undefined || c.id === only)
+        .flatMap((c) => c.cardIds.map((id) => ({ column: c.id, ...board.cards[id] })));
+      out.emit(rows, () =>
+        rows.length ? table(rows.map((r) => [r.column, cardLine(r.id, r)])) : ['No features.'],
+      );
+    },
+  },
+  {
+    group: 'feature',
+    name: 'show',
+    usage: 'feature show <set> <feature>',
+    summary: 'Show one feature: title, status, tags, description and scenarios.',
+    run(ctx, args, out): void {
+      const [setId, featureId] = need(args, ['set', 'feature']);
+      const feature = requireFeature(ctx, setId, featureId);
+      out.emit({ set: setId, ...feature }, () => {
+        const lines = [
+          `# ${feature.title}`,
+          `id: ${feature.id}`,
+          `file: features/${setId}/${feature.file}`,
+          `status: ${feature.status}`,
+        ];
+        if (feature.tags.length) {
+          lines.push(`tags: ${feature.tags.join(', ')}`);
+        }
+        if (feature.description) {
+          lines.push('', feature.description);
+        }
+        if (feature.scenarios.length) {
+          lines.push(
+            '',
+            '## Scenarios',
+            ...feature.scenarios.map(
+              (s) => `- ${s.name}${s.tags.length ? `  ${s.tags.join(' ')}` : ''}`,
+            ),
+          );
+        }
+        return lines;
+      });
+    },
+  },
+  {
+    group: 'feature',
+    name: 'create',
+    usage: 'feature create <set> <title> [--column <id>]',
+    summary: 'Create a <slug>.feature file (in the first column unless --column).',
+    run(ctx, args, out): void {
+      const [setId, title] = need(args, ['set', 'title']);
+      const board = requireFeatureSet(ctx, setId);
+      const columnId = stringFlag(args.flags, 'column');
+      if (columnId !== undefined) {
+        requireColumn(board, columnId);
+      }
+      const result = ctx.store.createFeature(setId, title, columnId);
+      if (!result.ok) {
+        throw new CommandError(describe(result.error));
+      }
+      const feature = requireFeature(ctx, setId, result.cardId);
+      out.emit({ set: setId, ...feature }, () => [
+        `Created features/${setId}/${feature.file} in ${feature.status}`,
+      ]);
+    },
+  },
+  {
+    group: 'feature',
+    name: 'move',
+    usage: 'feature move <set> <feature> <column>',
+    summary:
+      'Move a feature by rewriting its @status: tag (the file is never renamed). Prints the target column\'s prompt.',
+    run(ctx, args, out): void {
+      const [setId, featureId, toColumn] = need(args, ['set', 'feature', 'column']);
+      const board = requireFeatureSet(ctx, setId);
+      requireFeature(ctx, setId, featureId);
+      const target = requireColumn(board, toColumn);
+      const moved = ctx.store.moveFeature(setId, featureId, toColumn);
+      if (!moved.ok) {
+        throw new CommandError(describe(moved.error));
+      }
+      out.emit({ set: setId, feature: featureId, column: toColumn, prompt: target.prompt ?? null }, () => {
+        const lines = [`Moved ${featureId} → ${toColumn}`];
+        if (target.prompt) {
+          lines.push('', `Now that ${featureId} is in ${target.name}:`, ...indent(target.prompt, '  '));
+        }
+        return lines;
+      });
+    },
+  },
+  {
     group: 'decision',
     name: 'list',
     usage: 'decision list',
@@ -456,6 +582,25 @@ function requireCard(
     throw new CommandError(`unknown card ${cardId} on ${boardId} (see \`repodoc card list ${boardId}\`)`);
   }
   return { board, card, column: column.id };
+}
+
+function requireFeatureSet(ctx: CommandContext, setId: string): BoardData {
+  const board = ctx.store.getFeatureSet(setId);
+  if (!board) {
+    throw new CommandError(`unknown feature set ${setId} (see \`repodoc feature sets\`)`);
+  }
+  return board;
+}
+
+function requireFeature(ctx: CommandContext, setId: string, featureId: string): FeatureRecord {
+  requireFeatureSet(ctx, setId);
+  const feature = ctx.store.getFeature(setId, featureId);
+  if (!feature) {
+    throw new CommandError(
+      `unknown feature ${featureId} in ${setId} (see \`repodoc feature list ${setId}\`)`,
+    );
+  }
+  return feature;
 }
 
 function cardLine(id: string, card: Card | undefined): string {

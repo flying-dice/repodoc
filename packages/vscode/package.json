@@ -81,6 +81,11 @@
         "icon": "$(open-preview)"
       },
       {
+        "command": "repodoc.openFeature",
+        "title": "Open Feature",
+        "category": "RepoDoc"
+      },
+      {
         "command": "repodoc.openDecision",
         "title": "Open Decision",
         "category": "RepoDoc"
@@ -143,6 +148,10 @@
           "when": "false"
         },
         {
+          "command": "repodoc.openFeature",
+          "when": "false"
+        },
+        {
           "command": "repodoc.openDecision",
           "when": "false"
         },
@@ -155,6 +164,11 @@
         {
           "command": "repodoc.openBoard",
           "when": "view == repodoc.boards && viewItem == repodoc.board",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openBoard",
+          "when": "view == repodoc.boards && viewItem == repodoc.featureSet",
           "group": "inline"
         }
       ]

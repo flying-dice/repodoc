@@ -31,6 +31,13 @@ extension watches them and updates its UI live — you never reload anything.
   carries \`status\` (Proposed | Accepted | Superseded) and \`date\`.
 - \`docs/NN-slug.md\` (and subfolders) — the documentation tree; the numeric
   prefix orders the sidebar.
+- \`features/<set-id>/*.feature\` — Gherkin feature files rendered on the same
+  kanban surface as a board, with \`features/<set-id>/.config.json\` holding the
+  columns (same shape as a board config). A feature's column is the
+  \`@status:<columnId>\` tag on its Feature tag line. Move one with
+  \`repodoc feature move <set> <feature> <column>\` — it rewrites ONLY that tag.
+  NEVER rename or renumber a \`.feature\` file: test runners reference them by
+  path.
 
 ## Card file anatomy
 
@@ -149,6 +156,11 @@ bunx github:flying-dice/repodoc card gates <board> <card> <column>        # exit
 bunx github:flying-dice/repodoc card gate-pass <board> <card> <gate> "<result>" --who <you>
 bunx github:flying-dice/repodoc card move <board> <card> <column> [--index n]
 bunx github:flying-dice/repodoc decision create "<title>"
+bunx github:flying-dice/repodoc feature sets
+bunx github:flying-dice/repodoc feature list <set> [--column <id>]
+bunx github:flying-dice/repodoc feature show <set> <feature>
+bunx github:flying-dice/repodoc feature create <set> "<title>" [--column <id>]
+bunx github:flying-dice/repodoc feature move <set> <feature> <column>
 \`\`\`
 
 Add \`--json\` to any command for machine-readable output, and \`--who <name>\`

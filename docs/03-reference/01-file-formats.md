@@ -2,7 +2,7 @@
 
 This is the exact on-disk schema RepoDoc reads and writes. It is the same format
 the extension's core parses — the parsers live in `src/core/` (`frontmatter.ts`,
-`cardParse.ts`, `boardConfig.ts`, `decisions.ts`, `docs.ts`).
+`cardParse.ts`, `boardConfig.ts`, `decisions.ts`, `docs.ts`, `featureParse.ts`).
 
 ## Board config — `boards/<board-id>/.config.json`
 
@@ -152,6 +152,54 @@ A sentence or two of description.
 
   - **claude** (2026-07-17T11:40:00.000Z): Added the export endpoint in src/export/router.ts:22-49 and covered it in src/export/router.test.ts:1-40.
   ```
+
+## Features — `features/<set-id>/`
+
+A feature set is a folder of Gherkin `.feature` files that renders on the same
+kanban surface as a board:
+
+```
+features/repodoc/
+  .config.json          # same shape as a board config
+  gates-block-a-move.feature
+  cli-refuses-a-gated-move.feature
+```
+
+`.config.json` uses the **same schema as a board config** (`name`, `columns`
+with `id`/`name`/`color`/`wip`/`prompt`, and optionally `labels` / `fields`) and
+is normalized by the same code. Column `enter`/`exit` gates may be present but
+are **NOT enforced for features** in this iteration — `repodoc feature move`
+never evaluates them.
+
+A feature's column is a tag on the Feature's tag line:
+
+```gherkin
+@status:specified @core
+Feature: Gates block a move
+
+  A card may not enter a column whose enter gates fail.
+
+  Scenario: The move is refused
+    Given a card in "todo" and a failing enter gate on "review"
+    When I move the card to "review"
+    Then the move is refused with the gate's prompt
+```
+
+- `@status:<columnId>` names the column. Absent, or naming a column the set does
+  not declare, the feature falls into the **first** column, so no feature is ever
+  invisible.
+- Moving a feature rewrites **only** that tag — in place when it exists,
+  otherwise as a new tag line immediately above `Feature:`. Every other byte is
+  preserved and the file is **never renamed or renumbered**: test runners
+  reference feature files by path.
+- Order inside a column is file-name order.
+- A feature's id is its file name without `.feature`.
+
+On the board, a feature's card shows the text after `Feature:` as its title, its
+non-`@status:` tags as labels, and a description made of the feature's free text
+followed by a `## Scenarios` list of every `Scenario:` / `Scenario Outline:` /
+`Example:` name. Features have no checklist, comments, custom fields, or gate
+evidence, so the webview hides those affordances.
 
 ## Decision — `decisions/NN-slug.md`
 

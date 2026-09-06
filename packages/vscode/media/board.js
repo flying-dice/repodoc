@@ -6,7 +6,7 @@
 
   /* ---- Local UI state (survives data re-renders) ---- */
   var state = {
-    data: null, // { boardId, board, config, boardPath }
+    data: null, // { boardId, board, config, boardPath, capabilities }
     query: '',
     addingCol: null, // column id currently showing the composer
     openCardId: null,
@@ -216,6 +216,12 @@
   }
   function config() {
     return state.data ? state.data.config : { labels: {}, fields: [] };
+  }
+  // What this surface supports (see BoardCapabilities in panels/protocol.ts).
+  // A feature set has no comments, fields, checklists, or column editing.
+  function can(name) {
+    var caps = state.data && state.data.capabilities;
+    return !caps || caps[name] !== false;
   }
   function fieldDefs() {
     var f = config().fields;
@@ -746,18 +752,20 @@
   function buildCanvas() {
     var b = board();
     var cols = (b.columns || []).map(buildColumn);
-    var addList = h('div', { class: 'add-list-wrap' }, [
-      h(
-        'button',
-        {
-          class: 'add-list-btn',
-          onClick: function () {
-            vscode.postMessage({ type: 'addColumn' });
-          },
-        },
-        [h('span', { class: 'plus' }, '+'), ' Add another list'],
-      ),
-    ]);
+    var addList = can('addColumn')
+      ? h('div', { class: 'add-list-wrap' }, [
+          h(
+            'button',
+            {
+              class: 'add-list-btn',
+              onClick: function () {
+                vscode.postMessage({ type: 'addColumn' });
+              },
+            },
+            [h('span', { class: 'plus' }, '+'), ' Add another list'],
+          ),
+        ])
+      : null;
     var inner = h('div', { class: 'canvas-inner' }, cols.concat([addList]));
     return h('div', { class: 'canvas', onWheel: onCanvasWheel }, [inner]);
   }
@@ -881,19 +889,22 @@
         done++;
       }
     });
+    var toggles = can('checklist');
     var items = card.checklist.map(function (item, index) {
       var boxChildren = item.done ? [icon(ICON.check, 'icon')] : [];
       return h(
         'div',
         {
           class: 'check-item',
-          onClick: function () {
-            vscode.postMessage({
-              type: 'toggleCheck',
-              cardId: state.openCardId,
-              index: index,
-            });
-          },
+          onClick: toggles
+            ? function () {
+                vscode.postMessage({
+                  type: 'toggleCheck',
+                  cardId: state.openCardId,
+                  index: index,
+                });
+              }
+            : null,
         },
         [
           h('span', { class: 'check-box' + (item.done ? ' done' : '') }, boxChildren),
@@ -1073,6 +1084,9 @@
   }
 
   function modalComments(card) {
+    if (!can('comments')) {
+      return null;
+    }
     var entries = Array.isArray(card.comments) ? card.comments : [];
     var htmls =
       state.data && state.data.commentHtml ? state.data.commentHtml[card.id] : null;
@@ -1249,7 +1263,7 @@
 
   function modalFields(card) {
     var defs = fieldDefs();
-    if (!defs.length) {
+    if (!defs.length || !can('fields')) {
       return null;
     }
     var rows = defs.map(function (def) {

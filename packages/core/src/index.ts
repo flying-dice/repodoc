@@ -29,6 +29,15 @@ export type { AgentKind } from './skillManager';
 export { SKILL_MD, SKILL_NAME } from './skillContent';
 export { seedBoardConfig } from './seed';
 export { DecisionStore } from './decisions';
+export { FeatureStore, defaultFeatureColumns, writeStatusTag } from './features';
+export {
+  parseFeature,
+  featureIdFromFileName,
+  statusFromTags,
+  tagsWithoutStatus,
+  STATUS_TAG_PREFIX,
+} from './featureParse';
+export type { ParsedFeature, ParsedScenario } from './featureParse';
 export { DocStore } from './docs';
 export { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
 export { MemFileSystemAdapter } from './adapters/memFileSystem';

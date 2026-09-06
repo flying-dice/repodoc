@@ -15,7 +15,7 @@ runs the TypeScript entry point directly. Inside this checkout use
 
 | Flag | Meaning |
 | --- | --- |
-| `--root <dir>` | Workspace root. Default: the nearest ancestor of the current directory containing `boards/`, `decisions/`, or `docs/`; else the nearest git root; else the current directory. `REPODOC_ROOT` also works. |
+| `--root <dir>` | Workspace root. Default: the nearest ancestor of the current directory containing `boards/`, `decisions/`, `docs/`, or `features/`; else the nearest git root; else the current directory. `REPODOC_ROOT` also works. |
 | `--who <name>` | Author for comments, gate evidence, and overrides. Default: `REPODOC_AUTHOR`, then `git config user.name`, then the OS user. |
 | `--json` | Print the result as JSON instead of text. |
 | `--help` | Show usage. `repodoc help card` lists one group. |
@@ -42,6 +42,12 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `card update <board> <card> [--title] [--agent] [--live] [--status] [--progress] [--priority] [--labels]` | Set reserved metadata. Pass `""` to remove a key. |
 | `card check <board> <card> <index>` | Toggle a checklist item (0-based, as shown by `card show`). |
 | `card set <board> <card> <field> [value] [--clear]` | Set a board-defined custom field; values are typed per the field def, multiselects comma-separated. |
+| `feature sets` | Feature sets with feature counts. |
+| `feature set-create <name>` | New feature set with the default specification columns (`proposed`, `specified`, `implemented`, `verified`). |
+| `feature list <set> [--column <id>]` | Features in column order. |
+| `feature show <set> <feature>` | Title, status, tags, description and scenarios. |
+| `feature create <set> <title> [--column <id>]` | New `<slug>.feature` holding a `@status:` tag and a `Feature:` line; first column unless `--column`. |
+| `feature move <set> <feature> <column>` | Rewrite the feature's `@status:` tag — the file is never renamed — and print the target column's `prompt`. Gates are not enforced for features. |
 | `decision list` / `decision show <id>` / `decision create <title>` | Decision records. |
 | `docs tree` / `docs show <relPath>` | The documentation tree. |
 | `skill install [claude\|opencode]` | Write the RepoDoc agent skill file into the repo. |

@@ -6,6 +6,7 @@
 - **Bun workspace.** The repository is now three packages — `@repodoc/core` (the vscode-free store and adapters), `@repodoc/cli`, and the `repodoc` extension — installed, scripted, and unit-tested with Bun. Core and CLI unit tests run under `bun test`; the extension's end-to-end suite still runs on `@vscode/test-cli`. See `decisions/09-one-core-two-hosts.md`.
 - **Core API.** `moveCard` and `addCard` return a result instead of failing silently; new `updateCardMeta` (title, labels, priority, agent, live, status, progress) and `recordGateEvidence`.
 - **Fix.** The free-text `agent:` frontmatter key is parsed onto cards again, so the avatar and the live banner render for agent-claimed cards.
+- **Feature sets.** `features/<set-id>/` folders of Gherkin `.feature` files render on the same kanban surface as a board, with columns from a `features/<set-id>/.config.json` in the board-config shape. A feature's column is a `@status:<columnId>` tag on its Feature tag line; moving one rewrites only that tag and never renames the file. New CLI group `feature sets|set-create|list|show|create|move`, feature sets in the Boards tree, and gates are not enforced for features in this iteration.
 - **Skill.** The agent skill teaches the CLI first and hand-editing as the fallback.
 
 ## [0.8.0] — 2026-07-20

@@ -10,6 +10,7 @@ import {
 } from '@repodoc/core';
 import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
 import { BoardPanel } from './panels/boardPanel';
+import { CardBoardSource, FeatureSetSource } from './panels/boardSource';
 import { WebviewToHostMessage } from './panels/protocol';
 import { MarkdownPanel } from './panels/markdownPanel';
 
@@ -57,7 +58,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         store.notifyExternalChange();
       }, 150);
     };
-    for (const pattern of ['**/boards/**', '**/decisions/**', '**/docs/**']) {
+    for (const pattern of ['**/boards/**', '**/decisions/**', '**/docs/**', '**/features/**']) {
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(root, pattern),
       );
@@ -138,17 +139,41 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
 
     vscode.commands.registerCommand('repodoc.openBoard', (arg: unknown) => {
       // Invoked with a board id (tree item command / API) or with the tree
-      // node itself (inline action / context menu).
-      const boardId =
-        typeof arg === 'string'
-          ? arg
-          : ((arg as { kind?: string; ref?: { id?: string } } | undefined)?.kind === 'board'
-              ? (arg as { ref: { id: string } }).ref.id
-              : undefined);
-      if (boardId) {
-        BoardPanel.createOrShow(context.extensionUri, store, boardId);
+      // node itself (inline action / context menu) — which may be a board or a
+      // feature set; both render in the same panel behind a BoardSource.
+      if (typeof arg === 'string') {
+        BoardPanel.createOrShow(context.extensionUri, store, new CardBoardSource(store, arg));
+        return;
+      }
+      const node = arg as { kind?: string; ref?: { id?: string } } | undefined;
+      const id = node?.ref?.id;
+      if (!id) {
+        return;
+      }
+      if (node?.kind === 'board') {
+        BoardPanel.createOrShow(context.extensionUri, store, new CardBoardSource(store, id));
+      } else if (node?.kind === 'featureSet') {
+        BoardPanel.createOrShow(context.extensionUri, store, new FeatureSetSource(store, id));
       }
     }),
+
+    // Internal (not contributed to the palette): open a feature's `.feature`
+    // file in the editor. Used by feature items in the Boards tree.
+    vscode.commands.registerCommand(
+      'repodoc.openFeature',
+      async (setId: unknown, featureId: unknown): Promise<void> => {
+        if (typeof setId !== 'string' || typeof featureId !== 'string' || !root) {
+          return;
+        }
+        const relPath = store.featureFilePath(setId, featureId);
+        if (!relPath) {
+          return;
+        }
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(root), ...relPath.split('/'));
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc);
+      },
+    ),
 
     // Internal (not contributed to the palette): open a card's detail modal in
     // an already-open board panel. Used by automation and the demo driver.
@@ -204,7 +229,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         return;
       }
       const id = store.createBoard(name.trim());
-      BoardPanel.createOrShow(context.extensionUri, store, id);
+      BoardPanel.createOrShow(context.extensionUri, store, new CardBoardSource(store, id));
     }),
 
     vscode.commands.registerCommand('repodoc.newDecision', async () => {

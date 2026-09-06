@@ -271,6 +271,132 @@ describe('repodoc card gates', () => {
   });
 });
 
+describe('repodoc feature', () => {
+  const config = JSON.stringify({
+    name: 'Spec',
+    columns: [
+      { id: 'proposed', name: 'Proposed', color: '#7d828b' },
+      { id: 'specified', name: 'Specified', color: '#4c8bf5', prompt: 'Write the scenarios.' },
+    ],
+  });
+  const gates = [
+    '@status:specified @core',
+    'Feature: Gates block a move',
+    '',
+    '  A gated move is refused.',
+    '',
+    '  Scenario: The move is refused',
+    '    Given a failing gate',
+    '',
+  ].join('\n');
+
+  function featurePath(name: string): string {
+    return path.join(root, 'features/spec', name);
+  }
+
+  beforeEach(() => {
+    fs.mkdirSync(path.join(root, 'features/spec'), { recursive: true });
+    fs.writeFileSync(featurePath('.config.json'), config);
+    fs.writeFileSync(featurePath('gates.feature'), gates);
+    fs.writeFileSync(featurePath('untagged.feature'), 'Feature: No tag\n');
+  });
+
+  test('feature sets lists sets with counts', () => {
+    const text = run('feature', 'sets');
+    assert.strictEqual(text.code, 0);
+    assert.ok(text.out.includes('spec  Spec  2 features'));
+    const sets = json('feature', 'sets') as Array<{ id: string; featureCount: number }>;
+    assert.deepStrictEqual(sets, [{ id: 'spec', name: 'Spec', featureCount: 2 }]);
+  });
+
+  test('feature set-create writes a config with the default columns', () => {
+    const created = json('feature', 'set-create', 'Payments Spec') as { id: string };
+    assert.strictEqual(created.id, 'payments-spec');
+    const written = JSON.parse(
+      fs.readFileSync(path.join(root, 'features/payments-spec/.config.json'), 'utf8'),
+    ) as { columns: Array<{ id: string }> };
+    assert.deepStrictEqual(written.columns.map((c) => c.id), [
+      'proposed',
+      'specified',
+      'implemented',
+      'verified',
+    ]);
+  });
+
+  test('feature list buckets by @status: and filters by --column', () => {
+    const all = json('feature', 'list', 'spec') as Array<{ column: string; id: string }>;
+    assert.deepStrictEqual(all.map((r) => [r.column, r.id]), [
+      ['proposed', 'untagged'],
+      ['specified', 'gates'],
+    ]);
+    const only = json('feature', 'list', 'spec', '--column', 'specified') as Array<{ id: string }>;
+    assert.deepStrictEqual(only.map((r) => r.id), ['gates']);
+    assert.strictEqual(run('feature', 'list', 'spec', '--column', 'nope').code, 1);
+    assert.strictEqual(run('feature', 'list', 'nope').code, 1);
+  });
+
+  test('feature show prints status, tags, description and scenarios', () => {
+    const text = run('feature', 'show', 'spec', 'gates');
+    assert.strictEqual(text.code, 0);
+    assert.ok(text.out.includes('# Gates block a move'));
+    assert.ok(text.out.includes('status: specified'));
+    assert.ok(text.out.includes('tags: @core'));
+    assert.ok(text.out.includes('A gated move is refused.'));
+    assert.ok(text.out.includes('- The move is refused'));
+    const shown = json('feature', 'show', 'spec', 'gates') as {
+      status: string;
+      scenarios: Array<{ name: string }>;
+    };
+    assert.strictEqual(shown.status, 'specified');
+    assert.deepStrictEqual(shown.scenarios.map((s) => s.name), ['The move is refused']);
+    assert.strictEqual(run('feature', 'show', 'spec', 'nope').code, 1);
+    assert.strictEqual(run('feature', 'show', 'nope', 'gates').code, 1);
+  });
+
+  test('feature create writes a slugged file, suffixing a taken slug', () => {
+    const first = json('feature', 'create', 'spec', 'Move rewrites the tag') as { id: string };
+    assert.strictEqual(first.id, 'move-rewrites-the-tag');
+    assert.strictEqual(
+      fs.readFileSync(featurePath('move-rewrites-the-tag.feature'), 'utf8'),
+      '@status:proposed\nFeature: Move rewrites the tag\n',
+    );
+    const second = json('feature', 'create', 'spec', 'Gates', '--column', 'specified') as {
+      id: string;
+      status: string;
+    };
+    assert.strictEqual(second.id, 'gates-2');
+    assert.strictEqual(second.status, 'specified');
+    assert.strictEqual(run('feature', 'create', 'spec', 'X', '--column', 'nope').code, 1);
+    assert.strictEqual(run('feature', 'create', 'nope', 'X').code, 1);
+  });
+
+  test('feature move rewrites only the tag and prints the column prompt', () => {
+    const moved = run('feature', 'move', 'spec', 'gates', 'proposed');
+    assert.strictEqual(moved.code, 0);
+    assert.strictEqual(
+      fs.readFileSync(featurePath('gates.feature'), 'utf8'),
+      gates.replace('@status:specified', '@status:proposed'),
+    );
+    const back = run('feature', 'move', 'spec', 'gates', 'specified');
+    assert.ok(back.out.includes('Write the scenarios.'));
+    const asJson = json('feature', 'move', 'spec', 'untagged', 'specified') as { prompt: string };
+    assert.strictEqual(asJson.prompt, 'Write the scenarios.');
+    assert.strictEqual(
+      fs.readFileSync(featurePath('untagged.feature'), 'utf8'),
+      '@status:specified\nFeature: No tag\n',
+    );
+  });
+
+  test('feature move refuses an unknown set, feature or column', () => {
+    assert.strictEqual(run('feature', 'move', 'nope', 'gates', 'proposed').code, 1);
+    assert.strictEqual(run('feature', 'move', 'spec', 'nope', 'proposed').code, 1);
+    assert.strictEqual(run('feature', 'move', 'spec', 'gates', 'nope').code, 1);
+    const missing = run('feature', 'move', 'spec');
+    assert.strictEqual(missing.code, 2);
+    assert.ok(missing.err.includes('missing arguments: <feature> <column>'));
+  });
+});
+
 describe('repodoc decision / docs / skill', () => {
   test('decision create/list/show', () => {
     const created = json('decision', 'create', 'Use Bun') as { id: string };

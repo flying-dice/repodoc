@@ -30,14 +30,14 @@ export function buildContext(args: ParsedArgs, cwd = process.cwd()): CommandCont
 /**
  * The workspace root. An explicit `--root` / `REPODOC_ROOT` wins. Otherwise
  * walk up from `cwd` to the nearest directory holding RepoDoc data (`boards/`,
- * `decisions/`, or `docs/`), then to the nearest git root, else `cwd` itself
+ * `decisions/`, `docs/`, or `features/`), then to the nearest git root, else `cwd`
  * — so `repodoc init` in a fresh folder initializes that folder.
  */
 export function resolveRoot(explicit: string | undefined, cwd: string): string {
   if (explicit) {
     return path.resolve(cwd, explicit);
   }
-  const markers = ['boards', 'decisions', 'docs'];
+  const markers = ['boards', 'decisions', 'docs', 'features'];
   let dir = path.resolve(cwd);
   let gitRoot: string | undefined;
   for (;;) {

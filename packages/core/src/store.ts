@@ -12,6 +12,7 @@ import { CardEntry, findChecklist, parseCard } from './cardParse';
 import { evaluateTransition } from './gates';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
+import { FeatureStore } from './features';
 import { seedBoardConfig } from './seed';
 import {
   BoardData,
@@ -22,6 +23,8 @@ import {
   CustomFieldValue,
   DecisionRecord,
   DocNode,
+  FeatureRecord,
+  FeatureSetRef,
   GateResult,
   Priority,
   RepoDocConfig,
@@ -58,8 +61,9 @@ export interface CardMetaPatch {
  * filesystem and the clock only through ports, so it never imports 'vscode'
  * and stays unit-testable against an in-memory adapter.
  *
- * Board logic lives here; decisions and docs are delegated to the dedicated
- * stores in `decisions.ts` / `docs.ts`, keeping each domain focused.
+ * Board logic lives here; decisions, docs, and feature sets are delegated to
+ * the dedicated stores in `decisions.ts` / `docs.ts` / `features.ts`, keeping
+ * each domain focused.
  */
 export class RepoDocStore {
   /** Absolute workspace path — metadata only (e.g. for the host's openFile). */
@@ -68,6 +72,7 @@ export class RepoDocStore {
   private readonly listeners: Array<() => void> = [];
   private readonly decisions: DecisionStore;
   private readonly docs: DocStore;
+  private readonly features: FeatureStore;
 
   constructor(
     private readonly fs: FileSystemPort,
@@ -77,6 +82,7 @@ export class RepoDocStore {
     this.root = root;
     this.decisions = new DecisionStore(fs);
     this.docs = new DocStore(fs);
+    this.features = new FeatureStore(fs);
   }
 
   // ---- change notification ----
@@ -107,7 +113,7 @@ export class RepoDocStore {
   // ---- lifecycle ----
 
   isInitialized(): boolean {
-    return this.fs.exists('boards') || this.fs.exists('decisions');
+    return this.fs.exists('boards') || this.fs.exists('decisions') || this.fs.exists('features');
   }
 
   /**
@@ -591,6 +597,66 @@ export class RepoDocStore {
     const id = this.decisions.create(title, this.today());
     this.fire();
     return id;
+  }
+
+  // ---- feature sets ----
+
+  /** Every `features/<set-id>/` folder, with its feature count. */
+  listFeatureSets(): FeatureSetRef[] {
+    return this.features.listSets();
+  }
+
+  /**
+   * A feature set rendered as board data — columns from its `.config.json`,
+   * one card per `.feature` file. `undefined` when the set does not exist.
+   */
+  getFeatureSet(setId: string): BoardData | undefined {
+    return this.features.board(setId);
+  }
+
+  /** The set's labels and fields, in the same shape as a board's config. */
+  getFeatureSetConfig(setId: string): RepoDocConfig {
+    return this.features.config(setId);
+  }
+
+  featureSetDisplayPath(setId: string): string {
+    return this.features.displayPath(setId);
+  }
+
+  getFeature(setId: string, featureId: string): FeatureRecord | undefined {
+    return this.features.get(setId, featureId);
+  }
+
+  /** Path of a feature file relative to the root, for hosts that open it. */
+  featureFilePath(setId: string, featureId: string): string | undefined {
+    return this.features.filePath(setId, featureId);
+  }
+
+  createFeatureSet(name: string): string {
+    const id = this.features.createSet(name);
+    this.fire();
+    return id;
+  }
+
+  /** Creates `<slug>.feature` in the set's first column (or `columnId`). */
+  createFeature(setId: string, title: string, columnId?: string): AddCardResult {
+    const result = this.features.create(setId, title, columnId);
+    if (result.ok) {
+      this.fire();
+    }
+    return result;
+  }
+
+  /**
+   * Moves a feature by rewriting only its `@status:` tag. Gates are NOT
+   * evaluated for features in this iteration.
+   */
+  moveFeature(setId: string, featureId: string, columnId: string): MoveCardResult {
+    const result = this.features.move(setId, featureId, columnId);
+    if (result.ok) {
+      this.fire();
+    }
+    return result;
   }
 
   // ---- docs ----

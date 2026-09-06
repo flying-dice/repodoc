@@ -6,6 +6,8 @@
  *  - `boards/<id>/NN-slug.md`     — one card per file (frontmatter + markdown)
  *  - `decisions/NN-slug.md`       — decision records (markdown)
  *  - `docs/**`                    — documentation tree (plain markdown)
+ *  - `features/<id>/.config.json` — feature-set columns (a board config)
+ *  - `features/<id>/*.feature`    — Gherkin features, columned by `@status:`
  *
  * The in-memory shapes below (BoardData/Column/Card) are what the webview and
  * panels consume — columns carry derived `cardIds`, cards are keyed by id.
@@ -185,4 +187,35 @@ export interface DocNode {
   /** Path relative to the workspace root, e.g. "docs/guides/agents.md". */
   relPath: string;
   children?: DocNode[];
+}
+
+/** One scenario of a feature file, as shown on a feature card. */
+export interface FeatureScenario {
+  name: string;
+  /** Tags written directly above the scenario, e.g. `@wip`. */
+  tags: string[];
+}
+
+/** One `.feature` file in a feature set. */
+export interface FeatureRecord {
+  /** Stable id — the file name without the `.feature` extension. */
+  id: string;
+  /** File name, e.g. "gates-block-a-move.feature". */
+  file: string;
+  /** Text after `Feature:` (the file name when the line is missing). */
+  title: string;
+  /** The feature's free text, between the Feature line and the first keyword. */
+  description: string;
+  /** Feature-level tags EXCLUDING the `@status:` tag. */
+  tags: string[];
+  /** Column id from the `@status:` tag; the first column when unset/unknown. */
+  status: string;
+  scenarios: FeatureScenario[];
+}
+
+/** A `features/<set-id>/` folder as listed in the tree and the CLI. */
+export interface FeatureSetRef {
+  id: string;
+  name: string;
+  featureCount: number;
 }

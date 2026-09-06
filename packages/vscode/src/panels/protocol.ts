@@ -13,6 +13,18 @@ import { BoardData, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
  * at runtime before acting on them.
  */
 
+/**
+ * What the surface being shown supports. A feature set has no comments, custom
+ * fields, checklists, or configurable columns, so the webview hides those
+ * affordances rather than posting messages the host would ignore.
+ */
+export interface BoardCapabilities {
+  comments: boolean;
+  fields: boolean;
+  checklist: boolean;
+  addColumn: boolean;
+}
+
 /** Messages sent from the extension host down to the webview. */
 export interface DataMessage {
   type: 'data';
@@ -29,6 +41,8 @@ export interface DataMessage {
   readingWidth: string;
   /** The author name prefilled in the comment composer. */
   commentAuthor: string;
+  /** Which editing affordances this surface supports. */
+  capabilities: BoardCapabilities;
 }
 
 
