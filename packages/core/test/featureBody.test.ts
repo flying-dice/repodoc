@@ -362,6 +362,125 @@ describe('line endings and fixed points', () => {
   });
 });
 
+/**
+ * A doc string is payload, so it is part of the body a writer replaces or
+ * removes — whole, never half. Half a doc string left in a file changes what
+ * the runner feeds the step and can forge structure out of the leftover.
+ */
+describe('writers and doc strings', () => {
+  const PAYLOAD = [
+    'Feature: Payload',
+    '',
+    '  Scenario: Send a document',
+    '    Given a document',
+    '      """',
+    '      Scenario: this is payload text',
+    '      """',
+    '    Then it is accepted',
+    '',
+    '  Scenario: Second',
+    '    Then it is done',
+    '',
+  ].join('\n');
+
+  test('writing the steps back unchanged is byte-identical', () => {
+    const scenario = parseFeature('x.feature', PAYLOAD).scenarios[0];
+    assert.ok(scenario);
+    assert.strictEqual(setScenario(PAYLOAD, 0, { steps: scenario.steps }), PAYLOAD);
+  });
+
+  test('replacing the steps removes the whole doc string and nothing else', () => {
+    const next = setScenario(PAYLOAD, 0, { steps: ['Given a document', 'Then it is accepted'] });
+    assert.strictEqual(
+      next,
+      [
+        'Feature: Payload',
+        '',
+        '  Scenario: Send a document',
+        '    Given a document',
+        '    Then it is accepted',
+        '',
+        '  Scenario: Second',
+        '    Then it is done',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  test('renaming the scenario leaves the doc string alone', () => {
+    const next = setScenario(PAYLOAD, 0, { name: 'Renamed' });
+    assert.strictEqual(next, PAYLOAD.replace('Scenario: Send a document', 'Scenario: Renamed'));
+  });
+
+  test('removing the scenario takes the doc string with it', () => {
+    const next = removeScenario(PAYLOAD, 0);
+    assert.strictEqual(
+      next,
+      ['Feature: Payload', '', '  Scenario: Second', '    Then it is done', ''].join('\n'),
+    );
+    assert.ok(!next?.includes('"""'), 'no delimiter is left behind');
+  });
+
+  test('an unterminated doc string is replaced whole, or removed whole', () => {
+    const truncated = [
+      'Feature: Payload',
+      '',
+      '  Scenario: First',
+      '    Then it is done',
+      '',
+      '  Scenario: Truncated',
+      '    Given a document',
+      '      """',
+      '      Scenario: never closed',
+      '',
+    ].join('\n');
+    assert.strictEqual(
+      setScenario(truncated, 1, { steps: ['Given a document'] }),
+      [
+        'Feature: Payload',
+        '',
+        '  Scenario: First',
+        '    Then it is done',
+        '',
+        '  Scenario: Truncated',
+        '    Given a document',
+        '',
+      ].join('\n'),
+    );
+    assert.strictEqual(
+      removeScenario(truncated, 1),
+      ['Feature: Payload', '', '  Scenario: First', '    Then it is done', ''].join('\n'),
+    );
+  });
+
+  test('a scenario appended after a doc-string block sits below it, at feature indentation', () => {
+    const next = addScenario(PAYLOAD, { name: 'Third', steps: ['Given y'] });
+    assert.strictEqual(next, `${PAYLOAD.trimEnd()}\n\n  Scenario: Third\n    Given y\n`);
+    const parsed = parseFeature('x.feature', next);
+    assert.deepStrictEqual(
+      parsed.scenarios.map((s) => s.name),
+      ['Send a document', 'Second', 'Third'],
+    );
+  });
+
+  test('a backtick doc string is body too', () => {
+    const fenced = [
+      'Feature: Payload',
+      '',
+      '  Scenario: Fenced',
+      '    Given a document',
+      '      ```json',
+      '      {"Scenario: x": 1}',
+      '      ```',
+      '',
+    ].join('\n');
+    const scenario = parseFeature('x.feature', fenced).scenarios[0];
+    assert.ok(scenario);
+    assert.strictEqual(setScenario(fenced, 0, { steps: scenario.steps }), fenced);
+    assert.strictEqual(removeScenario(fenced, 0), 'Feature: Payload\n');
+  });
+});
+
 describe('addScenario after a Rule block', () => {
   test('a new scenario takes the feature-level indentation, not the Rule-nested one', () => {
     const src = [

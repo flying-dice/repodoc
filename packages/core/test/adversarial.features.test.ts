@@ -180,6 +180,57 @@ describe('parseFeature — adversarial', () => {
     const parsed = parseFeature('x.feature', 'Feature: T\n  one\n\n  two\n\n  Scenario: S\n');
     assert.strictEqual(parsed.description, 'one\n\ntwo');
   });
+
+  test('given a @status: tag inside a doc string, when parsed, then it is payload and not the file’s status', () => {
+    const parsed = parseFeature(
+      'x.feature',
+      [
+        '@status:proposed',
+        'Feature: T',
+        '',
+        '  Scenario: S',
+        '    Given a payload',
+        '      """',
+        '      @status:done',
+        '      """',
+        '',
+      ].join('\n'),
+    );
+    assert.deepStrictEqual(parsed.tags, ['@status:proposed']);
+    assert.strictEqual(statusFromTags(parsed.tags), 'proposed');
+    assert.strictEqual(parsed.scenarios.length, 1);
+    assert.deepStrictEqual(required(parsed.scenarios[0], 'scenario').tags, []);
+  });
+
+  test('given a doc string that swallows the rest of the file, when parsed, then the block runs to the end and no scenario is invented', () => {
+    const parsed = parseFeature(
+      'x.feature',
+      ['Feature: T', '', '  Scenario: S', '    """', '    Scenario: not one', ''].join('\n'),
+    );
+    assert.deepStrictEqual(
+      parsed.scenarios.map((s) => [s.name, s.start, s.end]),
+      [['S', 2, 6]],
+    );
+  });
+
+  test('given a Scenario: cell in an Examples table, when parsed, then it stays a cell', () => {
+    const parsed = parseFeature(
+      'x.feature',
+      [
+        'Feature: T',
+        '',
+        '  Scenario Outline: S',
+        '    Examples:',
+        '      | text        |',
+        '      | Scenario: x |',
+        '',
+      ].join('\n'),
+    );
+    assert.deepStrictEqual(
+      parsed.scenarios.map((s) => s.name),
+      ['S'],
+    );
+  });
 });
 
 describe('statusFromTags / tagsWithoutStatus — adversarial', () => {

@@ -25,7 +25,9 @@
 import { applyEol, detectEol, normalizeEol } from './eol';
 import {
   commonIndent,
+  docStringMask,
   featureTagRegionEnd,
+  type ParsedScenario,
   parseFeature,
   type ScenarioKeyword,
 } from './featureParse';
@@ -128,17 +130,23 @@ export function setFeatureDescription(text: string, description: string): string
  * gives back a byte-identical file. A step carrying newlines becomes several
  * lines rather than one forged one.
  *
- * `undefined` when `index` names no scenario — nothing is written.
+ * A doc string is part of the body: replacing the steps of a scenario that has
+ * one removes the whole doc string, delimiters included, and an unterminated
+ * one — which runs to the end of the file — goes the same way. Half a doc
+ * string left behind would change what the runner feeds the step.
+ *
+ * `undefined` when `index` names no scenario, or when the span does not address
+ * whole lines of this file — nothing is written rather than something partial.
  */
 export function setScenario(text: string, index: number, patch: ScenarioPatch): string | undefined {
   const eol = detectEol(text);
   const normalized = normalizeEol(text);
   const parsed = parseFeature('', normalized);
   const scenario = parsed.scenarios[index];
-  if (!scenario) {
+  const lines = normalized.split('\n');
+  if (!scenario || !spanIsWhole(scenario, lines)) {
     return undefined;
   }
-  const lines = normalized.split('\n');
   const headingLine = lines[scenario.headingLine] ?? '';
   const headIndent = indentOf(headingLine);
 
@@ -147,9 +155,22 @@ export function setScenario(text: string, index: number, patch: ScenarioPatch): 
   }
   if (patch.steps !== undefined) {
     // The body stops before the blank lines that separate this block from the
-    // next: they are the file's spacing, not the scenario's content.
-    let bodyEnd = scenario.end;
-    while (bodyEnd > scenario.headingLine + 1 && (lines[bodyEnd - 1] ?? '').trim() === '') {
+    // next: they are the file's spacing, not the scenario's content. A blank
+    // line inside a doc string is content, so the walk stops at its edge — an
+    // unterminated doc string is replaced whole, never trimmed into.
+    const inDocString = docStringMask(lines);
+    // The empty entry after the file's last newline is the newline, not a line
+    // of the body — an unterminated doc string reaching the end of the file
+    // must not take the file's trailing newline with it.
+    let bodyEnd =
+      scenario.end === lines.length && lines[lines.length - 1] === ''
+        ? lines.length - 1
+        : scenario.end;
+    while (
+      bodyEnd > scenario.headingLine + 1 &&
+      !inDocString[bodyEnd - 1] &&
+      (lines[bodyEnd - 1] ?? '').trim() === ''
+    ) {
       bodyEnd--;
     }
     const indent =
@@ -209,19 +230,21 @@ export function addScenario(text: string, scenario: NewScenario): string {
 /**
  * Removes one scenario: its heading, its body, its own tag lines, and the blank
  * lines separating it from what follows — so the file is left with exactly one
- * separation where two blocks met, and everything else untouched.
+ * separation where two blocks met, and everything else untouched. A doc string
+ * in the block goes with it, delimiters included, terminated or not.
  *
- * `undefined` when `index` names no scenario — nothing is written.
+ * `undefined` when `index` names no scenario, or when the span does not address
+ * whole lines of this file — nothing is written rather than something partial.
  */
 export function removeScenario(text: string, index: number): string | undefined {
   const eol = detectEol(text);
   const normalized = normalizeEol(text);
   const parsed = parseFeature('', normalized);
   const scenario = parsed.scenarios[index];
-  if (!scenario) {
+  const lines = normalized.split('\n');
+  if (!scenario || !spanIsWhole(scenario, lines)) {
     return undefined;
   }
-  const lines = normalized.split('\n');
   const wasLast = scenario.end >= lines.length;
   const endsWithNewline = lines[lines.length - 1] === '';
   lines.splice(scenario.start, scenario.end - scenario.start);
@@ -276,6 +299,22 @@ function splice(lines: string[], start: number, end: number, middle: string[]): 
     parts.push('');
   }
   return parts.join('\n');
+}
+
+/**
+ * Whether a scenario's span addresses whole lines of THIS file, in order: the
+ * block starts at or above its heading, ends below it, and stays inside the
+ * file. A writer that cannot say this is true writes nothing — a span that has
+ * drifted from the text (a parse that mis-read a doc string, a caller passing a
+ * scenario from other text) would otherwise cut a block in half.
+ */
+function spanIsWhole(scenario: ParsedScenario, lines: readonly string[]): boolean {
+  return (
+    scenario.start >= 0 &&
+    scenario.start <= scenario.headingLine &&
+    scenario.headingLine < scenario.end &&
+    scenario.end <= lines.length
+  );
 }
 
 /** The leading whitespace of a line — the indentation a rewrite keeps. */

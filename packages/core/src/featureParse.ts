@@ -94,6 +94,44 @@ const OTHER_KEYWORD = /^(Background|Rule|Examples|Scenarios):/;
  */
 const BLOCK_KEYWORD = /^(Background|Rule):/;
 
+/** The two delimiters that open and close a Gherkin doc string. */
+const DOC_STRING_DELIMITERS = ['"""', '```'] as const;
+
+/**
+ * For each line: `true` when it belongs to a doc string — the opening
+ * delimiter, its content, and the closing delimiter alike. A doc string is
+ * PAYLOAD, so nothing inside one is structure: a `Scenario:`, `Feature:`,
+ * `Rule:`, `Examples:`, `@tag`, `#comment` or `| table |` line in there is text
+ * the test runner hands to the step, and RepoDoc carries it verbatim.
+ *
+ * One pass, keyed on the delimiter that opened the string (`"""` or ```` ``` ````),
+ * so the other delimiter is plain content while it is open. A media type after
+ * the opening delimiter (`"""json`) is allowed; the delimiter may sit at any
+ * indentation and the closing one need not match it. An UNTERMINATED doc string
+ * runs to the end of the file — a truncated payload is still payload, and
+ * guessing structure inside it is how a writer eats half a block.
+ */
+export function docStringMask(lines: readonly string[]): boolean[] {
+  const mask: boolean[] = new Array(lines.length).fill(false);
+  let open: string | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const line = (lines[i] ?? '').trim();
+    if (open === undefined) {
+      const delimiter = DOC_STRING_DELIMITERS.find((d) => line.startsWith(d));
+      if (delimiter !== undefined) {
+        open = delimiter;
+        mask[i] = true;
+      }
+      continue;
+    }
+    mask[i] = true;
+    if (line.startsWith(open)) {
+      open = undefined;
+    }
+  }
+  return mask;
+}
+
 /**
  * Index of the line where a file's OWN tag lines stop: the `Feature:` line when
  * there is one, else the first scenario/`Rule:`/`Background:` line, else the
@@ -107,12 +145,13 @@ const BLOCK_KEYWORD = /^(Background|Rule):/;
  * the file did not claim.
  */
 export function featureTagRegionEnd(lines: readonly string[]): number {
-  const featureIdx = lines.findIndex((l) => FEATURE_KEYWORD.test(l.trim()));
+  const inDocString = docStringMask(lines);
+  const featureIdx = lines.findIndex((l, i) => !inDocString[i] && FEATURE_KEYWORD.test(l.trim()));
   if (featureIdx !== -1) {
     return featureIdx;
   }
   const keywordIdx = lines.findIndex(
-    (l) => SCENARIO_KEYWORD.test(l.trim()) || OTHER_KEYWORD.test(l.trim()),
+    (l, i) => !inDocString[i] && (SCENARIO_KEYWORD.test(l.trim()) || OTHER_KEYWORD.test(l.trim())),
   );
   return keywordIdx === -1 ? lines.length : keywordIdx;
 }
@@ -126,11 +165,12 @@ export function featureTagRegionEnd(lines: readonly string[]): number {
  */
 export function parseFeature(fileName: string, content: string): ParsedFeature {
   const lines = normalizeEol(content).split('\n');
-  const featureIdx = lines.findIndex((l) => FEATURE_KEYWORD.test(l.trim()));
+  const inDocString = docStringMask(lines);
+  const featureIdx = lines.findIndex((l, i) => !inDocString[i] && FEATURE_KEYWORD.test(l.trim()));
   const parsed: ParsedFeature = {
     title: featureIdFromFileName(fileName),
     description: '',
-    descriptionSpan: descriptionSpan(lines, featureIdx),
+    descriptionSpan: descriptionSpan(lines, featureIdx, inDocString),
     featureLine: featureIdx === -1 ? undefined : featureIdx,
     tags: [],
     scenarios: [],
@@ -148,6 +188,14 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
 
   for (let i = 0; i < lines.length; i++) {
     const line = (lines[i] ?? '').trim();
+    if (inDocString[i]) {
+      // Payload, never structure: it cannot open a scenario, carry a tag, close
+      // a description or hide behind a `#`. In a description it reads as text.
+      if (inDescription) {
+        descriptionLines.push(line);
+      }
+      continue;
+    }
     if (line === '' || line.startsWith('#')) {
       // Blank lines and comments are transparent: they neither detach pending
       // tags from the keyword below them nor end a description.
@@ -184,7 +232,7 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
         headingLine: i,
         start: block.start,
         end: block.end,
-        steps: stepsOf(lines, i, block.end),
+        steps: stepsOf(lines, i, block.end, inDocString),
       });
       pendingTags = [];
       inDescription = false;
@@ -229,8 +277,12 @@ interface FeatureBlock {
  */
 function blocksOf(lines: readonly string[]): FeatureBlock[] {
   const tagRegionEnd = featureTagRegionEnd(lines);
+  const inDocString = docStringMask(lines);
   const heads: Array<{ line: number; keyword: ScenarioKeyword | undefined }> = [];
   for (let i = 0; i < lines.length; i++) {
+    if (inDocString[i]) {
+      continue; // payload — a block never starts inside a doc string
+    }
     const line = (lines[i] ?? '').trim();
     const keyword = SCENARIO_KEYWORD.exec(line)?.[1];
     if (keyword !== undefined) {
@@ -239,7 +291,7 @@ function blocksOf(lines: readonly string[]): FeatureBlock[] {
       heads.push({ line: i, keyword: undefined });
     }
   }
-  const starts = heads.map((h) => Math.max(tagRegionEnd, blockStart(lines, h.line)));
+  const starts = heads.map((h) => Math.max(tagRegionEnd, blockStart(lines, h.line, inDocString)));
   return heads.map((h, i) => ({
     headingLine: h.line,
     start: starts[i] ?? h.line,
@@ -252,11 +304,19 @@ function blocksOf(lines: readonly string[]): FeatureBlock[] {
  * The first line of the block headed at `headingLine`: the topmost tag line
  * above it, skipping blank and comment lines exactly as {@link parseFeature}
  * does when it attaches those tags. Any other content stops the walk — the
- * line above belongs to the block before this one.
+ * line above belongs to the block before this one. A doc-string line stops it
+ * too, whatever it looks like: that payload belongs to the block above.
  */
-function blockStart(lines: readonly string[], headingLine: number): number {
+function blockStart(
+  lines: readonly string[],
+  headingLine: number,
+  inDocString: readonly boolean[],
+): number {
   let start = headingLine;
   for (let i = headingLine - 1; i >= 0; i--) {
+    if (inDocString[i]) {
+      break;
+    }
     const line = (lines[i] ?? '').trim();
     if (line.startsWith('@')) {
       start = i;
@@ -273,11 +333,21 @@ function blockStart(lines: readonly string[], headingLine: number): number {
 /**
  * The body of a block, dedented by its common indentation and with the blank
  * lines that separate it from the next block dropped. Nothing else is touched:
- * a doc string keeps its inner indentation relative to the step above it.
+ * a doc string keeps its inner indentation relative to the step above it, and a
+ * blank line INSIDE one is payload, so the trim stops at the doc string's edge.
  */
-function stepsOf(lines: readonly string[], headingLine: number, end: number): string[] {
+function stepsOf(
+  lines: readonly string[],
+  headingLine: number,
+  end: number,
+  inDocString: readonly boolean[],
+): string[] {
   let last = end;
-  while (last > headingLine + 1 && (lines[last - 1] ?? '').trim() === '') {
+  while (
+    last > headingLine + 1 &&
+    !inDocString[last - 1] &&
+    (lines[last - 1] ?? '').trim() === ''
+  ) {
     last--;
   }
   const body = lines.slice(headingLine + 1, last);
@@ -318,12 +388,19 @@ export function commonIndent(lines: readonly string[]): string {
  * next), or the end of the file. Empty when there is no `Feature:` line —
  * there is nothing for a description to hang off.
  */
-function descriptionSpan(lines: readonly string[], featureIdx: number): LineSpan {
+function descriptionSpan(
+  lines: readonly string[],
+  featureIdx: number,
+  inDocString: readonly boolean[],
+): LineSpan {
   if (featureIdx === -1) {
     return { start: 0, end: 0 };
   }
   const start = featureIdx + 1;
   for (let i = start; i < lines.length; i++) {
+    if (inDocString[i]) {
+      continue; // payload cannot terminate the description
+    }
     const line = (lines[i] ?? '').trim();
     if (line.startsWith('@') || SCENARIO_KEYWORD.test(line) || OTHER_KEYWORD.test(line)) {
       return { start, end: i };

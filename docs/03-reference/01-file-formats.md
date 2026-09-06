@@ -247,6 +247,16 @@ and only what the editor was shown is replaced. Titles and scenario names are
 collapsed to a single line so they cannot forge a second `Feature:` line, a
 `@status:` tag, or a step.
 
+A doc string — a block opened and closed by `"""` or ``` ``` ```, at any
+indentation, optionally with a media type after the opening delimiter
+(`"""json`) — is payload, not structure. Everything inside one is text, so a
+`Scenario:`, `Feature:`, `Rule:`, `Examples:`, `@tag`, `#` comment or `| table |`
+line in there never starts a scenario, never ends a description and never
+attaches a tag. It belongs to the step above it: it is shown with that
+scenario's body, replaced with it, and removed with it — whole, delimiters
+included. A doc string left unclosed runs to the end of the file and is treated
+the same way, as content.
+
 Scenario TAGS are shown but not editable, and `Rule:` / `Background:` blocks are
 not shown at all: for those, and for anything else, **Open file** in the card
 view (or a feature in the Boards tree) opens the `.feature` itself.
