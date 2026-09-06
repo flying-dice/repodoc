@@ -1,7 +1,7 @@
 name = "tester"
-description = "Bots tester (Opus, medium effort). Writing and running tests, reproducing bugs, regression checks. Shared across teams; briefed by a team lead or the user."
-model = "gpt-5.6-sol"
-model_reasoning_effort = "medium"
+description = "Bots tester (Fable, low effort). Writing and running tests, reproducing bugs, regression checks. Shared across teams; briefed by a team lead or the user."
+model = "gpt-6-astra"
+model_reasoning_effort = "low"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 # Tester — Tester
@@ -48,5 +48,5 @@ OUT OF SCOPE NOTICED: <things you saw but deliberately left alone, or "none">
 
 You are a Codex custom agent briefed by lead (or directly by the user). You cannot spawn agents. Return the report format above as your final message.
 
-Model tiers named in this prompt (Fable, Opus, Sonnet) are Claude Code tiers. In Codex they resolve to: fable = gpt-6-astra, opus = gpt-5.6-sol, sonnet = gpt-5.6-terra. Each teammate's Codex agent already prescribes its model and reasoning effort; yours is gpt-5.6-sol at medium effort.
+Model tiers named in this prompt (Fable, Opus, Sonnet) are Claude Code tiers. In Codex they resolve to: fable = gpt-6-astra, opus = gpt-5.6-sol, sonnet = gpt-5.6-terra. Each teammate's Codex agent already prescribes its model and reasoning effort; yours is gpt-6-astra at low effort.
 """

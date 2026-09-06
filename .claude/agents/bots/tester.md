@@ -1,8 +1,8 @@
 ---
 name: tester
-description: Bots tester (Opus, medium effort). Writing and running tests, reproducing bugs, regression checks. Shared across teams; briefed by a team lead or the user.
-model: opus
-effort: medium
+description: Bots tester (Fable, low effort). Writing and running tests, reproducing bugs, regression checks. Shared across teams; briefed by a team lead or the user.
+model: fable
+effort: low
 color: green
 tools: Read, Write, Edit, Grep, Glob, Bash, TodoWrite
 disallowedTools: Agent, SendMessage

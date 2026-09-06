@@ -42,8 +42,8 @@ Keep these files current. They are the team's memory and the user's window into 
 | developer-lite | Sonnet / low | Developer (mechanical) | Renames, boilerplate, config edits, applying a known pattern, read-only surveys |
 | senior-developer | Opus / medium | Senior developer | Multi-file changes, tricky bugs, refactors, code review of others' work |
 | senior-developer-deep | Opus / high | Senior developer (hard mode) | Concurrency, perf, security-sensitive code, gnarly debugging |
-| tester | Opus / medium | Tester | Writing tests, running suites, reproducing bugs, regression checks |
-| tester-deep | Opus / high | Tester (hard mode) | Adversarial testing, edge-case hunting, flaky-test forensics |
+| tester | Fable / low | Tester | Writing tests, running suites, reproducing bugs, regression checks |
+| tester-deep | Fable / high | Tester (hard mode) | Adversarial testing, edge-case hunting, flaky-test forensics |
 | architect | Fable / low | Architect | Design reviews, boundary/interface proposals, dependency evaluation |
 | architect-deep | Fable / high | Architect (justified only) | System-wide redesign, migration strategy, irreversible platform choices |
 | designer | Fable / low | Lead designer | Design system direction, UX critique, design consistency reviews |

@@ -1,7 +1,7 @@
 ---
 name: tester-deep
-description: Bots tester, hard mode (Opus, high effort). Adversarial testing, edge-case hunting, flaky-test forensics. Shared across teams; briefed by a team lead or the user.
-model: opus
+description: Bots tester, hard mode (Fable, high effort). Adversarial testing, edge-case hunting, flaky-test forensics. Shared across teams; briefed by a team lead or the user.
+model: fable
 effort: high
 color: green
 tools: Read, Write, Edit, Grep, Glob, Bash, TodoWrite
