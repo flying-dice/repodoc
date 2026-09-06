@@ -15,6 +15,9 @@ frontmatter, so gates and file formats are enforced for everyone. Decision 09.
 - `card add-checklist` / `card set-desc` so no agent write requires a hand edit.
 - A `--watch`-free `board diff` (what changed since a timestamp) for lead check-ins.
 - Publish the skill file from the CLI's own help so the two never drift.
+- Feature authoring onboarding (GitHub #11): open-after-create, an opt-in
+  scenario starter, guidance on Gherkin language support. `Verified` stays a
+  recorded status, never test evidence.
 
 Why next: the CLI is the agent surface now; every gap sends an agent back to
 editing files, which is what M1 set out to end.
