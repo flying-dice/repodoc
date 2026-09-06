@@ -4,28 +4,32 @@
  * delegates its decision methods here.
  */
 
-import { FileSystemPort } from './ports';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { markdownTitle, pad, slugify, stripNumPrefix } from './naming';
-import { DecisionRecord } from './types';
+import type { FileSystemPort } from './ports';
+import type { DecisionRecord } from './types';
 
 /** Parses one decision file's text into a record. Pure — no I/O. */
 export function parseDecisionText(fileName: string, content: string): DecisionRecord {
   const id = fileName.replace(/\.md$/i, '');
   const numMatch = /^(\d+)/.exec(fileName);
-  const num = numMatch ? numMatch[1] : '0000';
+  const num = numMatch?.[1] ?? '0000';
 
   const { data, body } = parseFrontmatter(content);
 
   let title = markdownTitle(body, stripNumPrefix(id));
   title = title.replace(/^(?:Decision\s+\d+|ADR-?\d+)\s*[—–-]\s*/i, '').trim();
 
-  const status =
-    typeof data.status === 'string' && data.status.trim() ? data.status.trim() : 'Proposed';
+  const rawStatus = data['status'];
+  const status = typeof rawStatus === 'string' && rawStatus.trim() ? rawStatus.trim() : 'Proposed';
 
-  const date = typeof data.date === 'string' && data.date.trim() ? data.date.trim() : undefined;
+  const rawDate = data['date'];
+  const date = typeof rawDate === 'string' && rawDate.trim() ? rawDate.trim() : undefined;
 
-  const record: DecisionRecord = { id, num, file: fileName, title, status, date, body };
+  const record: DecisionRecord = { id, num, file: fileName, title, status, body };
+  if (date !== undefined) {
+    record.date = date;
+  }
   if (Object.keys(data).length > 0) {
     record.frontmatter = data;
   }
@@ -105,7 +109,7 @@ export class DecisionStore {
       return false;
     }
     const { data, body } = parseFrontmatter(content);
-    data.status = clean;
+    data['status'] = clean;
     this.fs.writeFile(path, serializeFrontmatter(data, body));
     return true;
   }

@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 /**
@@ -13,11 +13,11 @@ function delay(ms: number): Promise<void> {
 
 suite('RepoDoc mutate driver', () => {
   test('mutations re-render the live board', async function () {
-    if (process.env.REPODOC_MUTATE !== '1') {
+    if (process.env['REPODOC_MUTATE'] !== '1') {
       this.skip();
     }
     this.timeout(180000);
-    const markers = process.env.REPODOC_DEMO_MARKERS!;
+    const markers = process.env['REPODOC_DEMO_MARKERS']!;
     const board = 'project-backlog';
 
     const phase = async (name: string, settleMs: number): Promise<void> => {
@@ -41,13 +41,9 @@ suite('RepoDoc mutate driver', () => {
     await vscode.commands.executeCommand('repodoc.openBoard', board);
     await delay(2500);
 
-    // Warm-up until the channel is live.
-    for (let i = 0; i < 40; i++) {
-      await bounce({ type: 'addCard', column: 'backlog', title: `Warmup ${i}` });
-      await delay(200);
-      // Stop once at least one warmup card exists on disk (channel proven).
-      break;
-    }
+    // Warm-up so the channel is proven live before the real mutation.
+    await bounce({ type: 'addCard', column: 'backlog', title: 'Warmup 0' });
+    await delay(200);
     await delay(500);
 
     // Add a clearly-named card, then screenshot the live board.

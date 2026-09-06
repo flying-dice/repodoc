@@ -38,16 +38,16 @@
   // disk (the prompt belongs to the board's process, not to one reader).
   try {
     var saved = vscode.getState();
-    if (saved && saved.dismissedPrompts) {
+    if (saved?.dismissedPrompts) {
       state.dismissedPrompts = saved.dismissedPrompts;
     }
-  } catch (stateErr) {
+  } catch (_stateErr) {
     /* ignore */
   }
   function persistDismissed() {
     try {
       vscode.setState({ dismissedPrompts: state.dismissedPrompts });
-    } catch (err) {
+    } catch (_err) {
       /* ignore */
     }
   }
@@ -73,8 +73,7 @@
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>',
     shield:
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
-    file:
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>',
+    file: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>',
   };
 
   /* ---- Priority mappings (single source of truth) ---- */
@@ -97,17 +96,6 @@
   ];
 
   /* ---- Helpers ---- */
-  // Intentionally mirrors the host-side escapeHtml: the webview is deliberately
-  // build-step-free, so no shared module can be imported here.
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   var EVT = {
     onClick: 'click',
     onInput: 'input',
@@ -194,32 +182,31 @@
     }
     var mins = Math.floor(secs / 60);
     if (mins < 60) {
-      return mins + 'm';
+      return `${mins}m`;
     }
     var hours = Math.floor(mins / 60);
     if (hours < 24) {
-      return hours + 'h';
+      return `${hours}h`;
     }
     var days = Math.floor(hours / 24);
     if (days < 7) {
-      return days + 'd';
+      return `${days}d`;
     }
-    return Math.floor(days / 7) + 'w';
+    return `${Math.floor(days / 7)}w`;
   }
-
 
   // Tinted chip/pill style: solid text, translucent fill + border in the same hue.
   // Used for DATA colours (labels) supplied verbatim from the board .config.json,
   // so the 22/44 hex-alpha suffixes are applied to the literal colour.
   function tintStyle(color) {
-    return 'color:' + color + ';background:' + color + '22;border:1px solid ' + color + '44;';
+    return `color:${color};background:${color}22;border:1px solid ${color}44;`;
   }
 
   // Theme-aware equivalent of tintStyle for CHROME accents that resolve from a
   // `--vscode-*` token. color-mix reproduces the 0x22 (~13%) fill and 0x44
   // (~27%) border alphas against the resolved variable.
   function tintVar(token) {
-    var c = 'var(' + token + ')';
+    var c = `var(${token})`;
     return (
       'color:' +
       c +
@@ -235,17 +222,18 @@
   // from a string hash. No roster — whoever writes agent: renders.
   function agentAvatar(name) {
     var words = String(name).trim().split(/\s+/).slice(0, 2);
-    var initials = words
-      .map(function (w) {
-        return w.charAt(0);
-      })
-      .join('')
-      .toUpperCase() || '?';
+    var initials =
+      words
+        .map(function (w) {
+          return w.charAt(0);
+        })
+        .join('')
+        .toUpperCase() || '?';
     var hash = 0;
     for (var i = 0; i < name.length; i++) {
       hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
     }
-    return { initials: initials, color: 'hsl(' + (hash % 360) + ', 45%, 45%)' };
+    return { initials: initials, color: `hsl(${hash % 360}, 45%, 45%)` };
   }
 
   function matches(card) {
@@ -265,8 +253,8 @@
   // What this surface supports (see BoardCapabilities in panels/protocol.ts).
   // A feature set has no comments, fields, checklists, or column editing.
   function can(name) {
-    var caps = state.data && state.data.capabilities;
-    return !caps || caps[name] !== false;
+    var caps = state.data?.capabilities;
+    return caps?.[name] !== false;
   }
   function fieldDefs() {
     var f = config().fields;
@@ -291,10 +279,10 @@
   }
   function copyText(text) {
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
+      if (navigator.clipboard?.writeText) {
         navigator.clipboard.writeText(String(text));
       }
-    } catch (err) {
+    } catch (_err) {
       /* clipboard unavailable — the command is still selectable text */
     }
   }
@@ -392,7 +380,7 @@
       var re;
       try {
         re = new RegExp(operand);
-      } catch (err) {
+      } catch (_err) {
         return false;
       }
       if (Array.isArray(value)) {
@@ -485,7 +473,7 @@
   }
 
   function subtaskProgress(card) {
-    if (!card.checklist || !card.checklist.length) {
+    if (!card.checklist?.length) {
       return null;
     }
     var done = 0;
@@ -500,7 +488,6 @@
   /* ---- Top bar ---- */
   function buildTopBar() {
     var b = board();
-    var cfg = config();
 
     var crumb = h('div', { class: 'crumb' }, [
       h('span', { class: 'crumb-section' }, 'Boards'),
@@ -535,7 +522,7 @@
 
   // Small muted chip for a showOnCard field value (null when nothing to show).
   function showOnCardChip(def, card) {
-    var val = (card.custom || {})[def.id];
+    var val = card.custom?.[def.id];
     if (val == null || val === '' || (Array.isArray(val) && !val.length)) {
       return null;
     }
@@ -544,12 +531,12 @@
       return val ? h('span', { class: 'field-chip' }, fieldLabel(def)) : null;
     }
     var shown = Array.isArray(val) ? val.join(', ') : String(val);
-    return h('span', { class: 'field-chip' }, fieldLabel(def) + ': ' + shown);
+    return h('span', { class: 'field-chip' }, `${fieldLabel(def)}: ${shown}`);
   }
 
   // Shield chip counting satisfied/total exit gates for the card's column.
   function exitGateChip(card, col) {
-    if (!col || !col.exit || !col.exit.length) {
+    if (!col?.exit?.length) {
       return null;
     }
     var total = col.exit.length;
@@ -565,10 +552,10 @@
     return h(
       'span',
       {
-        class: 'gate-chip' + (sat >= total ? ' ok' : ''),
-        title: 'Exit gates\n' + labels.join('\n'),
+        class: `gate-chip${sat >= total ? ' ok' : ''}`,
+        title: `Exit gates\n${labels.join('\n')}`,
       },
-      [icon(ICON.shield, 'icon'), sat + '/' + total],
+      [icon(ICON.shield, 'icon'), `${sat}/${total}`],
     );
   }
 
@@ -576,7 +563,7 @@
   function buildCard(cardId, card, col) {
     var children = [];
 
-    if (card.labels && card.labels.length) {
+    if (card.labels?.length) {
       var chips = card.labels.map(labelChip).filter(Boolean);
       if (chips.length) {
         children.push(h('div', { class: 'card-labels' }, chips));
@@ -586,14 +573,14 @@
     var titleRow = [];
     if (card.priority === 'high' || card.priority === 'med') {
       var pv = PRIORITY_VARS[card.priority];
-      var pColor = 'var(' + pv.token + ')';
+      var pColor = `var(${pv.token})`;
       var pGlowAlpha = card.priority === 'high' ? '18%' : '16%';
-      var pGlow = 'color-mix(in srgb, ' + pColor + ' ' + pGlowAlpha + ', transparent)';
+      var pGlow = `color-mix(in srgb, ${pColor} ${pGlowAlpha}, transparent)`;
       titleRow.push(
         h('span', {
           class: 'priority-dot',
           title: 'Priority',
-          style: 'background:' + pColor + ';box-shadow:0 0 0 3px ' + pGlow + ';',
+          style: `background:${pColor};box-shadow:0 0 0 3px ${pGlow};`,
         }),
       );
     }
@@ -603,8 +590,8 @@
     if (card.live) {
       // D-8: an unset progress is not "0% complete" — omit the number and the
       // bar entirely rather than implying no work has been done.
-      var hasPct = typeof card.progress === 'number' && isFinite(card.progress);
-      var pct = (hasPct ? card.progress : 0) + '%';
+      var hasPct = typeof card.progress === 'number' && Number.isFinite(card.progress);
+      var pct = `${hasPct ? card.progress : 0}%`;
       children.push(
         h('div', { class: 'live-block' }, [
           h('div', { class: 'live-row' }, [
@@ -614,7 +601,7 @@
           ]),
           hasPct
             ? h('div', { class: 'progress-track' }, [
-                h('div', { class: 'progress-fill', style: 'width:' + pct + ';' }),
+                h('div', { class: 'progress-fill', style: `width:${pct};` }),
               ])
             : null,
         ]),
@@ -627,11 +614,11 @@
       meta.push(
         h('span', { class: 'meta-item' }, [
           icon(ICON.checklist, 'icon'),
-          sub.done + '/' + sub.total,
+          `${sub.done}/${sub.total}`,
         ]),
       );
     }
-    if (card.comments && card.comments.length) {
+    if (card.comments?.length) {
       meta.push(
         h('span', { class: 'meta-item' }, [
           icon(ICON.comment, 'icon'),
@@ -659,7 +646,7 @@
       meta.push(
         h(
           'span',
-          { class: 'meta-avatar', title: card.agent, style: 'background:' + av.color + ';' },
+          { class: 'meta-avatar', title: card.agent, style: `background:${av.color};` },
           av.initials,
         ),
       );
@@ -709,28 +696,26 @@
     var filtering = isFiltering();
 
     var head = [
-      h('span', { class: 'col-dot', style: 'background:' + col.color + ';' }),
+      h('span', { class: 'col-dot', style: `background:${col.color};` }),
       h('span', { class: 'col-name' }, col.name),
     ];
-    var hasEnter = col.enter && col.enter.length;
-    var hasExit = col.exit && col.exit.length;
+    var hasEnter = col.enter?.length;
+    var hasExit = col.exit?.length;
     if (hasEnter || hasExit) {
       var tip = [];
       if (hasEnter) {
-        tip.push('enter: ' + col.enter.map(gateLabel).join(', '));
+        tip.push(`enter: ${col.enter.map(gateLabel).join(', ')}`);
       }
       if (hasExit) {
-        tip.push('exit: ' + col.exit.map(gateLabel).join(', '));
+        tip.push(`exit: ${col.exit.map(gateLabel).join(', ')}`);
       }
-      head.push(
-        h('span', { class: 'col-gate-glyph', title: tip.join(' / '), html: ICON.shield }),
-      );
+      head.push(h('span', { class: 'col-gate-glyph', title: tip.join(' / '), html: ICON.shield }));
     }
     head.push(
       h(
         'span',
         { class: 'col-count' },
-        filtering ? visible.length + ' of ' + total : String(total),
+        filtering ? `${visible.length} of ${total}` : String(total),
       ),
     );
     head.push(h('div', { class: 'col-head-spacer' }));
@@ -739,8 +724,8 @@
       head.push(
         h(
           'span',
-          { class: 'wip' + (over ? ' over' : ''), title: 'Work-in-progress limit' },
-          total + '/' + col.wip,
+          { class: `wip${over ? ' over' : ''}`, title: 'Work-in-progress limit' },
+          `${total}/${col.wip}`,
         ),
       );
     }
@@ -772,7 +757,7 @@
   function buildComposer(col) {
     if (state.addingCol === col.id) {
       var textarea = h('textarea', {
-        id: 'composer-' + col.id,
+        id: `composer-${col.id}`,
         placeholder: 'Enter a title for this card...',
         onInput: function (e) {
           addText = e.target.value; // no render
@@ -868,7 +853,7 @@
     if (e.shiftKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) {
       return;
     }
-    if (e.target && e.target.closest && e.target.closest('.column')) {
+    if (e.target?.closest?.('.column')) {
       return; // stacks own the wheel
     }
     e.currentTarget.scrollLeft += e.deltaY;
@@ -886,17 +871,17 @@
         }
       });
     });
-    var boardPath = (state.data && state.data.boardPath) || '';
+    var boardPath = state.data?.boardPath || '';
     // G-1: the data directory was plain text; it now opens the board config,
     // where columns, gates, labels and fields are authored.
-    var configPath = boardPath ? boardPath.replace(/\/*$/, '/') + '.config.json' : '';
+    var configPath = boardPath ? `${boardPath.replace(/\/*$/, '/')}.config.json` : '';
     var pathNode = configPath
       ? h(
           'button',
           {
             class: 'status-datadir status-link',
-            title: 'Open ' + configPath,
-            'aria-label': 'Open board config ' + configPath,
+            title: `Open ${configPath}`,
+            'aria-label': `Open board config ${configPath}`,
             onClick: function () {
               vscode.postMessage({ type: 'openFile', path: configPath });
             },
@@ -915,17 +900,17 @@
   // Modal width from the resolved reading-width token: presets map to CSS
   // classes; a custom CSS length (host-sanitized) becomes an inline width.
   function readingWidthToken() {
-    return (state.data && state.data.readingWidth) || 'wide';
+    return state.data?.readingWidth || 'wide';
   }
   function modalWidthClass() {
     var t = readingWidthToken();
     var preset = t === 'narrow' || t === 'wide' || t === 'full';
-    return 'modal width-' + (preset ? t : 'custom');
+    return `modal width-${preset ? t : 'custom'}`;
   }
   function modalWidthStyle() {
     var t = readingWidthToken();
     var preset = t === 'narrow' || t === 'wide' || t === 'full';
-    return preset ? null : 'width:' + t + ';';
+    return preset ? null : `width:${t};`;
   }
 
   function columnOfCard(cardId) {
@@ -940,8 +925,8 @@
 
   // The repo-relative file backing a card (host-resolved, see DataMessage).
   function cardFileOf(cardId) {
-    var files = state.data && state.data.cardFiles;
-    return files && files[cardId] ? files[cardId] : null;
+    var files = state.data?.cardFiles;
+    return files?.[cardId] ? files[cardId] : null;
   }
 
   // G-2: one message carries every reserved-metadata edit.
@@ -1000,7 +985,7 @@
       titleNode = h(
         'div',
         {
-          class: 'modal-title' + (can('meta') ? ' editable' : ''),
+          class: `modal-title${can('meta') ? ' editable' : ''}`,
           title: can('meta') ? 'Click to rename' : null,
           onClick: can('meta')
             ? function () {
@@ -1021,8 +1006,8 @@
           'button',
           {
             class: 'ghost-btn',
-            title: 'Open ' + file,
-            'aria-label': 'Open file ' + file,
+            title: `Open ${file}`,
+            'aria-label': `Open file ${file}`,
             onClick: function () {
               vscode.postMessage({ type: 'openFile', path: file });
             },
@@ -1053,12 +1038,11 @@
     if (!col) {
       return null;
     }
-    var html =
-      state.data && state.data.columnPromptHtml ? state.data.columnPromptHtml[col.id] : null;
+    var html = state.data?.columnPromptHtml ? state.data.columnPromptHtml[col.id] : null;
     if (!html && !col.prompt) {
       return null;
     }
-    var key = card.id + '|' + col.id;
+    var key = `${card.id}|${col.id}`;
     if (state.dismissedPrompts[key]) {
       return null;
     }
@@ -1132,8 +1116,8 @@
       return h(
         'span',
         {
-          class: 'ms-chip label-toggle' + (on ? ' on' : ''),
-          style: on ? tintStyle(def.color) : 'border-color:' + def.color + '55;',
+          class: `ms-chip label-toggle${on ? ' on' : ''}`,
+          style: on ? tintStyle(def.color) : `border-color:${def.color}55;`,
           role: 'checkbox',
           tabindex: '0',
           'aria-checked': on ? 'true' : 'false',
@@ -1192,7 +1176,11 @@
         },
       },
       [
-        h('span', { class: 'check-box' + (live ? ' done' : '') }, live ? [icon(ICON.check, 'icon')] : []),
+        h(
+          'span',
+          { class: `check-box${live ? ' done' : ''}` },
+          live ? [icon(ICON.check, 'icon')] : [],
+        ),
         h('span', { class: 'field-bool-label' }, live ? 'Live' : 'Not live'),
       ],
     );
@@ -1202,7 +1190,10 @@
         h('div', { class: 'field-label' }, 'Agent'),
         agentInput,
       ]),
-      h('div', { class: 'activity-cell' }, [h('div', { class: 'field-label' }, 'Live'), liveToggle]),
+      h('div', { class: 'activity-cell' }, [
+        h('div', { class: 'field-label' }, 'Live'),
+        liveToggle,
+      ]),
     ];
 
     if (live) {
@@ -1234,8 +1225,7 @@
           }
         },
       });
-      progressInput.value =
-        typeof card.progress === 'number' ? String(card.progress) : '';
+      progressInput.value = typeof card.progress === 'number' ? String(card.progress) : '';
       cells.push(
         h('div', { class: 'activity-cell activity-status' }, [
           h('div', { class: 'field-label' }, 'Status'),
@@ -1279,7 +1269,7 @@
   // it, so a new card offers somewhere to say what it is about.
   function modalDescription(card) {
     var editable = can('description');
-    var html = state.data && state.data.descHtml ? state.data.descHtml[card.id] : null;
+    var html = state.data?.descHtml ? state.data.descHtml[card.id] : null;
 
     if (editable && state.editingDesc) {
       var textarea = h('textarea', {
@@ -1343,7 +1333,9 @@
     };
     if (editable) {
       head.push(h('div', { class: 'section-head-spacer' }));
-      head.push(h('button', { class: 'ghost-btn', onClick: startEditing }, card.desc ? 'Edit' : 'Add'));
+      head.push(
+        h('button', { class: 'ghost-btn', onClick: startEditing }, card.desc ? 'Edit' : 'Add'),
+      );
     }
     var body = card.desc
       ? contentBlock('section-desc', html, card.desc)
@@ -1469,29 +1461,25 @@
             : null,
         },
         [
-          h('span', { class: 'check-box' + (item.done ? ' done' : '') }, boxChildren),
-          h('span', { class: 'check-text' + (item.done ? ' done' : '') }, item.text),
+          h('span', { class: `check-box${item.done ? ' done' : ''}` }, boxChildren),
+          h('span', { class: `check-text${item.done ? ' done' : ''}` }, item.text),
         ],
       );
     });
     return h('div', { class: 'section' }, [
       h('div', { class: 'checklist-head' }, [
         h('div', { class: 'field-label', style: 'margin-bottom:0;' }, 'Checklist'),
-        items.length
-          ? h('span', { class: 'checklist-count' }, done + '/' + items.length)
-          : null,
+        items.length ? h('span', { class: 'checklist-count' }, `${done}/${items.length}`) : null,
       ]),
       itemNodes.length ? h('div', { class: 'checklist' }, itemNodes) : null,
       checklistComposer(card),
     ]);
   }
 
-
   // Scan comment text for file references (`path/to/file.ts`, optional `:12` or
   // `:12-34`) and return a list of text nodes / clickable link spans / <br>s.
   // Built with the DOM helper (never innerHTML): text nodes are inherently safe.
-  var FILE_REF_RE =
-    /(?:^|[\s(])((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z]{1,8})(?::(\d+)(?:-(\d+))?)?/g;
+  var FILE_REF_RE = /(?:^|[\s(])((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z]{1,8})(?::(\d+)(?:-(\d+))?)?/g;
 
   function fileLink(token, path, line, endLine) {
     var payload = { type: 'openFile', path: path };
@@ -1521,7 +1509,7 @@
       var path = m[1];
       var startLine = m[2] ? parseInt(m[2], 10) : 0;
       var endLine = m[3] ? parseInt(m[3], 10) : 0;
-      var token = path + (m[2] ? ':' + m[2] + (m[3] ? '-' + m[3] : '') : '');
+      var token = path + (m[2] ? `:${m[2]}${m[3] ? `-${m[3]}` : ''}` : '');
       var tokenStart = m.index + (m[0].length - token.length);
       if (tokenStart > last) {
         nodes.push(line.slice(last, tokenStart)); // plain text (incl. any prefix char)
@@ -1560,7 +1548,7 @@
           return NodeFilter.FILTER_REJECT;
         }
         var p = node.parentElement;
-        if (p && p.closest('a, code, pre, .file-link')) {
+        if (p?.closest('a, code, pre, .file-link')) {
           return NodeFilter.FILTER_REJECT;
         }
         FILE_REF_RE.lastIndex = 0;
@@ -1597,20 +1585,18 @@
           securityLevel: 'strict',
           theme: dark ? 'dark' : 'default',
         });
-      } catch (e) {
+      } catch (_e) {
         /* ignore */
       }
       mermaidInited = true;
     }
-    var nodes = Array.prototype.slice
-      .call(root.querySelectorAll('.mermaid'))
-      .filter(function (el) {
-        return !el.getAttribute('data-processed');
-      });
+    var nodes = Array.prototype.slice.call(root.querySelectorAll('.mermaid')).filter(function (el) {
+      return !el.getAttribute('data-processed');
+    });
     if (nodes.length) {
       try {
         window.mermaid.run({ nodes: nodes });
-      } catch (e2) {
+      } catch (_e2) {
         /* ignore */
       }
     }
@@ -1628,14 +1614,14 @@
   // text as a fallback.
   function contentBlock(cls, html, fallbackText) {
     if (html) {
-      return h('div', { class: cls + ' content-md', html: html });
+      return h('div', { class: `${cls} content-md`, html: html });
     }
     return h('div', { class: cls }, linkifyFileRefs(fallbackText || ''));
   }
 
   function submitComment() {
     var text = commentText.trim();
-    var who = (commentWho !== null ? commentWho : (state.data && state.data.commentAuthor) || '').trim();
+    var who = (commentWho !== null ? commentWho : state.data?.commentAuthor || '').trim();
     if (!text || !state.openCardId) {
       return;
     }
@@ -1653,8 +1639,7 @@
       return null;
     }
     var entries = Array.isArray(card.comments) ? card.comments : [];
-    var htmls =
-      state.data && state.data.commentHtml ? state.data.commentHtml[card.id] : null;
+    var htmls = state.data?.commentHtml ? state.data.commentHtml[card.id] : null;
     var list = entries.map(function (entry, index) {
       var html = htmls ? htmls[index] : null;
       return h('div', { class: 'comment-entry' }, [
@@ -1686,8 +1671,7 @@
     });
     textarea.value = commentText;
 
-    var authorValue =
-      commentWho !== null ? commentWho : (state.data && state.data.commentAuthor) || '';
+    var authorValue = commentWho !== null ? commentWho : state.data?.commentAuthor || '';
     var authorInput = h('input', {
       id: 'comment-author',
       class: 'comment-author-input',
@@ -1730,7 +1714,7 @@
   // from the card itself rather than from whichever modal happens to be open.
   function fieldEditor(def, card) {
     var cardId = card.id;
-    var val = (card.custom || {})[def.id];
+    var val = card.custom?.[def.id];
 
     if (def.type === 'boolean') {
       var on = val === true;
@@ -1745,7 +1729,7 @@
         [
           h(
             'span',
-            { class: 'check-box' + (on ? ' done' : '') },
+            { class: `check-box${on ? ' done' : ''}` },
             on ? [icon(ICON.check, 'icon')] : [],
           ),
           h('span', { class: 'field-bool-label' }, on ? 'Yes' : 'No'),
@@ -1762,12 +1746,12 @@
         optionNodes.push(h('option', { value: opt }, opt));
       });
       if (unknown) {
-        optionNodes.push(h('option', { value: String(val) }, String(val) + ' (unknown)'));
+        optionNodes.push(h('option', { value: String(val) }, `${String(val)} (unknown)`));
       }
       var select = h(
         'select',
         {
-          class: 'field-select' + (unknown ? ' unknown' : ''),
+          class: `field-select${unknown ? ' unknown' : ''}`,
           onChange: function (e) {
             var v = e.target.value;
             postField(cardId, def.id, v === '' ? null : v);
@@ -1786,7 +1770,7 @@
         return h(
           'span',
           {
-            class: 'ms-chip' + (selected ? ' on' : ''),
+            class: `ms-chip${selected ? ' on' : ''}`,
             style: selected ? tintVar('--vscode-focusBorder') : null,
             onClick: function () {
               var next = current.slice();
@@ -1852,22 +1836,22 @@
       if (sat) {
         var val = fieldValue(card, def.field);
         var shown = Array.isArray(val) ? val.join(', ') : String(val == null ? '' : val);
-        return shown ? name + ': ' + shown : name + ' set';
+        return shown ? `${name}: ${shown}` : `${name} set`;
       }
-      return 'Requires ' + name + ' ' + describeCheck(def.check);
+      return `Requires ${name} ${describeCheck(def.check)}`;
     }
     if (def.script) {
       if (sat) {
         var e = gateEvidence(card, def.id);
-        return e && e.note ? e.note : 'Passed';
+        return e?.note ? e.note : 'Passed';
       }
-      return 'Run: ' + def.script;
+      return `Run: ${def.script}`;
     }
     return '';
   }
 
   function recordGatePass(cardId, gateId) {
-    var key = cardId + '|' + gateId;
+    var key = `${cardId}|${gateId}`;
     var text = String(gatePassText[key] || '').trim();
     if (!text) {
       return;
@@ -1909,9 +1893,9 @@
           h('div', { class: 'gate-hint' }, 'Record the result in the card file.'),
         ]);
       }
-      var key = card.id + '|' + gate.id;
+      var key = `${card.id}|${gate.id}`;
       var input = h('input', {
-        id: 'gatepass-' + gate.id,
+        id: `gatepass-${gate.id}`,
         class: 'field-input',
         placeholder: 'What ran and what happened, e.g. bun test green, 130 unit + 9 e2e',
         'aria-label': 'Result of the run',
@@ -1964,11 +1948,7 @@
           : String(current)
         : 'unset';
       children.push(
-        h(
-          'div',
-          { class: 'gate-hint' },
-          fieldDisplayName(gate.field) + ' is currently ' + shown + '.',
-        ),
+        h('div', { class: 'gate-hint' }, `${fieldDisplayName(gate.field)} is currently ${shown}.`),
       );
     }
     if (isSignOffField(gate.field)) {
@@ -1985,9 +1965,9 @@
 
   // Host-rendered prompt HTML for a gate on a column transition.
   function gatePromptHtmlFor(colId, dir, gateId) {
-    var map = state.data && state.data.gatePromptHtml;
-    var key = colId + ':' + dir + ':' + gateId;
-    return map && map[key] ? map[key] : null;
+    var map = state.data?.gatePromptHtml;
+    var key = `${colId}:${dir}:${gateId}`;
+    return map?.[key] ? map[key] : null;
   }
 
   // Mirrors nextColumnId() in src/panels/gateGuidance.ts — kept in sync by hand.
@@ -2014,7 +1994,7 @@
       h('div', { class: 'gate-note' }, gateNote(card, def, sat)),
     ];
     if (!sat) {
-      var key = colId + ':' + dir + ':' + def.id;
+      var key = `${colId}:${dir}:${def.id}`;
       var open = state.openGateHow[key] === true;
       main.push(
         h(
@@ -2027,7 +2007,7 @@
               render();
             },
           },
-          (open ? '▾ ' : '▸ ') + 'How to satisfy',
+          `${open ? '▾ ' : '▸ '}How to satisfy`,
         ),
       );
       if (open) {
@@ -2062,12 +2042,17 @@
     var b = board();
     var next = nextColumnOf(col);
     var primary = [];
-    if (col && col.exit && col.exit.length) {
-      primary.push({ heading: 'To leave ' + col.name, colId: col.id, dir: 'exit', gates: col.exit });
-    }
-    if (next && next.enter && next.enter.length) {
+    if (col?.exit?.length) {
       primary.push({
-        heading: 'To enter ' + next.name,
+        heading: `To leave ${col.name}`,
+        colId: col.id,
+        dir: 'exit',
+        gates: col.exit,
+      });
+    }
+    if (next?.enter?.length) {
+      primary.push({
+        heading: `To enter ${next.name}`,
         colId: next.id,
         dir: 'enter',
         gates: next.enter,
@@ -2078,8 +2063,8 @@
       if ((col && c.id === col.id) || (next && c.id === next.id)) {
         return;
       }
-      if (c.enter && c.enter.length) {
-        others.push({ heading: 'To enter ' + c.name, colId: c.id, dir: 'enter', gates: c.enter });
+      if (c.enter?.length) {
+        others.push({ heading: `To enter ${c.name}`, colId: c.id, dir: 'enter', gates: c.enter });
       }
     });
     // Gates are only enforced where evidence has a home (Decision 10): a feature
@@ -2118,7 +2103,7 @@
               render();
             },
           },
-          (state.showAllGates ? '▾ ' : '▸ ') + 'Show all transitions',
+          `${state.showAllGates ? '▾ ' : '▸ '}Show all transitions`,
         ),
       );
     }
@@ -2127,7 +2112,7 @@
     // every gate on THIS transition passes; the host re-validates regardless.
     if (next) {
       var blocking = [];
-      ((col && col.exit) || []).forEach(function (def) {
+      (col?.exit || []).forEach(function (def) {
         blocking.push(def);
       });
       (next.enter || []).forEach(function (def) {
@@ -2148,9 +2133,7 @@
           {
             class: 'btn-primary move-next',
             disabled: ok ? null : 'disabled',
-            title: ok
-              ? 'Move to ' + next.name
-              : blocking.length + ' gates must be satisfied first',
+            title: ok ? `Move to ${next.name}` : `${blocking.length} gates must be satisfied first`,
             onClick: ok
               ? function () {
                   state.lastMove = {
@@ -2168,7 +2151,7 @@
                 }
               : null,
           },
-          'Move to ' + next.name,
+          `Move to ${next.name}`,
         ),
       );
     }
@@ -2322,7 +2305,7 @@
       h(
         'div',
         { class: 'blocked-lead' },
-        results.length + (results.length === 1 ? ' gate' : ' gates') + ' must be satisfied first',
+        `${results.length + (results.length === 1 ? ' gate' : ' gates')} must be satisfied first`,
       ),
       h('div', { class: 'blocked-gates' }, rows),
     ];
@@ -2409,12 +2392,12 @@
     var wide = results.some(function (r) {
       return !!(r.promptHtml || r.prompt);
     });
-    var title = 'Before ' + (card ? card.title : bl.cardId) + ' can move to ' + name;
+    var title = `Before ${card ? card.title : bl.cardId} can move to ${name}`;
 
     var panel = h(
       'div',
       {
-        class: 'modal blocked-modal' + (wide ? ' blocked-wide' : ''),
+        class: `modal blocked-modal${wide ? ' blocked-wide' : ''}`,
         role: 'dialog',
         'aria-modal': 'true',
         'aria-label': title,
@@ -2472,7 +2455,7 @@
       e.dataTransfer.effectAllowed = 'move';
       try {
         e.dataTransfer.setData('text/plain', cardId);
-      } catch (err) {
+      } catch (_err) {
         /* ignore */
       }
     }
@@ -2574,7 +2557,7 @@
     }
     e.preventDefault();
     var ph = drag.placeholder;
-    if (!ph || !ph.parentElement) {
+    if (!ph?.parentElement) {
       onDragEnd();
       return;
     }
@@ -2603,7 +2586,7 @@
   }
 
   function cleanupDrag() {
-    if (drag.placeholder && drag.placeholder.parentElement) {
+    if (drag.placeholder?.parentElement) {
       drag.placeholder.parentElement.removeChild(drag.placeholder);
     }
     if (drag.el) {
@@ -2636,7 +2619,7 @@
       return;
     }
     var target = e.target;
-    if (target && target.closest && target.closest('input, textarea, select')) {
+    if (target?.closest?.('input, textarea, select')) {
       return; // the focused editor handles its own Escape
     }
     e.preventDefault();
@@ -2655,7 +2638,7 @@
     // Preserve focus + caret across the rebuild for ANY identified field —
     // search, the inline gate-evidence inputs, the override reason.
     var active = document.activeElement;
-    var activeId = active && active.id ? active.id : null;
+    var activeId = active?.id ? active.id : null;
     var caretStart = 0;
     var caretEnd = 0;
     try {
@@ -2663,7 +2646,7 @@
         caretStart = active.selectionStart;
         caretEnd = active.selectionEnd;
       }
-    } catch (caretErr) {
+    } catch (_caretErr) {
       /* number/date inputs expose no selection */
     }
 
@@ -2734,7 +2717,7 @@
     try {
       var len = el.value.length;
       el.setSelectionRange(len, len);
-    } catch (err) {
+    } catch (_err) {
       /* not a text field */
     }
     return true;
@@ -2752,13 +2735,13 @@
         previous.focus();
         try {
           previous.setSelectionRange(caretStart, caretEnd);
-        } catch (err) {
+        } catch (_err) {
           /* ignore */
         }
         return;
       }
     }
-    if (state.addingCol && focusEnd(document.getElementById('composer-' + state.addingCol))) {
+    if (state.addingCol && focusEnd(document.getElementById(`composer-${state.addingCol}`))) {
       return;
     }
     if (state.editingTitle && focusEnd(document.getElementById('title-input'))) {

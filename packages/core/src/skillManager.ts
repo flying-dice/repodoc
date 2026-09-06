@@ -1,4 +1,4 @@
-import { FileSystemPort } from './ports';
+import type { FileSystemPort } from './ports';
 import { SKILL_MD, SKILL_NAME } from './skillContent';
 
 /** The coding agents RepoDoc knows how to install a skill file for. */
@@ -33,9 +33,7 @@ export class SkillManager {
    * {@link SKILL_MD}. Read-only — used to offer the user a sync.
    */
   outdated(): AgentKind[] {
-    return this.installed().filter(
-      (kind) => this.fs.readFile(SKILL_TARGETS[kind]) !== SKILL_MD,
-    );
+    return this.installed().filter((kind) => this.fs.readFile(SKILL_TARGETS[kind]) !== SKILL_MD);
   }
 
   /**

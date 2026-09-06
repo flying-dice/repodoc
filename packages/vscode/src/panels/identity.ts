@@ -1,5 +1,5 @@
-import { execSync } from 'child_process';
-import * as os from 'os';
+import { execSync } from 'node:child_process';
+import * as os from 'node:os';
 
 /**
  * Best-effort local user identity, used to attribute gate approvals and

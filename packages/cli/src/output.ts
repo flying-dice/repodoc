@@ -9,11 +9,11 @@ export function makePrinter(json: boolean, write: (s: string) => void): Printer 
   return {
     emit(data, lines): void {
       if (json) {
-        write(JSON.stringify(data, null, 2) + '\n');
+        write(`${JSON.stringify(data, null, 2)}\n`);
       } else {
         const out = lines();
         if (out.length) {
-          write(out.join('\n') + '\n');
+          write(`${out.join('\n')}\n`);
         }
       }
     },
@@ -32,6 +32,9 @@ export function table(rows: string[][]): string[] {
     });
   }
   return rows.map((row) =>
-    row.map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(widths[i]))).join('  ').trimEnd(),
+    row
+      .map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(widths[i] ?? 0)))
+      .join('  ')
+      .trimEnd(),
   );
 }

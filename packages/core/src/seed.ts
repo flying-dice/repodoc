@@ -5,7 +5,7 @@
  * existing repo can never touch user content.
  */
 
-import { BoardConfig, DEFAULT_LABELS, defaultColumns } from './boardConfig';
+import { type BoardConfig, DEFAULT_LABELS, defaultColumns } from './boardConfig';
 
 export function seedBoardConfig(): BoardConfig {
   return {

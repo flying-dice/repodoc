@@ -1,6 +1,6 @@
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { RepoDocApi } from '../../src/extension';
 
@@ -18,7 +18,7 @@ const BOARD = 'project-backlog';
 function workspaceRoot(): string {
   const folders = vscode.workspace.workspaceFolders;
   assert.ok(folders && folders.length > 0, 'a fixture workspace must be open');
-  return folders[0].uri.fsPath;
+  return folders[0]!.uri.fsPath; // non-empty, proven by the assertion above
 }
 
 function delay(ms: number): Promise<void> {
@@ -109,7 +109,7 @@ suite('RepoDoc UI actions -> filesystem', () => {
       await bounce({ type: 'setField', cardId: 'alpha', fieldId: 'note', value: 'ready' });
       await delay(250);
       const card = api.store.getBoard(BOARD)?.cards['alpha'];
-      if (card?.custom?.note === 'ready') {
+      if (card?.custom?.['note'] === 'ready') {
         break;
       }
       if (Date.now() - start > 30000) {
@@ -122,7 +122,7 @@ suite('RepoDoc UI actions -> filesystem', () => {
     let fired = false;
     const sub = api.store.onDidChange(() => (fired = true));
     await bounce({ type: 'setField', cardId: 'beta', fieldId: 'note', value: 'hello' });
-    await waitFor(() => api.store.getBoard(BOARD)?.cards['beta']?.custom?.note === 'hello');
+    await waitFor(() => api.store.getBoard(BOARD)?.cards['beta']?.custom?.['note'] === 'hello');
     sub.dispose();
 
     assert.match(readCard('beta'), /note:\s*hello/);
@@ -131,7 +131,7 @@ suite('RepoDoc UI actions -> filesystem', () => {
 
   test('clearing a field removes the frontmatter key', async () => {
     await bounce({ type: 'setField', cardId: 'beta', fieldId: 'note', value: null });
-    await waitFor(() => api.store.getBoard(BOARD)?.cards['beta']?.custom?.note === undefined);
+    await waitFor(() => api.store.getBoard(BOARD)?.cards['beta']?.custom?.['note'] === undefined);
     assert.ok(!/note:/.test(readCard('beta')));
   });
 
@@ -152,7 +152,7 @@ suite('RepoDoc UI actions -> filesystem', () => {
     await bounce({ type: 'toggleCheck', cardId: 'alpha', index: 0 });
     await waitFor(() => {
       const cl = api.store.getBoard(BOARD)?.cards['alpha']?.checklist;
-      return !!cl && cl[0].done === true;
+      return cl?.[0]?.done === true;
     });
     assert.match(readCard('alpha'), /- \[x\] one/);
     assert.match(readCard('alpha'), /- \[ \] two/);
@@ -165,7 +165,8 @@ suite('RepoDoc UI actions -> filesystem', () => {
     const content = readCard('beta');
     assert.match(content, /## Comments/);
     assert.match(content, /A UI comment/);
-    const entry = api.store.getBoard(BOARD)!.cards['beta'].comments![0];
+    const entry = api.store.getBoard(BOARD)?.cards['beta']?.comments?.[0];
+    assert.ok(entry, 'the comment was journalled');
     assert.strictEqual(entry.who, 'Reviewer Rae', 'the composer author is used');
     assert.ok(entry.at, 'comment carries a timestamp');
   });
@@ -205,7 +206,7 @@ suite('RepoDoc UI actions -> filesystem', () => {
 
   test('setting the gate field satisfies the gate (approval as a field edit)', async () => {
     await bounce({ type: 'setField', cardId: 'alpha', fieldId: 'approved', value: true });
-    await waitFor(() => api.store.getBoard(BOARD)?.cards['alpha']?.custom?.approved === true);
+    await waitFor(() => api.store.getBoard(BOARD)?.cards['alpha']?.custom?.['approved'] === true);
     // Move it back out then in cleanly: now the gate is satisfied.
     const stillBlocked = api.store.evaluateMove(BOARD, 'beta', 'done').filter((r) => !r.satisfied);
     assert.strictEqual(stillBlocked.length, 1, 'beta is not approved, still blocked');

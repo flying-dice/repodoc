@@ -43,7 +43,7 @@
 .filecrumb {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
-  letter-spacing: .03em;
+  letter-spacing: 0.03em;
   margin-bottom: 18px;
   font-family: var(--font-mono);
 }
@@ -62,7 +62,7 @@
   line-height: 1.2;
   margin: 0 0 8px;
   color: var(--vscode-foreground);
-  letter-spacing: -.02em;
+  letter-spacing: -0.02em;
   font-weight: 650;
 }
 
@@ -81,7 +81,7 @@
   color: var(--vscode-foreground);
   font-weight: 620;
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
 }
 
 .adr-md p {
@@ -188,10 +188,6 @@
   padding: 6px 14px;
   border-bottom: 1px solid var(--vscode-panel-border);
 }
-.fm-table tr:last-child th,
-.fm-table tr:last-child td {
-  border-bottom: none;
-}
 .fm-table th {
   color: var(--vscode-descriptionForeground);
   font-weight: 600;
@@ -204,13 +200,17 @@
 .fm-table td {
   color: var(--vscode-editor-foreground);
 }
+.fm-table tr:last-child th,
+.fm-table tr:last-child td {
+  border-bottom: none;
+}
 
 /* ---- GFM task lists and strikethrough ---- */
-.adr-md li:has(> input[type='checkbox']) {
+.adr-md li:has(> input[type="checkbox"]) {
   list-style: none;
   margin-left: -20px;
 }
-.adr-md input[type='checkbox'] {
+.adr-md input[type="checkbox"] {
   accent-color: var(--vscode-checkbox-selectBackground);
   margin-right: 6px;
   vertical-align: middle;

@@ -178,7 +178,9 @@ input::placeholder {
   border-radius: 10px;
   padding: 11px 12px;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 .card:hover {
   border-color: color-mix(in srgb, var(--vscode-foreground) 26%, transparent);
@@ -606,7 +608,9 @@ input::placeholder {
   line-height: 0;
   border: 1px solid var(--vscode-checkbox-border);
   background: var(--vscode-checkbox-background);
-  transition: background 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
 }
 .check-box svg {
   display: block;
@@ -737,7 +741,9 @@ input::placeholder {
   color: var(--vscode-descriptionForeground);
   background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
   border: 1px solid transparent;
-  transition: background 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
 }
 .ms-chip:not(.on):hover {
   border-color: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);

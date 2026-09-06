@@ -1,4 +1,4 @@
-import { DirEntry, FileSystemPort } from '../ports';
+import type { DirEntry, FileSystemPort } from '../ports';
 
 /**
  * In-memory FileSystemPort backed by a flat `Map<relPath, content>` with
@@ -16,7 +16,7 @@ export class MemFileSystemAdapter implements FileSystemPort {
     if (this.files.has(key)) {
       return true;
     }
-    const prefix = key + '/';
+    const prefix = `${key}/`;
     for (const existing of this.files.keys()) {
       if (existing.startsWith(prefix)) {
         return true; // an implied directory
@@ -35,7 +35,7 @@ export class MemFileSystemAdapter implements FileSystemPort {
 
   listDir(relPath: string): DirEntry[] {
     const key = normalize(relPath);
-    const prefix = key === '' ? '' : key + '/';
+    const prefix = key === '' ? '' : `${key}/`;
     const files = new Set<string>();
     const dirs = new Set<string>();
     for (const existing of this.files.keys()) {
@@ -92,5 +92,8 @@ export class MemFileSystemAdapter implements FileSystemPort {
 }
 
 function normalize(relPath: string): string {
-  return relPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+  return relPath
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^\/+|\/+$/g, '');
 }

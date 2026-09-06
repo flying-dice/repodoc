@@ -1,8 +1,8 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { MemFileSystemAdapter } from '../src/adapters/memFileSystem';
-import { AgentKind, SKILL_TARGETS, SkillManager } from '../src/skillManager';
 import { SKILL_MD } from '../src/skillContent';
+import { type AgentKind, SKILL_TARGETS, SkillManager } from '../src/skillManager';
 
 function makeManager(seed?: Record<string, string>): {
   fs: MemFileSystemAdapter;

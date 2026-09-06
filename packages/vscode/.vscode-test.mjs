@@ -1,7 +1,7 @@
-import { defineConfig } from '@vscode/test-cli';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from '@vscode/test-cli';
 
 const here = dirname(fileURLToPath(import.meta.url));
 

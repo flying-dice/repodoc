@@ -1,5 +1,5 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { parseFrontmatter, serializeFrontmatter } from '../src/frontmatter';
 
 describe('frontmatter.parse', () => {
@@ -27,49 +27,49 @@ describe('frontmatter.parse', () => {
     const { data } = parseFrontmatter(
       ['---', 'a: plain', "b: 'single'", 'c: "double"', '---', ''].join('\n'),
     );
-    assert.strictEqual(data.a, 'plain');
-    assert.strictEqual(data.b, 'single');
-    assert.strictEqual(data.c, 'double');
+    assert.strictEqual(data['a'], 'plain');
+    assert.strictEqual(data['b'], 'single');
+    assert.strictEqual(data['c'], 'double');
   });
 
   test('quoted values may contain a colon', () => {
     const { data } = parseFrontmatter(
       ['---', 'status: "editing src/x.ts: line 2"', '---', ''].join('\n'),
     );
-    assert.strictEqual(data.status, 'editing src/x.ts: line 2');
+    assert.strictEqual(data['status'], 'editing src/x.ts: line 2');
   });
 
   test('unquoted value keeps everything after the first colon', () => {
     const { data } = parseFrontmatter(['---', 'status: a: b: c', '---', ''].join('\n'));
-    assert.strictEqual(data.status, 'a: b: c');
+    assert.strictEqual(data['status'], 'a: b: c');
   });
 
   test('numbers parse to numbers (int, negative, float)', () => {
     const { data } = parseFrontmatter(
       ['---', 'progress: 62', 'delta: -5', 'ratio: 1.5', '---', ''].join('\n'),
     );
-    assert.strictEqual(data.progress, 62);
-    assert.strictEqual(data.delta, -5);
-    assert.strictEqual(data.ratio, 1.5);
+    assert.strictEqual(data['progress'], 62);
+    assert.strictEqual(data['delta'], -5);
+    assert.strictEqual(data['ratio'], 1.5);
   });
 
   test('booleans parse to booleans', () => {
     const { data } = parseFrontmatter(['---', 'live: true', 'done: false', '---', ''].join('\n'));
-    assert.strictEqual(data.live, true);
-    assert.strictEqual(data.done, false);
+    assert.strictEqual(data['live'], true);
+    assert.strictEqual(data['done'], false);
   });
 
   test('inline arrays parse, including the empty array', () => {
     const { data } = parseFrontmatter(
       ['---', 'labels: [backend, infra]', 'files: []', '---', ''].join('\n'),
     );
-    assert.deepStrictEqual(data.labels, ['backend', 'infra']);
-    assert.deepStrictEqual(data.files, []);
+    assert.deepStrictEqual(data['labels'], ['backend', 'infra']);
+    assert.deepStrictEqual(data['files'], []);
   });
 
   test('inline array elements are unquoted', () => {
     const { data } = parseFrontmatter(['---', 'labels: ["a", \'b\']', '---', ''].join('\n'));
-    assert.deepStrictEqual(data.labels, ['a', 'b']);
+    assert.deepStrictEqual(data['labels'], ['a', 'b']);
   });
 
   test('malformed lines (no colon, empty key) are skipped', () => {
@@ -83,14 +83,14 @@ describe('frontmatter.parse', () => {
     const body = 'before\n\n---\n\nafter the divider\n';
     const text = ['---', 'column: todo', '---', body].join('\n');
     const parsed = parseFrontmatter(text);
-    assert.strictEqual(parsed.data.column, 'todo');
+    assert.strictEqual(parsed.data['column'], 'todo');
     assert.strictEqual(parsed.body, body);
   });
 
   test('CRLF newlines are normalized before parsing', () => {
     const text = '---\r\ncolumn: todo\r\n---\r\nbody line\r\n';
     const { data, body } = parseFrontmatter(text);
-    assert.strictEqual(data.column, 'todo');
+    assert.strictEqual(data['column'], 'todo');
     assert.strictEqual(body, 'body line\n');
   });
 });
@@ -126,13 +126,13 @@ describe('frontmatter.serialize', () => {
   test('number-like and boolean-like strings are quoted so they round-trip as strings', () => {
     const data = { a: '42', b: 'true' };
     const parsed = parseFrontmatter(serializeFrontmatter(data, 'body'));
-    assert.strictEqual(parsed.data.a, '42');
-    assert.strictEqual(parsed.data.b, 'true');
+    assert.strictEqual(parsed.data['a'], '42');
+    assert.strictEqual(parsed.data['b'], 'true');
   });
 
   test('array items containing commas or brackets are quoted', () => {
     const data = { files: ['a,b', 'c]d'] };
     const parsed = parseFrontmatter(serializeFrontmatter(data, 'body'));
-    assert.deepStrictEqual(parsed.data.files, ['a,b', 'c]d']);
+    assert.deepStrictEqual(parsed.data['files'], ['a,b', 'c]d']);
   });
 });

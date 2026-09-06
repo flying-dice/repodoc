@@ -1,12 +1,17 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 // Relative import on purpose: `bunx github:flying-dice/repodoc` runs this file
 // from a plain checkout without a workspace install, so the CLI must not
 // depend on `@repodoc/core` being resolvable as a package.
-import { FileSystemPort, NodeFileSystemAdapter, RepoDocStore, SystemClock } from '../../core/src/index';
-import { ParsedArgs, stringFlag } from './args';
+import {
+  type FileSystemPort,
+  NodeFileSystemAdapter,
+  RepoDocStore,
+  SystemClock,
+} from '../../core/src/index';
+import { type ParsedArgs, stringFlag } from './args';
 
 /** Everything a command needs: the store over the chosen root, plus identity. */
 export interface CommandContext {
@@ -19,12 +24,15 @@ export interface CommandContext {
 }
 
 export function buildContext(args: ParsedArgs, cwd = process.cwd()): CommandContext {
-  const root = resolveRoot(stringFlag(args.flags, 'root') ?? process.env.REPODOC_ROOT, cwd);
+  const root = resolveRoot(stringFlag(args.flags, 'root') ?? process.env['REPODOC_ROOT'], cwd);
   const fs = new NodeFileSystemAdapter(root);
   const store = new RepoDocStore(fs, new SystemClock(), root);
   const who =
-    stringFlag(args.flags, 'who') ?? process.env.REPODOC_AUTHOR ?? gitUserName(root) ?? os.userInfo().username;
-  return { root, fs, store, who, json: args.flags.json === true };
+    stringFlag(args.flags, 'who') ??
+    process.env['REPODOC_AUTHOR'] ??
+    gitUserName(root) ??
+    os.userInfo().username;
+  return { root, fs, store, who, json: args.flags['json'] === true };
 }
 
 /**

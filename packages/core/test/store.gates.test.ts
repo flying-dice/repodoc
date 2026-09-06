@@ -1,6 +1,6 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
-import { makeStore } from './helpers';
+import * as assert from 'node:assert';
+import { makeStore, required } from './helpers';
 
 const STAMP = '2026-01-01T00:00:00.000Z';
 
@@ -34,13 +34,13 @@ describe('store.evaluateMove', () => {
     const { store } = seed();
     const before = store.evaluateMove('b', 'card', 'review');
     assert.strictEqual(before.length, 1);
-    assert.strictEqual(before[0].satisfied, false);
-    assert.strictEqual(before[0].reason, 'estimate nonempty (currently: unset)');
+    assert.strictEqual(before[0]?.satisfied, false);
+    assert.strictEqual(before[0]?.reason, 'estimate nonempty (currently: unset)');
 
     store.setCardField('b', 'card', 'estimate', 3);
     const after = store.evaluateMove('b', 'card', 'review');
-    assert.strictEqual(after[0].satisfied, true);
-    assert.strictEqual(after[0].reason, 'estimate nonempty (currently: 3)');
+    assert.strictEqual(after[0]?.satisfied, true);
+    assert.strictEqual(after[0]?.reason, 'estimate nonempty (currently: 3)');
   });
 
   test('a same-column move has no gates', () => {
@@ -89,8 +89,7 @@ describe('store.recordGateOverride', () => {
   });
 
   test('appends into an existing section, preserving every other byte', () => {
-    const body =
-      '# Card\n\nDesc.\n\n## Gates\n\n- [x] ci — ran\n\n## Checklist\n\n- [ ] a\n';
+    const body = '# Card\n\nDesc.\n\n## Gates\n\n- [x] ci — ran\n\n## Checklist\n\n- [ ] a\n';
     const { fs, store } = seed(body);
     store.recordGateOverride('b', 'card', 'signoff', 'jonathan');
     assert.strictEqual(
@@ -172,10 +171,8 @@ describe('store.addComment', () => {
   test('the appended entry round-trips through the parser', () => {
     const { store } = seed('# Card\n');
     store.addComment('b', 'card', 'claude', 'hello world');
-    const card = store.getBoard('b')!.cards['card'];
-    assert.deepStrictEqual(card.comments, [
-      { who: 'claude', at: STAMP, text: 'hello world' },
-    ]);
+    const card = required(store.getBoard('b')?.cards['card'], 'card');
+    assert.deepStrictEqual(card.comments, [{ who: 'claude', at: STAMP, text: 'hello world' }]);
   });
 
   test('an unknown card is a silent no-op', () => {
@@ -193,8 +190,12 @@ describe('store.recordGateOverride — reason', () => {
       'boards/b/01-card.md': '---\ncolumn: todo\n---\n# Card\n',
     });
     store.recordGateOverride('b', 'card', 'g', 'jon', 'hotfix');
-    assert.ok(fs.readFile('boards/b/01-card.md')!.includes(`- [x] g — OVERRIDDEN (jon, ${STAMP}): hotfix`));
+    assert.ok(
+      fs.readFile('boards/b/01-card.md')!.includes(`- [x] g — OVERRIDDEN (jon, ${STAMP}): hotfix`),
+    );
     store.recordGateOverride('b', 'card', 'g', 'jon');
-    assert.ok(fs.readFile('boards/b/01-card.md')!.includes(`- [x] g — OVERRIDDEN (jon, ${STAMP})\n`));
+    assert.ok(
+      fs.readFile('boards/b/01-card.md')!.includes(`- [x] g — OVERRIDDEN (jon, ${STAMP})\n`),
+    );
   });
 });

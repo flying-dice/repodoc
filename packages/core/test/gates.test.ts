@@ -1,7 +1,7 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { checkValue, evaluateGates, evaluateTransition } from '../src/gates';
-import { Card, Column, CustomFieldValue, GateDef } from '../src/types';
+import type { Card, Column, CustomFieldValue, GateDef } from '../src/types';
 
 function baseCard(over: Partial<Card> = {}): Card {
   return { id: 'card', title: 'Card', ...over };
@@ -12,7 +12,9 @@ function col(id: string, over: Partial<Column> = {}): Column {
 }
 
 function one(card: Card, gate: GateDef): { satisfied: boolean; reason: string } {
-  const [r] = evaluateGates(card, [gate]);
+  const results = evaluateGates(card, [gate]);
+  assert.strictEqual(results.length, 1, 'expected exactly one gate result');
+  const r = results[0]!; // proven present by the assertion above
   return { satisfied: r.satisfied, reason: r.reason };
 }
 
@@ -177,7 +179,7 @@ describe('gates — checkValue mini-syntax', () => {
   test('operand keeps spaces and strips one pair of surrounding quotes', () => {
     assert.strictEqual(v('a b c', '= a b c'), true);
     assert.strictEqual(v('a b c', '= "a b c"'), true);
-    assert.strictEqual(v("a b c", "= 'a b c'"), true);
+    assert.strictEqual(v('a b c', "= 'a b c'"), true);
     assert.strictEqual(v('"quoted"', '= ""quoted""'), true); // only the outer pair strips
     assert.strictEqual(v('contains me', 'contains "ins m"'), true);
   });

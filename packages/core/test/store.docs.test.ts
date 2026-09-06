@@ -1,6 +1,6 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
-import { DocNode } from '../src/types';
+import * as assert from 'node:assert';
+import type { DocNode } from '../src/types';
 import { makeStore } from './helpers';
 
 const SEED = {
@@ -42,8 +42,8 @@ describe('store.getDocsTree', () => {
     const guides = store.getDocsTree().find((n) => n.name === '02-guides')!;
     assert.strictEqual(guides.type, 'dir');
     assert.deepStrictEqual(names(guides.children!), ['01-a.md']);
-    assert.strictEqual(guides.children![0].label, 'Guide A');
-    assert.strictEqual(guides.children![0].relPath, 'docs/02-guides/01-a.md');
+    assert.strictEqual(guides.children?.[0]?.label, 'Guide A');
+    assert.strictEqual(guides.children?.[0]?.relPath, 'docs/02-guides/01-a.md');
   });
 
   test('empty when there is no docs/ directory', () => {
@@ -89,7 +89,11 @@ describe('store.readDoc — frontmatter', () => {
       'docs/01-a.md': '---\nauthor: sam\ntags: [intro, setup]\ndraft: true\n---\n# A\n\nBody.\n',
     });
     const doc = store.readDoc('docs/01-a.md')!;
-    assert.deepStrictEqual(doc.frontmatter, { author: 'sam', tags: ['intro', 'setup'], draft: true });
+    assert.deepStrictEqual(doc.frontmatter, {
+      author: 'sam',
+      tags: ['intro', 'setup'],
+      draft: true,
+    });
     assert.ok(doc.body.startsWith('# A'));
     assert.ok(!doc.body.includes('author:'));
   });

@@ -1,7 +1,7 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { parseFrontmatter } from '../src/frontmatter';
-import { cardFiles, makeStore } from './helpers';
+import { cardFiles, makeStore, required } from './helpers';
 
 function configJson(columnIds: string[]): string {
   return JSON.stringify({
@@ -112,7 +112,10 @@ describe('store.toggleChecklistItem', () => {
   test('derived checklist reflects the toggle', () => {
     const { store } = seedCard();
     store.toggleChecklistItem('b', 'card', 0);
-    const checklist = store.getBoard('b')!.cards['card'].checklist!;
+    const checklist = required(
+      required(store.getBoard('b')?.cards['card'], 'card').checklist,
+      'checklist',
+    );
     assert.deepStrictEqual(
       checklist.map((c) => c.done),
       [true, true, false],
@@ -184,7 +187,7 @@ describe('store.addChecklistItem', () => {
     });
     store.addChecklistItem('b', 'card', 'x');
     const { data } = parseFrontmatter(fs.readFile('boards/b/01-card.md')!);
-    assert.strictEqual(data.updatedAt, '2026-01-01T00:00:00.000Z');
+    assert.strictEqual(data['updatedAt'], '2026-01-01T00:00:00.000Z');
   });
 
   test('unknown card returns false and writes nothing', () => {
@@ -240,7 +243,7 @@ describe('store.setCardDescription', () => {
     store.setCardDescription('b', 'card', '');
     const { body } = parseFrontmatter(fs.readFile('boards/b/01-card.md')!);
     assert.strictEqual(body, '# Card\n\n## Checklist\n\n- [ ] one\n');
-    assert.strictEqual(store.getBoard('b')!.cards['card'].desc, undefined);
+    assert.strictEqual(store.getBoard('b')?.cards['card']?.desc, undefined);
   });
 
   test('sets a description when there was none, without touching the checklist', () => {
@@ -270,7 +273,7 @@ describe('store.setCardDescription', () => {
     });
     store.setCardDescription('b', 'card', 'x');
     const { data } = parseFrontmatter(fs.readFile('boards/b/01-card.md')!);
-    assert.strictEqual(data.updatedAt, '2026-01-01T00:00:00.000Z');
+    assert.strictEqual(data['updatedAt'], '2026-01-01T00:00:00.000Z');
   });
 
   test('unknown card returns false and writes nothing', () => {

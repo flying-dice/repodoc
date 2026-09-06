@@ -1,20 +1,20 @@
-import { ClockPort, Disposable, FileSystemPort } from './ports';
-import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
-import { pad, slugFromFileName, slugify, titleCase } from './naming';
 import {
-  BoardConfig,
+  type BoardConfig,
   DEFAULT_LABELS,
   defaultColumns,
   normalizeBoardConfig,
 } from './boardConfig';
-import { computeCardOrder } from './ordering';
-import { CardEntry, findChecklist, parseCard } from './cardParse';
-import { evaluateTransition } from './gates';
+import { type CardEntry, findChecklist, parseCard } from './cardParse';
 import { DecisionStore } from './decisions';
 import { DocStore } from './docs';
 import { FeatureStore } from './features';
+import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
+import { evaluateTransition } from './gates';
+import { pad, slugFromFileName, slugify, titleCase } from './naming';
+import { computeCardOrder } from './ordering';
+import type { ClockPort, Disposable, FileSystemPort } from './ports';
 import { seedBoardConfig } from './seed';
-import {
+import type {
   BoardData,
   BoardRef,
   Card,
@@ -187,16 +187,27 @@ export class RepoDocStore {
       return undefined;
     }
     const config = this.readConfig(id);
-    const columns: Column[] = config.columns.map((c) => ({
-      id: c.id,
-      name: c.name || titleCase(c.id),
-      color: c.color || '#7d828b',
-      wip: c.wip,
-      enter: c.enter,
-      exit: c.exit,
-      prompt: c.prompt,
-      cardIds: [],
-    }));
+    const columns: Column[] = config.columns.map((c) => {
+      const column: Column = {
+        id: c.id,
+        name: c.name || titleCase(c.id),
+        color: c.color || '#7d828b',
+        cardIds: [],
+      };
+      if (c.wip !== undefined) {
+        column.wip = c.wip;
+      }
+      if (c.enter !== undefined) {
+        column.enter = c.enter;
+      }
+      if (c.exit !== undefined) {
+        column.exit = c.exit;
+      }
+      if (c.prompt !== undefined) {
+        column.prompt = c.prompt;
+      }
+      return column;
+    });
     const byId = new Map(columns.map((c) => [c.id, c]));
 
     const cards: Record<string, Card> = {};
@@ -292,7 +303,7 @@ export class RepoDocStore {
 
     // Set the card's column in its frontmatter (same file name, updatedAt stamped).
     const updated = this.updateCardFile(boardId, moved.fileName, (data, body) => {
-      data.column = toColumnId;
+      data['column'] = toColumnId;
       return { data, body };
     });
     if (!updated) {
@@ -349,7 +360,11 @@ export class RepoDocStore {
       }
       const bodyLines = body.split('\n');
       const li = indices[itemIndex];
-      bodyLines[li] = bodyLines[li].replace(/\[([ xX])\]/, (_m, c: string) =>
+      const target = li === undefined ? undefined : bodyLines[li];
+      if (li === undefined || target === undefined) {
+        return undefined; // index out of range — leave the file untouched
+      }
+      bodyLines[li] = target.replace(/\[([ xX])\]/, (_m: string, c: string) =>
         c.toLowerCase() === 'x' ? '[ ]' : '[x]',
       );
       return { data, body: bodyLines.join('\n') };
@@ -578,7 +593,7 @@ export class RepoDocStore {
     if (result === undefined) {
       return false;
     }
-    result.data.updatedAt = this.now();
+    result.data['updatedAt'] = this.now();
     this.fs.writeFile(path, serializeFrontmatter(result.data, result.body));
     return true;
   }
@@ -773,7 +788,7 @@ function replaceTitle(body: string, title: string): string {
 
 /** Formats a value as the on-disk JSON file content (pretty, trailing newline). */
 function jsonFileContent(value: unknown): string {
-  return JSON.stringify(value, null, 2) + '\n';
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
 /**
@@ -837,13 +852,13 @@ function appendCommentLine(body: string, who: string, at: string, text: string):
   // Section spans from the heading to the next heading (or end of body).
   let end = lines.length;
   for (let i = headingIdx + 1; i < lines.length; i++) {
-    if (/^#{1,6}\s+/.test(lines[i])) {
+    if (/^#{1,6}\s+/.test(lines[i] ?? '')) {
       end = i;
       break;
     }
   }
   let insertAt = end;
-  while (insertAt > headingIdx + 1 && lines[insertAt - 1].trim() === '') {
+  while (insertAt > headingIdx + 1 && lines[insertAt - 1]?.trim() === '') {
     insertAt--;
   }
   lines.splice(insertAt, 0, block);
@@ -867,13 +882,13 @@ function appendChecklistLine(body: string, text: string): string {
     // Section spans from the heading to the next heading (or end of body).
     let end = lines.length;
     for (let i = headingIdx + 1; i < lines.length; i++) {
-      if (/^#{1,6}\s+/.test(lines[i])) {
+      if (/^#{1,6}\s+/.test(lines[i] ?? '')) {
         end = i;
         break;
       }
     }
     let insertAt = end;
-    while (insertAt > headingIdx + 1 && lines[insertAt - 1].trim() === '') {
+    while (insertAt > headingIdx + 1 && lines[insertAt - 1]?.trim() === '') {
       insertAt--;
     }
     lines.splice(insertAt, 0, line);
@@ -883,13 +898,13 @@ function appendChecklistLine(body: string, text: string): string {
   // No existing section — insert a new one before Gates/Comments, else at the end.
   let sectionIdx = lines.length;
   for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+(gates|comments)\s*$/i.test(lines[i])) {
+    if (/^##\s+(gates|comments)\s*$/i.test(lines[i] ?? '')) {
       sectionIdx = i;
       break;
     }
   }
   const before = lines.slice(0, sectionIdx);
-  while (before.length && before[before.length - 1].trim() === '') {
+  while (before.length && before[before.length - 1]?.trim() === '') {
     before.pop();
   }
   const after = lines.slice(sectionIdx);
@@ -921,7 +936,7 @@ function replaceDescription(body: string, text: string): string {
   const start = titleIdx === -1 ? 0 : titleIdx + 1;
   let end = lines.length;
   for (let i = start; i < lines.length; i++) {
-    if (/^##\s+/.test(lines[i])) {
+    if (/^##\s+/.test(lines[i] ?? '')) {
       end = i;
       break;
     }
@@ -967,15 +982,15 @@ function upsertGateLine(body: string, gateId: string, note: string): string {
   // Section spans from the heading to the next heading (or end of body).
   let end = lines.length;
   for (let i = headingIdx + 1; i < lines.length; i++) {
-    if (/^#{1,6}\s+/.test(lines[i])) {
+    if (/^#{1,6}\s+/.test(lines[i] ?? '')) {
       end = i;
       break;
     }
   }
 
   for (let i = headingIdx + 1; i < end; i++) {
-    const m = /^\s*-\s+\[([ xX])\]\s+(.*)$/.exec(lines[i]);
-    if (!m) {
+    const m = /^\s*-\s+\[([ xX])\]\s+(.*)$/.exec(lines[i] ?? '');
+    if (m?.[2] === undefined) {
       continue;
     }
     const text = m[2].trim();
@@ -989,7 +1004,7 @@ function upsertGateLine(body: string, gateId: string, note: string): string {
 
   // Append after the section's last non-blank line.
   let insertAt = end;
-  while (insertAt > headingIdx + 1 && lines[insertAt - 1].trim() === '') {
+  while (insertAt > headingIdx + 1 && lines[insertAt - 1]?.trim() === '') {
     insertAt--;
   }
   lines.splice(insertAt, 0, line);

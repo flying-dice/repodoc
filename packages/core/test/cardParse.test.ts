@@ -1,7 +1,7 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { findComments, findGates, parseCard } from '../src/cardParse';
-import { CustomFieldDef } from '../src/types';
+import type { CustomFieldDef } from '../src/types';
 
 const FIELDS: CustomFieldDef[] = [
   { id: 'estimate', type: 'number' },
@@ -152,8 +152,7 @@ describe('cardParse — comments journal', () => {
   });
 
   test('the comments section ends at the next heading', () => {
-    const body =
-      '# Card\n\n## Comments\n\n- **a** (t): note\n\n## Checklist\n\n- [ ] x\n';
+    const body = '# Card\n\n## Comments\n\n- **a** (t): note\n\n## Checklist\n\n- [ ] x\n';
     const c = card('column: todo', body);
     assert.deepStrictEqual(c.comments, [{ who: 'a', at: 't', text: 'note' }]);
     assert.deepStrictEqual(c.checklist, [{ text: 'x', done: false }]);
@@ -190,7 +189,7 @@ describe('cardParse comments — round-trip edge cases (review-gate fixes)', () 
     ].join('\n');
     const entries = findComments(body);
     assert.strictEqual(entries.length, 1);
-    assert.strictEqual(entries[0].text, 'para one\n\npara two');
+    assert.strictEqual(entries[0]?.text, 'para one\n\npara two');
   });
 
   test('an indented dash is a bullet inside the entry, not a new entry', () => {
@@ -205,6 +204,6 @@ describe('cardParse comments — round-trip edge cases (review-gate fixes)', () 
     ].join('\n');
     const entries = findComments(body);
     assert.strictEqual(entries.length, 1);
-    assert.strictEqual(entries[0].text, 'summary\n- bullet detail');
+    assert.strictEqual(entries[0]?.text, 'summary\n- bullet detail');
   });
 });

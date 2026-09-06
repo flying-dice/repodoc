@@ -1,7 +1,7 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { parseFrontmatter } from '../src/frontmatter';
-import { makeStore } from './helpers';
+import { makeStore, required } from './helpers';
 
 const CONFIG = JSON.stringify({
   name: 'B',
@@ -23,7 +23,7 @@ function seed(): ReturnType<typeof makeStore> {
 describe('cardParse — agent', () => {
   test('free-text agent is surfaced on the card', () => {
     const { store } = seed();
-    assert.strictEqual(store.getBoard('b')!.cards['card'].agent, 'old');
+    assert.strictEqual(store.getBoard('b')?.cards['card']?.agent, 'old');
   });
 });
 
@@ -56,12 +56,12 @@ describe('store.updateCardMeta', () => {
     );
     assert.strictEqual(body, '# Renamed\n\nBody text.\n');
 
-    store.updateCardMeta('b', 'card', { live: null, status: null, agent: undefined });
+    store.updateCardMeta('b', 'card', { live: null, status: null });
     const after = parseFrontmatter(fs.readFile('boards/b/01-card.md')!).data;
-    assert.strictEqual(after.live, undefined);
-    assert.strictEqual(after.status, undefined);
-    assert.strictEqual(after.agent, 'claude');
-    const card = store.getBoard('b')!.cards['card'];
+    assert.strictEqual(after['live'], undefined);
+    assert.strictEqual(after['status'], undefined);
+    assert.strictEqual(after['agent'], 'claude');
+    const card = required(store.getBoard('b')?.cards['card'], 'card');
     assert.strictEqual(card.title, 'Renamed');
     assert.strictEqual(card.progress, 40);
   });
@@ -72,10 +72,13 @@ describe('store.updateCardMeta', () => {
       'boards/b/01-card.md': '---\ncolumn: todo\n---\njust prose\n',
     });
     store.updateCardMeta('b', 'card', { title: 'New' });
-    assert.strictEqual(parseFrontmatter(fs.readFile('boards/b/01-card.md')!).body, '# New\n\njust prose\n');
+    assert.strictEqual(
+      parseFrontmatter(fs.readFile('boards/b/01-card.md')!).body,
+      '# New\n\njust prose\n',
+    );
     // A newline in a title would split the heading — it is collapsed instead.
     store.updateCardMeta('b', 'card', { title: 'Two\nlines' });
-    assert.strictEqual(store.getBoard('b')!.cards['card'].title, 'Two lines');
+    assert.strictEqual(store.getBoard('b')?.cards['card']?.title, 'Two lines');
   });
 
   test('unknown card returns false and writes nothing', () => {
@@ -98,7 +101,10 @@ describe('store.updateCardMeta', () => {
 describe('store mutation results', () => {
   test('addCard reports the created id and refuses unknown boards/columns', () => {
     const { store } = seed();
-    assert.deepStrictEqual(store.addCard('b', 'doing', 'Hello World'), { ok: true, cardId: 'hello-world' });
+    assert.deepStrictEqual(store.addCard('b', 'doing', 'Hello World'), {
+      ok: true,
+      cardId: 'hello-world',
+    });
     assert.deepStrictEqual(store.addCard('b', 'nope', 'x'), {
       ok: false,
       error: { code: 'unknown-column', columnId: 'nope' },
@@ -135,10 +141,15 @@ describe('store mutation results', () => {
 describe('store.recordGateEvidence', () => {
   test('writes a done evidence line with result, author and time', () => {
     const { fs, store } = seed();
-    assert.strictEqual(store.recordGateEvidence('b', 'card', 'tests', 'bun test green', 'claude'), true);
+    assert.strictEqual(
+      store.recordGateEvidence('b', 'card', 'tests', 'bun test green', 'claude'),
+      true,
+    );
     const body = parseFrontmatter(fs.readFile('boards/b/01-card.md')!).body;
-    assert.ok(body.includes('## Gates\n\n- [x] tests — bun test green (claude, 2026-01-01T00:00:00.000Z)'));
-    assert.deepStrictEqual(store.getBoard('b')!.cards['card'].gates, [
+    assert.ok(
+      body.includes('## Gates\n\n- [x] tests — bun test green (claude, 2026-01-01T00:00:00.000Z)'),
+    );
+    assert.deepStrictEqual(store.getBoard('b')?.cards['card']?.gates, [
       { gateId: 'tests', done: true, note: 'bun test green (claude, 2026-01-01T00:00:00.000Z)' },
     ]);
     assert.strictEqual(store.recordGateEvidence('b', 'nope', 'tests', 'x', 'claude'), false);

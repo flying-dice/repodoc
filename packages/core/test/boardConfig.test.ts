@@ -1,5 +1,5 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { normalizeBoardConfig, RESERVED_CARD_KEYS } from '../src/boardConfig';
 
 describe('boardConfig.normalizeBoardConfig — fallbacks', () => {
@@ -53,10 +53,7 @@ describe('boardConfig.normalizeBoardConfig — columns', () => {
 
 describe('boardConfig.normalizeBoardConfig — label hygiene', () => {
   test('an agents map in config is ignored (no roster concept)', () => {
-    const config = normalizeBoardConfig(
-      { name: 'B', agents: { claude: { name: 'Claude' } } },
-      'b',
-    );
+    const config = normalizeBoardConfig({ name: 'B', agents: { claude: { name: 'Claude' } } }, 'b');
     assert.ok(!('agents' in config));
   });
 
@@ -158,12 +155,12 @@ describe('boardConfig.normalizeBoardConfig — column gates', () => {
       },
       'b',
     );
-    assert.deepStrictEqual(config.columns[0].enter, [
+    assert.deepStrictEqual(config.columns[0]?.enter, [
       { id: 'g1', label: 'CI', script: 'npm test' },
       { id: 'g2', field: 'sev', check: '= high' },
       { id: 'g3', field: 'reviewer' },
     ]);
-    assert.deepStrictEqual(config.columns[0].exit, [{ id: 'x1', script: 'npm run build' }]);
+    assert.deepStrictEqual(config.columns[0]?.exit, [{ id: 'x1', script: 'npm run build' }]);
   });
 
   test('drops entries lacking a string id or lacking both script and field', () => {
@@ -189,7 +186,7 @@ describe('boardConfig.normalizeBoardConfig — column gates', () => {
       },
       'b',
     );
-    assert.deepStrictEqual(config.columns[0].enter, [{ id: 'ok', field: 'sev' }]);
+    assert.deepStrictEqual(config.columns[0]?.enter, [{ id: 'ok', field: 'sev' }]);
   });
 
   test('when both script and field are present, script wins and check is dropped', () => {
@@ -207,7 +204,7 @@ describe('boardConfig.normalizeBoardConfig — column gates', () => {
       },
       'b',
     );
-    assert.deepStrictEqual(config.columns[0].enter, [{ id: 'g', label: 'L', script: 'npm test' }]);
+    assert.deepStrictEqual(config.columns[0]?.enter, [{ id: 'g', label: 'L', script: 'npm test' }]);
   });
 
   test('check is dropped when there is no field (only meaningful on a field gate)', () => {
@@ -225,7 +222,7 @@ describe('boardConfig.normalizeBoardConfig — column gates', () => {
       },
       'b',
     );
-    assert.deepStrictEqual(config.columns[0].enter, [{ id: 'g', script: 'npm test' }]);
+    assert.deepStrictEqual(config.columns[0]?.enter, [{ id: 'g', script: 'npm test' }]);
   });
 
   test('columns without gates carry no enter/exit keys', () => {
@@ -233,8 +230,8 @@ describe('boardConfig.normalizeBoardConfig — column gates', () => {
       { name: 'B', columns: [{ id: 'todo', name: 'Todo', color: '#000' }] },
       'b',
     );
-    assert.strictEqual(config.columns[0].enter, undefined);
-    assert.strictEqual(config.columns[0].exit, undefined);
+    assert.strictEqual(config.columns[0]?.enter, undefined);
+    assert.strictEqual(config.columns[0]?.exit, undefined);
   });
 });
 
@@ -256,9 +253,9 @@ describe('boardConfig — prompts', () => {
       },
       'b',
     );
-    assert.strictEqual(cfg.columns[0].prompt, undefined);
-    assert.strictEqual(cfg.columns[0].enter?.[0].prompt, 'Run x.');
-    assert.strictEqual(cfg.columns[0].enter?.[1].prompt, undefined);
-    assert.strictEqual(cfg.columns[1].prompt, 'Wrap up.');
+    assert.strictEqual(cfg.columns[0]?.prompt, undefined);
+    assert.strictEqual(cfg.columns[0]?.enter?.[0]?.prompt, 'Run x.');
+    assert.strictEqual(cfg.columns[0]?.enter?.[1]?.prompt, undefined);
+    assert.strictEqual(cfg.columns[1]?.prompt, 'Wrap up.');
   });
 });

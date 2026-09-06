@@ -1,6 +1,7 @@
-import { ClockPort } from '../src/ports';
-import { RepoDocStore } from '../src/store';
+import * as assert from 'node:assert';
 import { MemFileSystemAdapter } from '../src/adapters/memFileSystem';
+import type { ClockPort } from '../src/ports';
+import { RepoDocStore } from '../src/store';
 
 /**
  * Deterministic ClockPort for unit tests. Starts at a fixed instant and only
@@ -53,4 +54,14 @@ export function cardFiles(fs: MemFileSystemAdapter, boardId: string): string[] {
     .filter((e) => e.kind === 'file' && !e.name.startsWith('.') && /\.md$/i.test(e.name))
     .map((e) => e.name)
     .sort();
+}
+
+/**
+ * Asserts a lookup produced a value and returns it. Keeps assertions honest
+ * under `noUncheckedIndexedAccess` without scattering non-null assertions:
+ * a missing card/column fails the test here, naming what was missing.
+ */
+export function required<T>(value: T | undefined, what: string): T {
+  assert.ok(value !== undefined, `expected ${what} to be present`);
+  return value;
 }

@@ -11,7 +11,7 @@
  *    using the `check` mini-syntax parsed by {@link checkValue}.
  */
 
-import { Card, Column, CustomFieldValue, GateDef, GateResult } from './types';
+import type { Card, Column, CustomFieldValue, GateDef, GateResult } from './types';
 
 /** Evaluates each gate against the card, in order. */
 export function evaluateGates(card: Card, gates: GateDef[]): GateResult[] {
@@ -23,11 +23,7 @@ export function evaluateGates(card: Card, gates: GateDef[]): GateResult[] {
  * `exit` gates followed by the target's `enter` gates. A move within the same
  * column (or a no-op) has no gates.
  */
-export function evaluateTransition(
-  card: Card,
-  from: Column | undefined,
-  to: Column,
-): GateResult[] {
+export function evaluateTransition(card: Card, from: Column | undefined, to: Column): GateResult[] {
   if (from && from.id === to.id) {
     return [];
   }
@@ -54,7 +50,10 @@ export function evaluateTransition(
  * `v` is everything after the operator token, trimmed; a paired surrounding
  * quote (single or double) is stripped. An unrecognized expression is false.
  */
-export function checkValue(value: CustomFieldValue | undefined, check: string | undefined): boolean {
+export function checkValue(
+  value: CustomFieldValue | undefined,
+  check: string | undefined,
+): boolean {
   const expr = (check ?? '').trim();
   const lower = expr.toLowerCase();
   if (expr === '' || lower === 'nonempty') {
@@ -64,18 +63,18 @@ export function checkValue(value: CustomFieldValue | undefined, check: string | 
     return !isNonEmpty(value);
   }
 
-  const word = /^(contains|match)\b([\s\S]*)$/i.exec(expr);
-  if (word) {
-    const operand = stripQuotes(word[2].trim());
-    return word[1].toLowerCase() === 'contains'
+  const [, wordOp, wordArg] = /^(contains|match)\b([\s\S]*)$/i.exec(expr) ?? [];
+  if (wordOp !== undefined && wordArg !== undefined) {
+    const operand = stripQuotes(wordArg.trim());
+    return wordOp.toLowerCase() === 'contains'
       ? containsCheck(value, operand)
       : matchCheck(value, operand);
   }
 
-  const sym = /^(!=|>=|<=|=|>|<)([\s\S]*)$/.exec(expr);
-  if (sym) {
-    const operand = stripQuotes(sym[2].trim());
-    switch (sym[1]) {
+  const [, symOp, symArg] = /^(!=|>=|<=|=|>|<)([\s\S]*)$/.exec(expr) ?? [];
+  if (symOp !== undefined && symArg !== undefined) {
+    const operand = stripQuotes(symArg.trim());
+    switch (symOp) {
       case '=':
         return equalsCheck(value, operand);
       case '!=':
@@ -84,7 +83,7 @@ export function checkValue(value: CustomFieldValue | undefined, check: string | 
       case '>=':
       case '<':
       case '<=':
-        return numericCheck(value, sym[1], operand);
+        return numericCheck(value, symOp, operand);
     }
   }
 

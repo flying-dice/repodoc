@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { DirEntry, FileSystemPort } from '../ports';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { DirEntry, FileSystemPort } from '../ports';
 
 /**
  * Node-backed FileSystemPort. All paths are workspace-relative; every one is

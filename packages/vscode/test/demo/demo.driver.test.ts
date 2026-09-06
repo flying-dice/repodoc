@@ -1,6 +1,6 @@
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 /**
@@ -18,11 +18,11 @@ function delay(ms: number): Promise<void> {
 
 suite('RepoDoc demo driver', () => {
   test('drive screens for capture', async function () {
-    if (process.env.REPODOC_MUTATE === '1') {
+    if (process.env['REPODOC_MUTATE'] === '1') {
       this.skip();
     }
     this.timeout(240000);
-    const markers = process.env.REPODOC_DEMO_MARKERS;
+    const markers = process.env['REPODOC_DEMO_MARKERS'];
     assert.ok(markers, 'REPODOC_DEMO_MARKERS must be set');
 
     const phase = async (name: string, settleMs: number): Promise<void> => {

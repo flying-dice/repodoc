@@ -1,5 +1,5 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import { renderMarkdownWithDiagrams } from '../../src/panels/diagrams';
 import { sanitizeReadingWidth } from '../../src/panels/readingWidthValue';
 
@@ -14,12 +14,15 @@ describe('renderMarkdownWithDiagrams', () => {
   });
 
   test('plantuml fences render as images against the configured server', () => {
-    const { html, hasMermaid } = renderMarkdownWithDiagrams(
-      '```plantuml\nA -> B: hi\n```\n',
-      { plantUmlServer: 'https://uml.example.com/plantuml/' },
-    );
+    const { html, hasMermaid } = renderMarkdownWithDiagrams('```plantuml\nA -> B: hi\n```\n', {
+      plantUmlServer: 'https://uml.example.com/plantuml/',
+    });
     assert.ok(!hasMermaid);
-    assert.ok(/<img class="plantuml" src="https:\/\/uml\.example\.com\/plantuml\/svg\/[A-Za-z0-9\-_]+"/.test(html));
+    assert.ok(
+      /<img class="plantuml" src="https:\/\/uml\.example\.com\/plantuml\/svg\/[A-Za-z0-9\-_]+"/.test(
+        html,
+      ),
+    );
   });
 
   test('puml alias works; no server -> plain code block', () => {
@@ -38,7 +41,6 @@ describe('renderMarkdownWithDiagrams', () => {
     assert.ok(html.includes('<pre><code'));
   });
 });
-
 
 describe('GitHub Flavored Markdown support', () => {
   test('tables render', () => {

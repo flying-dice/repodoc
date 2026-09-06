@@ -1,5 +1,5 @@
 const esbuild = require('esbuild');
-const fs = require('fs');
+const fs = require('node:fs');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');

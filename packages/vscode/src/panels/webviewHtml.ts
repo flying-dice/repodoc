@@ -47,8 +47,7 @@ export function buildWebviewHtml(options: BuildWebviewHtmlOptions): string {
     scriptFileName,
     extraScripts,
     extraImgSrc,
-  } =
-    options;
+  } = options;
   const cspSource = webview.cspSource;
   // Extra scripts load BEFORE the main script (e.g. mermaid before board.js).
   const allScripts = [...(extraScripts ?? []), ...(scriptFileName ? [scriptFileName] : [])];

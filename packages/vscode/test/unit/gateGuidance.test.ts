@@ -1,5 +1,5 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
 import type { Column, GateResult } from '@repodoc/core';
 import {
   collectGatePrompts,
@@ -67,8 +67,7 @@ describe('toBlockedGate', () => {
       reason: 'no recorded green run of `bun run test`',
       kind: 'script',
       script: 'bun run test',
-      field: undefined,
-      check: undefined,
+      // `field` / `check` are absent (not undefined-valued) for a script gate.
       prompt: 'Run `bun run test` and, only if it exits 0, record the result with gate-pass.',
     });
   });

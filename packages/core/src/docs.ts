@@ -4,10 +4,10 @@
  * vscode-free; the store delegates its doc methods here.
  */
 
-import { FileSystemPort } from './ports';
 import { parseFrontmatter } from './frontmatter';
 import { markdownTitle, numPrefix, slugFromFileName, stripNumPrefix, titleCase } from './naming';
-import { DocNode } from './types';
+import type { FileSystemPort } from './ports';
+import type { DocNode } from './types';
 
 export class DocStore {
   constructor(private readonly fs: FileSystemPort) {}

@@ -16,13 +16,13 @@ export interface Frontmatter {
 export function parseFrontmatter(text: string): Frontmatter {
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
-  if (lines[0].trim() !== '---') {
+  if ((lines[0] ?? '').trim() !== '---') {
     return { data: {}, body: text };
   }
 
   let closing = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === '---') {
+    if (lines[i]?.trim() === '---') {
       closing = i;
       break;
     }
@@ -34,7 +34,7 @@ export function parseFrontmatter(text: string): Frontmatter {
   const data: Record<string, unknown> = {};
   for (let i = 1; i < closing; i++) {
     const line = lines[i];
-    if (!line.trim()) {
+    if (line === undefined || !line.trim()) {
       continue;
     }
     const idx = line.indexOf(':');
@@ -62,7 +62,7 @@ export function serializeFrontmatter(data: Record<string, unknown>, body: string
     lines.push(`${key}: ${serializeValue(value)}`);
   }
   lines.push('---');
-  return lines.join('\n') + '\n' + body;
+  return `${lines.join('\n')}\n${body}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ function unquote(s: string): string {
 
 function serializeValue(value: unknown): string {
   if (Array.isArray(value)) {
-    return '[' + value.map((item) => serializeString(String(item), true)).join(', ') + ']';
+    return `[${value.map((item) => serializeString(String(item), true)).join(', ')}]`;
   }
   if (typeof value === 'boolean' || typeof value === 'number') {
     return String(value);
@@ -145,7 +145,7 @@ function serializeValue(value: unknown): string {
 
 function serializeString(s: string, inArray: boolean): string {
   if (needsQuote(s, inArray)) {
-    return '"' + s.replace(/"/g, '\\"') + '"';
+    return `"${s.replace(/"/g, '\\"')}"`;
   }
   return s;
 }

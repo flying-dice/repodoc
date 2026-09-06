@@ -1,20 +1,20 @@
 import {
-  BoardData,
-  Card,
-  Column,
-  CustomFieldValue,
-  FeatureRecord,
-  GateResult,
-  Priority,
+  type AgentKind,
+  type BoardData,
+  type Card,
+  type CardMetaPatch,
+  type Column,
+  type CustomFieldValue,
+  type FeatureRecord,
+  type GateResult,
+  type Priority,
   SKILL_TARGETS,
   SkillManager,
-  StoreError,
-  type AgentKind,
-  type CardMetaPatch,
+  type StoreError,
 } from '../../core/src/index';
-import { boolFlag, CommandError, intFlag, ParsedArgs, stringFlag, UsageError } from './args';
-import { CommandContext } from './context';
-import { Printer, table } from './output';
+import { boolFlag, CommandError, intFlag, type ParsedArgs, stringFlag, UsageError } from './args';
+import type { CommandContext } from './context';
+import { type Printer, table } from './output';
 
 /** One subcommand: `repodoc <group> <name> ...`. */
 export interface Command {
@@ -39,7 +39,9 @@ export const COMMANDS: Command[] = [
       const already = ctx.store.isInitialized();
       ctx.store.init();
       out.emit({ root: ctx.root, alreadyInitialized: already }, () => [
-        already ? `RepoDoc already initialized at ${ctx.root}` : `Initialized RepoDoc at ${ctx.root}`,
+        already
+          ? `RepoDoc already initialized at ${ctx.root}`
+          : `Initialized RepoDoc at ${ctx.root}`,
       ]);
     },
   },
@@ -68,12 +70,18 @@ export const COMMANDS: Command[] = [
       out.emit({ id: boardId, ...board }, () => {
         const lines = [`${board.name} (${boardId})`];
         for (const col of board.columns) {
-          const wip = col.wip !== undefined ? ` [${col.cardIds.length}/${col.wip}]` : ` [${col.cardIds.length}]`;
+          const wip =
+            col.wip !== undefined
+              ? ` [${col.cardIds.length}/${col.wip}]`
+              : ` [${col.cardIds.length}]`;
           const gates = [
             ...(col.enter ?? []).map((g) => `enter:${g.id}`),
             ...(col.exit ?? []).map((g) => `exit:${g.id}`),
           ];
-          lines.push('', `## ${col.name} (${col.id})${wip}${gates.length ? `  gates: ${gates.join(', ')}` : ''}`);
+          lines.push(
+            '',
+            `## ${col.name} (${col.id})${wip}${gates.length ? `  gates: ${gates.join(', ')}` : ''}`,
+          );
           if (col.prompt) {
             lines.push(...indent(col.prompt, '  > '));
           }
@@ -107,6 +115,9 @@ export const COMMANDS: Command[] = [
       ctx.store.addColumn(boardId, name);
       const board = requireBoard(ctx, boardId);
       const col = board.columns[board.columns.length - 1];
+      if (col === undefined) {
+        throw new CommandError(`board ${boardId} has no columns after adding ${name}`);
+      }
       out.emit({ board: boardId, column: col }, () => [`Added column ${col.id} to ${boardId}`]);
     },
   },
@@ -124,7 +135,12 @@ export const COMMANDS: Command[] = [
       }
       const rows = board.columns
         .filter((c) => only === undefined || c.id === only)
-        .flatMap((c) => c.cardIds.map((id) => ({ column: c.id, ...board.cards[id] })));
+        .flatMap((c) =>
+          c.cardIds.flatMap((id) => {
+            const card = board.cards[id];
+            return card === undefined ? [] : [{ column: c.id, ...card }];
+          }),
+        );
       out.emit(rows, () =>
         rows.length ? table(rows.map((r) => [r.column, cardLine(r.id, r)])) : ['No cards.'],
       );
@@ -141,7 +157,10 @@ export const COMMANDS: Command[] = [
       out.emit({ board: boardId, column, ...card }, () => {
         const lines = [`# ${card.title}`, `id: ${card.id}`, `column: ${column}`];
         for (const [k, v] of Object.entries(card)) {
-          if (['id', 'title', 'desc', 'checklist', 'gates', 'comments', 'custom'].includes(k) || v === undefined) {
+          if (
+            ['id', 'title', 'desc', 'checklist', 'gates', 'comments', 'custom'].includes(k) ||
+            v === undefined
+          ) {
             continue;
           }
           lines.push(`${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
@@ -153,13 +172,27 @@ export const COMMANDS: Command[] = [
           lines.push('', card.desc.trim());
         }
         if (card.checklist?.length) {
-          lines.push('', '## Checklist', ...card.checklist.map((c, i) => `${i}. [${c.done ? 'x' : ' '}] ${c.text}`));
+          lines.push(
+            '',
+            '## Checklist',
+            ...card.checklist.map((c, i) => `${i}. [${c.done ? 'x' : ' '}] ${c.text}`),
+          );
         }
         if (card.gates?.length) {
-          lines.push('', '## Gates', ...card.gates.map((g) => `- [${g.done ? 'x' : ' '}] ${g.gateId}${g.note ? ` — ${g.note}` : ''}`));
+          lines.push(
+            '',
+            '## Gates',
+            ...card.gates.map(
+              (g) => `- [${g.done ? 'x' : ' '}] ${g.gateId}${g.note ? ` — ${g.note}` : ''}`,
+            ),
+          );
         }
         if (card.comments?.length) {
-          lines.push('', '## Comments', ...card.comments.map((c) => `- ${c.who ?? '?'} (${c.at ?? '?'}): ${c.text}`));
+          lines.push(
+            '',
+            '## Comments',
+            ...card.comments.map((c) => `- ${c.who ?? '?'} (${c.at ?? '?'}): ${c.text}`),
+          );
         }
         return lines;
       });
@@ -168,7 +201,8 @@ export const COMMANDS: Command[] = [
   {
     group: 'card',
     name: 'create',
-    usage: 'card create <board> <title> [--column <id>] [--priority high|med|low] [--labels a,b] [--agent <name>]',
+    usage:
+      'card create <board> <title> [--column <id>] [--priority high|med|low] [--labels a,b] [--agent <name>]',
     summary: 'Create a card (in the first column unless --column is given).',
     run(ctx, args, out): void {
       const [boardId, title] = need(args, ['board', 'title']);
@@ -196,7 +230,7 @@ export const COMMANDS: Command[] = [
     name: 'move',
     usage: 'card move <board> <card> <column> [--index <n>] [--override --reason <why>]',
     summary:
-      'Move a card to a column (bottom unless --index). Refuses when gates fail and prints each gate\'s instructions; --override with --reason records an override.',
+      "Move a card to a column (bottom unless --index). Refuses when gates fail and prints each gate's instructions; --override with --reason records an override.",
     run(ctx, args, out): void {
       const [boardId, cardId, toColumn] = need(args, ['board', 'card', 'column']);
       const { board } = requireCard(ctx, boardId, cardId);
@@ -204,13 +238,15 @@ export const COMMANDS: Command[] = [
       const index = intFlag(args.flags, 'index') ?? Number.MAX_SAFE_INTEGER;
       const results = ctx.store.evaluateMove(boardId, cardId, toColumn);
       const failing = results.filter((r) => !r.satisfied);
-      const override = args.flags.override === true;
+      const override = args.flags['override'] === true;
       const reason = stringFlag(args.flags, 'reason');
       if (failing.length && !override) {
         throw new CommandError(refusalText(cardId, toColumn, failing));
       }
       if (failing.length && override && !reason?.trim()) {
-        throw new UsageError('--override requires --reason <why> (recorded on the card next to each overridden gate)');
+        throw new UsageError(
+          '--override requires --reason <why> (recorded on the card next to each overridden gate)',
+        );
       }
       for (const r of failing) {
         ctx.store.recordGateOverride(boardId, cardId, r.gate.id, ctx.who, reason);
@@ -221,11 +257,23 @@ export const COMMANDS: Command[] = [
       }
       const overridden = failing.map((r) => r.gate.id);
       out.emit(
-        { board: boardId, card: cardId, column: toColumn, overridden, prompt: target.prompt ?? null },
+        {
+          board: boardId,
+          card: cardId,
+          column: toColumn,
+          overridden,
+          prompt: target.prompt ?? null,
+        },
         () => {
-          const lines = [`Moved ${cardId} → ${toColumn}${overridden.length ? ` (overrode ${overridden.join(', ')})` : ''}`];
+          const lines = [
+            `Moved ${cardId} → ${toColumn}${overridden.length ? ` (overrode ${overridden.join(', ')})` : ''}`,
+          ];
           if (target.prompt) {
-            lines.push('', `Now that ${cardId} is in ${target.name}:`, ...indent(target.prompt, '  '));
+            lines.push(
+              '',
+              `Now that ${cardId} is in ${target.name}:`,
+              ...indent(target.prompt, '  '),
+            );
           }
           return lines;
         },
@@ -242,7 +290,9 @@ export const COMMANDS: Command[] = [
       const { board } = requireCard(ctx, boardId, cardId);
       requireColumn(board, toColumn);
       const results = ctx.store.evaluateMove(boardId, cardId, toColumn);
-      out.emit(results, () => (results.length ? gateLines(results, true) : ['No gates on this move.']));
+      out.emit(results, () =>
+        results.length ? gateLines(results, true) : ['No gates on this move.'],
+      );
       if (results.some((r) => !r.satisfied)) {
         throw new CommandError('');
       }
@@ -252,7 +302,8 @@ export const COMMANDS: Command[] = [
     group: 'card',
     name: 'gate-pass',
     usage: 'card gate-pass <board> <card> <gate> <result> [--who <name>]',
-    summary: 'Record evidence that a script gate ran green. Only record a run that actually passed.',
+    summary:
+      'Record evidence that a script gate ran green. Only record a run that actually passed.',
     run(ctx, args, out): void {
       const [boardId, cardId, gateId, result] = need(args, ['board', 'card', 'gate', 'result']);
       requireCard(ctx, boardId, cardId);
@@ -266,18 +317,21 @@ export const COMMANDS: Command[] = [
     group: 'card',
     name: 'comment',
     usage: 'card comment <board> <card> <text> [--who <name>]',
-    summary: 'Append a journal entry to the card\'s ## Comments section.',
+    summary: "Append a journal entry to the card's ## Comments section.",
     run(ctx, args, out): void {
       const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
       requireCard(ctx, boardId, cardId);
       ctx.store.addComment(boardId, cardId, ctx.who, text);
-      out.emit({ board: boardId, card: cardId, who: ctx.who, text }, () => [`Commented on ${cardId} as ${ctx.who}`]);
+      out.emit({ board: boardId, card: cardId, who: ctx.who, text }, () => [
+        `Commented on ${cardId} as ${ctx.who}`,
+      ]);
     },
   },
   {
     group: 'card',
     name: 'update',
-    usage: 'card update <board> <card> [--title t] [--agent a] [--live true|false] [--status s] [--progress n] [--priority p] [--labels a,b]',
+    usage:
+      'card update <board> <card> [--title t] [--agent a] [--live true|false] [--status s] [--progress n] [--priority p] [--labels a,b]',
     summary: 'Set reserved card metadata. Pass an empty value ("") to remove a key.',
     run(ctx, args, out): void {
       const [boardId, cardId] = need(args, ['board', 'card']);
@@ -288,7 +342,9 @@ export const COMMANDS: Command[] = [
       }
       ctx.store.updateCardMeta(boardId, cardId, patch);
       const { card, column } = requireCard(ctx, boardId, cardId);
-      out.emit({ board: boardId, column, ...card }, () => [`Updated ${cardId}: ${Object.keys(patch).join(', ')}`]);
+      out.emit({ board: boardId, column, ...card }, () => [
+        `Updated ${cardId}: ${Object.keys(patch).join(', ')}`,
+      ]);
     },
   },
   {
@@ -315,7 +371,7 @@ export const COMMANDS: Command[] = [
     group: 'card',
     name: 'check-add',
     usage: 'card check-add <board> <card> <text>',
-    summary: 'Append a new item to the card\'s ## Checklist section (created if absent).',
+    summary: "Append a new item to the card's ## Checklist section (created if absent).",
     run(ctx, args, out): void {
       const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
       const { card } = requireCard(ctx, boardId, cardId);
@@ -331,7 +387,8 @@ export const COMMANDS: Command[] = [
     group: 'card',
     name: 'describe',
     usage: 'card describe <board> <card> <text>',
-    summary: 'Set the card\'s description (the body between the title and its first ## section). Pass "" to clear it.',
+    summary:
+      'Set the card\'s description (the body between the title and its first ## section). Pass "" to clear it.',
     run(ctx, args, out): void {
       const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
       requireCard(ctx, boardId, cardId);
@@ -346,16 +403,19 @@ export const COMMANDS: Command[] = [
     group: 'card',
     name: 'set',
     usage: 'card set <board> <card> <field> [value] [--clear]',
-    summary: 'Set a board-defined custom field (multiselect values are comma-separated). --clear removes it.',
+    summary:
+      'Set a board-defined custom field (multiselect values are comma-separated). --clear removes it.',
     run(ctx, args, out): void {
       const [boardId, cardId, fieldId] = need(args, ['board', 'card', 'field']);
       requireCard(ctx, boardId, cardId);
       const def = ctx.store.getBoardConfig(boardId).fields.find((f) => f.id === fieldId);
       if (!def) {
-        throw new CommandError(`unknown field ${fieldId} — declare it under "fields" in boards/${boardId}/.config.json`);
+        throw new CommandError(
+          `unknown field ${fieldId} — declare it under "fields" in boards/${boardId}/.config.json`,
+        );
       }
       let value: CustomFieldValue | undefined;
-      if (args.flags.clear !== true) {
+      if (args.flags['clear'] !== true) {
         const raw = args.positionals[3];
         if (raw === undefined) {
           throw new UsageError('card set: missing <value> (or pass --clear)');
@@ -364,9 +424,10 @@ export const COMMANDS: Command[] = [
       }
       ctx.store.setCardField(boardId, cardId, fieldId, value);
       const { card } = requireCard(ctx, boardId, cardId);
-      out.emit({ board: boardId, card: cardId, field: fieldId, value: card.custom?.[fieldId] ?? null }, () => [
-        `${fieldId} = ${JSON.stringify(card.custom?.[fieldId] ?? null)}`,
-      ]);
+      out.emit(
+        { board: boardId, card: cardId, field: fieldId, value: card.custom?.[fieldId] ?? null },
+        () => [`${fieldId} = ${JSON.stringify(card.custom?.[fieldId] ?? null)}`],
+      );
     },
   },
   {
@@ -398,7 +459,7 @@ export const COMMANDS: Command[] = [
     group: 'feature',
     name: 'list',
     usage: 'feature list <set> [--column <id>]',
-    summary: 'List a set\'s features in column order.',
+    summary: "List a set's features in column order.",
     run(ctx, args, out): void {
       const [setId] = need(args, ['set']);
       const board = requireFeatureSet(ctx, setId);
@@ -408,7 +469,12 @@ export const COMMANDS: Command[] = [
       }
       const rows = board.columns
         .filter((c) => only === undefined || c.id === only)
-        .flatMap((c) => c.cardIds.map((id) => ({ column: c.id, ...board.cards[id] })));
+        .flatMap((c) =>
+          c.cardIds.flatMap((id) => {
+            const card = board.cards[id];
+            return card === undefined ? [] : [{ column: c.id, ...card }];
+          }),
+        );
       out.emit(rows, () =>
         rows.length ? table(rows.map((r) => [r.column, cardLine(r.id, r)])) : ['No features.'],
       );
@@ -475,7 +541,7 @@ export const COMMANDS: Command[] = [
     name: 'move',
     usage: 'feature move <set> <feature> <column>',
     summary:
-      'Move a feature by rewriting its @status: tag (the file is never renamed). Prints the target column\'s prompt.',
+      "Move a feature by rewriting its @status: tag (the file is never renamed). Prints the target column's prompt.",
     run(ctx, args, out): void {
       const [setId, featureId, toColumn] = need(args, ['set', 'feature', 'column']);
       const board = requireFeatureSet(ctx, setId);
@@ -485,13 +551,20 @@ export const COMMANDS: Command[] = [
       if (!moved.ok) {
         throw new CommandError(describe(moved.error));
       }
-      out.emit({ set: setId, feature: featureId, column: toColumn, prompt: target.prompt ?? null }, () => {
-        const lines = [`Moved ${featureId} → ${toColumn}`];
-        if (target.prompt) {
-          lines.push('', `Now that ${featureId} is in ${target.name}:`, ...indent(target.prompt, '  '));
-        }
-        return lines;
-      });
+      out.emit(
+        { set: setId, feature: featureId, column: toColumn, prompt: target.prompt ?? null },
+        () => {
+          const lines = [`Moved ${featureId} → ${toColumn}`];
+          if (target.prompt) {
+            lines.push(
+              '',
+              `Now that ${featureId} is in ${target.name}:`,
+              ...indent(target.prompt, '  '),
+            );
+          }
+          return lines;
+        },
+      );
     },
   },
   {
@@ -501,7 +574,11 @@ export const COMMANDS: Command[] = [
     summary: 'List decision records.',
     run(ctx, _args, out): void {
       const all = ctx.store.listDecisions();
-      out.emit(all, () => (all.length ? table(all.map((d) => [d.id, d.status, d.date ?? '', d.title])) : ['No decisions.']));
+      out.emit(all, () =>
+        all.length
+          ? table(all.map((d) => [d.id, d.status, d.date ?? '', d.title]))
+          : ['No decisions.'],
+      );
     },
   },
   {
@@ -515,7 +592,13 @@ export const COMMANDS: Command[] = [
       if (!d) {
         throw new CommandError(`unknown decision ${id}`);
       }
-      out.emit(d, () => [`# ${d.title}`, `status: ${d.status}`, ...(d.date ? [`date: ${d.date}`] : []), '', d.body.trim()]);
+      out.emit(d, () => [
+        `# ${d.title}`,
+        `status: ${d.status}`,
+        ...(d.date ? [`date: ${d.date}`] : []),
+        '',
+        d.body.trim(),
+      ]);
     },
   },
   {
@@ -533,14 +616,16 @@ export const COMMANDS: Command[] = [
     group: 'decision',
     name: 'status',
     usage: 'decision status <id> <Proposed|Accepted|Superseded>',
-    summary: 'Set a decision record\'s status.',
+    summary: "Set a decision record's status.",
     run(ctx, args, out): void {
       const [id, statusRaw] = need(args, ['id', 'status']);
       const status = DECISION_STATUSES.find(
         (s) => s.toLowerCase() === statusRaw.trim().toLowerCase(),
       );
       if (!status) {
-        throw new UsageError(`decision status expects ${DECISION_STATUSES.join(' | ')}, got "${statusRaw}"`);
+        throw new UsageError(
+          `decision status expects ${DECISION_STATUSES.join(' | ')}, got "${statusRaw}"`,
+        );
       }
       if (!ctx.store.setDecisionStatus(id, status)) {
         throw new CommandError(`unknown decision ${id}`);
@@ -558,7 +643,9 @@ export const COMMANDS: Command[] = [
       const lines: string[] = [];
       const walk = (nodes: typeof tree, depth: number): void => {
         for (const n of nodes) {
-          lines.push(`${'  '.repeat(depth)}${n.type === 'dir' ? `${n.label}/` : `${n.label}  (${n.relPath})`}`);
+          lines.push(
+            `${'  '.repeat(depth)}${n.type === 'dir' ? `${n.label}/` : `${n.label}  (${n.relPath})`}`,
+          );
           walk(n.children ?? [], depth + 1);
         }
       };
@@ -570,7 +657,8 @@ export const COMMANDS: Command[] = [
     group: 'docs',
     name: 'show',
     usage: 'docs show <relPath>',
-    summary: 'Print a doc page (path relative to the root, e.g. docs/01-getting-started/01-overview.md).',
+    summary:
+      'Print a doc page (path relative to the root, e.g. docs/01-getting-started/01-overview.md).',
     run(ctx, args, out): void {
       const [relPath] = need(args, ['relPath']);
       const doc = ctx.store.readDoc(relPath);
@@ -584,11 +672,14 @@ export const COMMANDS: Command[] = [
     group: 'skill',
     name: 'install',
     usage: 'skill install [claude|opencode]',
-    summary: 'Write the RepoDoc agent skill file (default: claude) so coding agents know the workflow.',
+    summary:
+      'Write the RepoDoc agent skill file (default: claude) so coding agents know the workflow.',
     run(ctx, args, out): void {
       const kind = (args.positionals[0] ?? 'claude') as AgentKind;
       if (!(kind in SKILL_TARGETS)) {
-        throw new UsageError(`unknown agent kind ${kind}; expected ${Object.keys(SKILL_TARGETS).join(' | ')}`);
+        throw new UsageError(
+          `unknown agent kind ${kind}; expected ${Object.keys(SKILL_TARGETS).join(' | ')}`,
+        );
       }
       new SkillManager(ctx.fs).install(kind);
       out.emit({ kind, path: SKILL_TARGETS[kind] }, () => [`Wrote ${SKILL_TARGETS[kind]}`]);
@@ -598,12 +689,23 @@ export const COMMANDS: Command[] = [
 
 // ---- helpers ----
 
-function need(args: ParsedArgs, names: string[]): string[] {
+/**
+ * Validates that the required positionals were given and hands them back as a
+ * fixed-length tuple, so callers destructure `string` rather than
+ * `string | undefined`. The throw above is what makes that shape true.
+ */
+function need<const N extends readonly string[]>(
+  args: ParsedArgs,
+  names: N,
+): { -readonly [K in keyof N]: string } {
   const missing = names.slice(args.positionals.length);
   if (missing.length) {
-    throw new UsageError(`missing argument${missing.length > 1 ? 's' : ''}: ${missing.map((n) => `<${n}>`).join(' ')}`);
+    throw new UsageError(
+      `missing argument${missing.length > 1 ? 's' : ''}: ${missing.map((n) => `<${n}>`).join(' ')}`,
+    );
   }
-  return args.positionals;
+  // Safe: every name has a positional, checked immediately above.
+  return args.positionals as { -readonly [K in keyof N]: string };
 }
 
 function requireBoard(ctx: CommandContext, boardId: string): BoardData {
@@ -617,7 +719,9 @@ function requireBoard(ctx: CommandContext, boardId: string): BoardData {
 function requireColumn(board: BoardData, columnId: string): Column {
   const column = board.columns.find((c) => c.id === columnId);
   if (!column) {
-    throw new CommandError(`unknown column ${columnId}; columns: ${board.columns.map((c) => c.id).join(', ')}`);
+    throw new CommandError(
+      `unknown column ${columnId}; columns: ${board.columns.map((c) => c.id).join(', ')}`,
+    );
   }
   return column;
 }
@@ -631,7 +735,9 @@ function requireCard(
   const card = board.cards[cardId];
   const column = board.columns.find((c) => c.cardIds.includes(cardId));
   if (!card || !column) {
-    throw new CommandError(`unknown card ${cardId} on ${boardId} (see \`repodoc card list ${boardId}\`)`);
+    throw new CommandError(
+      `unknown card ${cardId} on ${boardId} (see \`repodoc card list ${boardId}\`)`,
+    );
   }
   return { board, card, column: column.id };
 }
@@ -691,7 +797,10 @@ function gateLines(results: GateResult[], withPrompts = false): string[] {
  * without a prompt falls back to describing its script or field.
  */
 function refusalText(cardId: string, toColumn: string, failing: GateResult[]): string {
-  const lines = [`refusing to move ${cardId} → ${toColumn}. ${failing.length} gate${failing.length > 1 ? 's' : ''} must be satisfied first:`, ''];
+  const lines = [
+    `refusing to move ${cardId} → ${toColumn}. ${failing.length} gate${failing.length > 1 ? 's' : ''} must be satisfied first:`,
+    '',
+  ];
   failing.forEach((r, i) => {
     lines.push(`${i + 1}. ${r.gate.label ?? r.gate.id} (${r.gate.id}) — ${r.reason}`);
     const prompt = r.gate.prompt ?? defaultPrompt(r);
@@ -700,7 +809,7 @@ function refusalText(cardId: string, toColumn: string, failing: GateResult[]): s
   lines.push(
     'Do the work above, then re-run this move. Record a green script run with',
     `\`repodoc card gate-pass <board> ${cardId} <gate> "<result>"\`; set a field with \`repodoc card set\`.`,
-    'Only a human may authorise \`--override --reason <why>\`.',
+    'Only a human may authorise `--override --reason <why>`.',
   );
   return lines.join('\n');
 }
@@ -713,7 +822,10 @@ function defaultPrompt(r: GateResult): string {
 }
 
 function indent(text: string, prefix: string): string[] {
-  return text.trim().split('\n').map((l) => `${prefix}${l}`);
+  return text
+    .trim()
+    .split('\n')
+    .map((l) => `${prefix}${l}`);
 }
 
 function describe(error: StoreError): string {
@@ -777,7 +889,10 @@ function metaPatch(args: ParsedArgs): CardMetaPatch {
   }
   const labels = stringFlag(args.flags, 'labels');
   if (labels !== undefined) {
-    const list = labels.split(',').map((s) => s.trim()).filter(Boolean);
+    const list = labels
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     patch.labels = list.length ? list : null;
   }
   return patch;
@@ -803,7 +918,10 @@ function parseFieldValue(type: string, raw: string): CustomFieldValue {
       throw new UsageError(`field expects true or false, got "${raw}"`);
     }
     case 'multiselect':
-      return raw.split(',').map((s) => s.trim()).filter(Boolean);
+      return raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     default:
       return raw;
   }

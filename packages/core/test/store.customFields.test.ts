@@ -1,7 +1,7 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+import type { CustomFieldDef } from '../src/types';
 import { makeStore } from './helpers';
-import { CustomFieldDef } from '../src/types';
 
 function configJson(fields: CustomFieldDef[]): string {
   return JSON.stringify({
@@ -33,7 +33,7 @@ describe('store.setCardField', () => {
       fs.readFile('boards/b/01-card.md'),
       '---\ncolumn: todo\nestimate: 5\nupdatedAt: 2026-01-01T00:00:00.000Z\n---\n# Card\n',
     );
-    assert.strictEqual(store.getBoard('b')!.cards['card'].custom!.estimate, 5);
+    assert.strictEqual(store.getBoard('b')?.cards['card']?.custom?.['estimate'], 5);
   });
 
   test('undefined removes the frontmatter key', () => {

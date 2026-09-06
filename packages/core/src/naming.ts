@@ -16,7 +16,7 @@ export function titleCase(name: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')
-    .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : w))
+    .map((w) => (w.length > 0 ? (w[0] ?? '').toUpperCase() + w.slice(1) : w))
     .join(' ');
 }
 
@@ -27,8 +27,8 @@ export function stripNumPrefix(name: string): string {
 
 /** The leading `NN` ordering prefix as a number, or `undefined` when absent. */
 export function numPrefix(name: string): number | undefined {
-  const m = /^(\d+)-/.exec(name);
-  return m ? parseInt(m[1], 10) : undefined;
+  const digits = /^(\d+)-/.exec(name)?.[1];
+  return digits === undefined ? undefined : parseInt(digits, 10);
 }
 
 export function pad(n: number, width: number): string {
@@ -45,6 +45,6 @@ export function slugFromFileName(name: string): string {
  * title-cased fallback name when the content has no heading.
  */
 export function markdownTitle(content: string, fallbackName: string): string {
-  const headingMatch = /^#\s+(.+)$/m.exec(content);
-  return headingMatch ? headingMatch[1].trim() : titleCase(fallbackName);
+  const heading = /^#\s+(.+)$/m.exec(content)?.[1];
+  return heading === undefined ? titleCase(fallbackName) : heading.trim();
 }

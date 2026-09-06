@@ -1,11 +1,11 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
-import { OrderEntry, computeCardOrder } from '../src/ordering';
+import * as assert from 'node:assert';
+import { computeCardOrder, type OrderEntry } from '../src/ordering';
 
 /** Builds ordered entries from `slug:column` shorthand. */
 function entries(...specs: string[]): OrderEntry[] {
   return specs.map((s) => {
-    const [slug, column] = s.split(':');
+    const [slug = '', column = ''] = s.split(':');
     return { slug, column };
   });
 }

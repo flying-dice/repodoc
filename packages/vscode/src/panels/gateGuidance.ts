@@ -47,9 +47,9 @@ export function toBlockedGate(result: GateResult): MoveBlockedGate {
     satisfied: result.satisfied,
     reason: result.reason,
     kind: gateKind(gate),
-    script: gate.script,
-    field: gate.field,
-    check: gate.check,
+    ...(gate.script !== undefined ? { script: gate.script } : {}),
+    ...(gate.field !== undefined ? { field: gate.field } : {}),
+    ...(gate.check !== undefined ? { check: gate.check } : {}),
     prompt: gatePromptText(gate),
   };
 }

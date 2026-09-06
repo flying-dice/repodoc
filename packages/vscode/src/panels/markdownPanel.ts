@@ -1,8 +1,8 @@
+import type { RepoDocStore } from '@repodoc/core';
 import * as vscode from 'vscode';
 import { renderMarkdownWithDiagrams } from './diagrams';
 import { plantUmlServer } from './plantUml';
 import { isPresetWidth, resolveReadingWidth } from './readingWidth';
-import { RepoDocStore } from '@repodoc/core';
 import { buildWebviewHtml, escapeHtml } from './webviewHtml';
 
 type PanelKind = 'decision' | 'doc';
@@ -75,11 +75,7 @@ export class MarkdownPanel {
   }
 
   /** Show (or reveal) the doc panel for the given repo-relative path. */
-  public static showDoc(
-    extensionUri: vscode.Uri,
-    store: RepoDocStore,
-    relPath: string,
-  ): void {
+  public static showDoc(extensionUri: vscode.Uri, store: RepoDocStore, relPath: string): void {
     const existing = MarkdownPanel.docPanel;
     if (existing) {
       existing.state = { kind: 'doc', target: relPath };
@@ -153,10 +149,7 @@ export class MarkdownPanel {
         ? meta + bodyHtml
         : bodyHtml.slice(0, headingEnd + 5) + meta + bodyHtml.slice(headingEnd + 5);
     const fileCrumb = `decisions/${decision.file}`;
-    this.panel.title = MarkdownPanel.truncate(
-      `ADR-${decision.num} — ${decision.title}`,
-      60,
-    );
+    this.panel.title = MarkdownPanel.truncate(`ADR-${decision.num} — ${decision.title}`, 60);
     this.panel.webview.html = this.wrap(
       'Decisions',
       decision.title,
@@ -234,7 +227,7 @@ export class MarkdownPanel {
       title: leaf,
       bodyHtml: body,
       stylesheets: ['base.css', 'markdown.css'],
-      extraScripts: hasMermaid ? ['mermaid.min.js', 'mermaid-init.js'] : undefined,
+      ...(hasMermaid ? { extraScripts: ['mermaid.min.js', 'mermaid-init.js'] } : {}),
       extraImgSrc: ['https:', 'data:', 'http://localhost:*', 'http://127.0.0.1:*'],
     });
   }
@@ -280,4 +273,3 @@ function readingColumnAttrs(): { cls: string; style: string } {
   }
   return { cls: 'width-custom', style: ` style="max-width: ${token}"` };
 }
-

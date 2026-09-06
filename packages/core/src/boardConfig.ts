@@ -4,13 +4,8 @@
  * trustworthy {@link BoardConfig} the store can rely on.
  */
 
-import {
-  CustomFieldDef,
-  CustomFieldType,
-  GateDef,
-  LabelDef,
-} from './types';
 import { titleCase } from './naming';
+import type { CustomFieldDef, CustomFieldType, GateDef, LabelDef } from './types';
 
 /** A configured column as stored in `.config.json` (no derived card list). */
 export interface ConfigColumn {
@@ -97,16 +92,17 @@ export function normalizeBoardConfig(parsed: unknown, boardId: string): BoardCon
     return { name: fallbackName, columns: [], labels: {}, fields: [] };
   }
   const p = parsed as Record<string, unknown>;
+  const name = readString(p, 'name');
+  const columns = p['columns'];
   return {
-    name:
-      typeof p.name === 'string' && p.name.trim() ? p.name : fallbackName,
-    columns: Array.isArray(p.columns)
-      ? (p.columns as unknown[])
+    name: name?.trim() ? name : fallbackName,
+    columns: Array.isArray(columns)
+      ? (columns as unknown[])
           .map(normalizeColumn)
           .filter((c): c is ConfigColumn => c !== undefined)
       : [],
-    labels: cleanDefMap<LabelDef>(p.labels),
-    fields: normalizeFields(p.fields),
+    labels: cleanDefMap<LabelDef>(p['labels']),
+    fields: normalizeFields(p['fields']),
   };
 }
 
@@ -120,25 +116,28 @@ function normalizeColumn(raw: unknown): ConfigColumn | undefined {
     return undefined;
   }
   const c = raw as Record<string, unknown>;
-  if (typeof c.id !== 'string' || c.id.length === 0) {
+  const id = readString(c, 'id');
+  if (id === undefined || id.length === 0) {
     return undefined;
   }
   const out: ConfigColumn = {
-    id: c.id,
-    name: typeof c.name === 'string' ? c.name : '',
-    color: typeof c.color === 'string' ? c.color : '',
+    id,
+    name: readString(c, 'name') ?? '',
+    color: readString(c, 'color') ?? '',
   };
-  if (typeof c.wip === 'number' && Number.isFinite(c.wip)) {
-    out.wip = c.wip;
+  const wip = c['wip'];
+  if (typeof wip === 'number' && Number.isFinite(wip)) {
+    out.wip = wip;
   }
-  if (typeof c.prompt === 'string' && c.prompt.trim()) {
-    out.prompt = c.prompt;
+  const prompt = readString(c, 'prompt');
+  if (prompt?.trim()) {
+    out.prompt = prompt;
   }
-  const enter = normalizeGates(c.enter);
+  const enter = normalizeGates(c['enter']);
   if (enter.length) {
     out.enter = enter;
   }
-  const exit = normalizeGates(c.exit);
+  const exit = normalizeGates(c['exit']);
   if (exit.length) {
     out.exit = exit;
   }
@@ -162,27 +161,30 @@ function normalizeFields(value: unknown): CustomFieldDef[] {
       continue;
     }
     const f = raw as Record<string, unknown>;
-    const id = f.id;
-    if (typeof id !== 'string' || id.length === 0) {
+    const id = readString(f, 'id');
+    if (id === undefined || id.length === 0) {
       continue;
     }
     if (RESERVED_CARD_KEYS.has(id) || seen.has(id)) {
       continue;
     }
-    const type = f.type;
-    if (typeof type !== 'string' || !FIELD_TYPES.has(type as CustomFieldType)) {
+    const type = readString(f, 'type');
+    if (type === undefined || !isCustomFieldType(type)) {
       continue;
     }
-    const def: CustomFieldDef = { id, type: type as CustomFieldType };
-    if (typeof f.label === 'string') {
-      def.label = f.label;
+    const def: CustomFieldDef = { id, type };
+    const label = readString(f, 'label');
+    if (label !== undefined) {
+      def.label = label;
     }
-    if (typeof f.showOnCard === 'boolean') {
-      def.showOnCard = f.showOnCard;
+    const showOnCard = f['showOnCard'];
+    if (typeof showOnCard === 'boolean') {
+      def.showOnCard = showOnCard;
     }
     if (type === 'select' || type === 'multiselect') {
-      def.options = Array.isArray(f.options)
-        ? f.options.filter((o): o is string => typeof o === 'string')
+      const options = f['options'];
+      def.options = Array.isArray(options)
+        ? (options as unknown[]).filter((o): o is string => typeof o === 'string')
         : [];
     }
     out.push(def);
@@ -208,28 +210,31 @@ function normalizeGates(value: unknown): GateDef[] {
       continue;
     }
     const g = raw as Record<string, unknown>;
-    const id = g.id;
-    if (typeof id !== 'string' || id.length === 0) {
+    const id = readString(g, 'id');
+    if (id === undefined || id.length === 0) {
       continue;
     }
-    const script = typeof g.script === 'string' ? g.script : undefined;
-    const field = typeof g.field === 'string' ? g.field : undefined;
+    const script = readString(g, 'script');
+    const field = readString(g, 'field');
     if (script === undefined && field === undefined) {
       continue; // a gate is script XOR field — an entry with neither is dropped
     }
     const def: GateDef = { id };
-    if (typeof g.label === 'string') {
-      def.label = g.label;
+    const label = readString(g, 'label');
+    if (label !== undefined) {
+      def.label = label;
     }
-    if (typeof g.prompt === 'string' && g.prompt.trim()) {
-      def.prompt = g.prompt;
+    const prompt = readString(g, 'prompt');
+    if (prompt?.trim()) {
+      def.prompt = prompt;
     }
     if (script !== undefined) {
       def.script = script; // precedence: when both are set, keep only script
-    } else {
+    } else if (field !== undefined) {
       def.field = field;
-      if (typeof g.check === 'string') {
-        def.check = g.check; // check is meaningful only for a field gate
+      const check = readString(g, 'check');
+      if (check !== undefined) {
+        def.check = check; // check is meaningful only for a field gate
       }
     }
     out.push(def);
@@ -257,4 +262,14 @@ function cleanDefMap<T>(value: unknown): Record<string, T> {
     }
   }
   return out;
+}
+
+/** Reads `key` off a parsed-JSON record, yielding the value only when it is a string. */
+function readString(rec: Record<string, unknown>, key: string): string | undefined {
+  const value = rec[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isCustomFieldType(value: string): value is CustomFieldType {
+  return (FIELD_TYPES as ReadonlySet<string>).has(value);
 }

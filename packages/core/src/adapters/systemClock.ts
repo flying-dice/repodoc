@@ -1,4 +1,4 @@
-import { ClockPort } from '../ports';
+import type { ClockPort } from '../ports';
 
 /** Real wall-clock ClockPort. */
 export class SystemClock implements ClockPort {

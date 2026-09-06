@@ -67,19 +67,19 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
       continue;
     }
 
-    const feature = FEATURE_KEYWORD.exec(line);
-    if (feature && !sawFeature) {
+    const featureName = FEATURE_KEYWORD.exec(line)?.[1];
+    if (featureName !== undefined && !sawFeature) {
       sawFeature = true;
-      parsed.title = feature[1].trim() || featureIdFromFileName(fileName);
+      parsed.title = featureName.trim() || featureIdFromFileName(fileName);
       parsed.tags = pendingTags;
       pendingTags = [];
       inDescription = true;
       continue;
     }
 
-    const scenario = SCENARIO_KEYWORD.exec(line);
-    if (scenario) {
-      parsed.scenarios.push({ name: scenario[2].trim(), tags: pendingTags });
+    const scenarioName = SCENARIO_KEYWORD.exec(line)?.[2];
+    if (scenarioName !== undefined) {
+      parsed.scenarios.push({ name: scenarioName.trim(), tags: pendingTags });
       pendingTags = [];
       inDescription = false;
       continue;

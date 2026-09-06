@@ -61,12 +61,12 @@ describe('feature sets', () => {
         ['implemented', []],
       ],
     );
-    assert.strictEqual(board.columns[1].prompt, 'Write the scenarios.');
+    assert.strictEqual(board.columns[1]?.prompt, 'Write the scenarios.');
   });
 
   test('a feature card carries its non-status tags and a ## Scenarios list', () => {
     const { store } = seeded();
-    const card = store.getFeatureSet('repodoc')?.cards.gates;
+    const card = store.getFeatureSet('repodoc')?.cards['gates'];
     assert.deepStrictEqual(card, {
       id: 'gates',
       title: 'Gates block a move',

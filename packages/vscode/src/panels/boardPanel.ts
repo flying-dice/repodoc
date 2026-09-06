@@ -1,20 +1,20 @@
+import * as path from 'node:path';
+import type { CardMetaPatch, CustomFieldValue, Priority, RepoDocStore } from '@repodoc/core';
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { CardMetaPatch, CustomFieldValue, Priority, RepoDocStore } from '@repodoc/core';
 import { type BoardSource, CardBoardSource } from './boardSource';
-import { resolveReadingWidth } from './readingWidth';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { collectGatePrompts, toBlockedGate } from './gateGuidance';
+import { localIdentity } from './identity';
 import { plantUmlServer } from './plantUml';
-import { buildWebviewHtml } from './webviewHtml';
-import {
+import type {
   BoardCapabilities,
   DataMessage,
   MoveBlockedMessage,
   OpenCardMessage,
   WebviewToHostMessage,
 } from './protocol';
-import { localIdentity } from './identity';
-import { collectGatePrompts, toBlockedGate } from './gateGuidance';
+import { resolveReadingWidth } from './readingWidth';
+import { buildWebviewHtml } from './webviewHtml';
 
 /**
  * A kanban surface rendered in a webview — a card board or a feature set,
@@ -160,7 +160,8 @@ export class BoardPanel {
     // through the one shared renderer used by the Docs and Decision views:
     // GitHub Flavored Markdown, Mermaid, and PlantUML.
     const server = plantUmlServer();
-    const render = (md: string): string => renderMarkdownWithDiagrams(md, { plantUmlServer: server }).html;
+    const render = (md: string): string =>
+      renderMarkdownWithDiagrams(md, { plantUmlServer: server }).html;
     const descHtml: Record<string, string> = {};
     const commentHtml: Record<string, string[]> = {};
     const cardFiles: Record<string, string> = {};
@@ -168,7 +169,7 @@ export class BoardPanel {
       if (card.desc) {
         descHtml[card.id] = render(card.desc);
       }
-      if (card.comments && card.comments.length) {
+      if (card.comments?.length) {
         commentHtml[card.id] = card.comments.map((c) => render(c.text));
       }
       const file = this.source.cardFilePath?.(card.id);
@@ -229,7 +230,7 @@ export class BoardPanel {
       return;
     }
     const m = msg as Record<string, unknown>;
-    switch (m.type as WebviewToHostMessage['type']) {
+    switch (m['type'] as WebviewToHostMessage['type']) {
       case 'ready': {
         this.postData();
         if (this.pendingCardId) {
@@ -241,23 +242,23 @@ export class BoardPanel {
       }
       case 'moveCard': {
         if (
-          typeof m.cardId === 'string' &&
-          typeof m.toColumn === 'string' &&
-          typeof m.index === 'number'
+          typeof m['cardId'] === 'string' &&
+          typeof m['toColumn'] === 'string' &&
+          typeof m['index'] === 'number'
         ) {
           this.handleMove(
-            m.cardId,
-            m.toColumn,
-            m.index,
-            m.override === true,
-            typeof m.reason === 'string' ? m.reason : undefined,
+            m['cardId'],
+            m['toColumn'],
+            m['index'],
+            m['override'] === true,
+            typeof m['reason'] === 'string' ? m['reason'] : undefined,
           );
         }
         break;
       }
       case 'setField': {
-        if (typeof m.cardId === 'string' && typeof m.fieldId === 'string') {
-          const value = m.value;
+        if (typeof m['cardId'] === 'string' && typeof m['fieldId'] === 'string') {
+          const value = m['value'];
           const ok =
             value === null ||
             typeof value === 'string' ||
@@ -266,8 +267,8 @@ export class BoardPanel {
             (Array.isArray(value) && value.every((v) => typeof v === 'string'));
           if (ok) {
             this.source.setCardField?.(
-              m.cardId,
-              m.fieldId,
+              m['cardId'],
+              m['fieldId'],
               (value as CustomFieldValue | null) ?? undefined,
             );
           }
@@ -275,12 +276,12 @@ export class BoardPanel {
         break;
       }
       case 'addComment': {
-        if (typeof m.cardId === 'string' && typeof m.text === 'string') {
-          const text = m.text.trim();
-          const who = sanitizeAuthor(typeof m.who === 'string' ? m.who : '');
+        if (typeof m['cardId'] === 'string' && typeof m['text'] === 'string') {
+          const text = m['text'].trim();
+          const who = sanitizeAuthor(typeof m['who'] === 'string' ? m['who'] : '');
           if (text && this.source.addComment) {
             const author = who || resolveCommentAuthor(this.store.root);
-            this.source.addComment(m.cardId, author, text);
+            this.source.addComment(m['cardId'], author, text);
             // Persist an edited name so it sticks across sessions.
             const config = vscode.workspace.getConfiguration('repodoc');
             if (who && who !== (config.get<string>('commentAuthor') ?? '').trim()) {
@@ -291,18 +292,17 @@ export class BoardPanel {
         break;
       }
       case 'openFile': {
-        if (typeof m.path === 'string') {
-          const line = m.line;
-          const endLine = m.endLine;
+        if (typeof m['path'] === 'string') {
+          const line = m['line'];
+          const endLine = m['endLine'];
           const lineOk =
-            line === undefined ||
-            (typeof line === 'number' && isFinite(line) && line > 0);
+            line === undefined || (typeof line === 'number' && Number.isFinite(line) && line > 0);
           const endOk =
             endLine === undefined ||
-            (typeof endLine === 'number' && isFinite(endLine) && endLine > 0);
+            (typeof endLine === 'number' && Number.isFinite(endLine) && endLine > 0);
           if (lineOk && endOk) {
             void this.openFile(
-              m.path,
+              m['path'],
               typeof line === 'number' ? line : undefined,
               typeof endLine === 'number' ? endLine : undefined,
             );
@@ -311,10 +311,10 @@ export class BoardPanel {
         break;
       }
       case 'addCard': {
-        if (typeof m.column === 'string' && typeof m.title === 'string') {
-          const title = m.title.trim();
+        if (typeof m['column'] === 'string' && typeof m['title'] === 'string') {
+          const title = m['title'].trim();
           if (title) {
-            this.source.addCard(m.column, title);
+            this.source.addCard(m['column'], title);
           }
         }
         break;
@@ -324,40 +324,40 @@ export class BoardPanel {
         break;
       }
       case 'addChecklistItem': {
-        if (typeof m.cardId === 'string' && typeof m.text === 'string') {
-          const text = m.text.trim();
+        if (typeof m['cardId'] === 'string' && typeof m['text'] === 'string') {
+          const text = m['text'].trim();
           if (text) {
-            this.source.addChecklistItem?.(m.cardId, text);
+            this.source.addChecklistItem?.(m['cardId'], text);
           }
         }
         break;
       }
       case 'setDescription': {
-        if (typeof m.cardId === 'string' && typeof m.text === 'string') {
-          this.source.setCardDescription?.(m.cardId, m.text);
+        if (typeof m['cardId'] === 'string' && typeof m['text'] === 'string') {
+          this.source.setCardDescription?.(m['cardId'], m['text']);
         }
         break;
       }
       case 'updateMeta': {
-        if (typeof m.cardId === 'string' && m.patch && typeof m.patch === 'object') {
-          const patch = sanitizeMetaPatch(m.patch as Record<string, unknown>);
+        if (typeof m['cardId'] === 'string' && m['patch'] && typeof m['patch'] === 'object') {
+          const patch = sanitizeMetaPatch(m['patch'] as Record<string, unknown>);
           if (patch) {
-            this.source.updateCardMeta?.(m.cardId, patch);
+            this.source.updateCardMeta?.(m['cardId'], patch);
           }
         }
         break;
       }
       case 'recordGatePass': {
         if (
-          typeof m.cardId === 'string' &&
-          typeof m.gateId === 'string' &&
-          typeof m.result === 'string'
+          typeof m['cardId'] === 'string' &&
+          typeof m['gateId'] === 'string' &&
+          typeof m['result'] === 'string'
         ) {
-          const result = m.result.replace(/[\r\n]/g, ' ').trim();
+          const result = m['result'].replace(/[\r\n]/g, ' ').trim();
           if (result) {
             this.source.recordGateEvidence?.(
-              m.cardId,
-              m.gateId,
+              m['cardId'],
+              m['gateId'],
               result,
               resolveCommentAuthor(this.store.root),
             );
@@ -366,8 +366,8 @@ export class BoardPanel {
         break;
       }
       case 'toggleCheck': {
-        if (typeof m.cardId === 'string' && typeof m.index === 'number') {
-          this.source.toggleChecklistItem?.(m.cardId, m.index);
+        if (typeof m['cardId'] === 'string' && typeof m['index'] === 'number') {
+          this.source.toggleChecklistItem?.(m['cardId'], m['index']);
         }
         break;
       }
@@ -462,7 +462,7 @@ export class BoardPanel {
       return;
     }
     const name = await vscode.window.showInputBox({ prompt: 'List name' });
-    if (name && name.trim()) {
+    if (name?.trim()) {
       this.source.addColumn(name.trim());
     }
   }
@@ -508,22 +508,22 @@ function sanitizeMetaPatch(raw: Record<string, unknown>): CardMetaPatch | undefi
   const patch: CardMetaPatch = {};
   let any = false;
 
-  if (typeof raw.title === 'string' && raw.title.trim()) {
-    patch.title = raw.title.replace(/[\r\n]/g, ' ').trim();
+  if (typeof raw['title'] === 'string' && raw['title'].trim()) {
+    patch.title = raw['title'].replace(/[\r\n]/g, ' ').trim();
     any = true;
   }
-  if (raw.labels === null) {
+  if (raw['labels'] === null) {
     patch.labels = null;
     any = true;
-  } else if (Array.isArray(raw.labels) && raw.labels.every((l) => typeof l === 'string')) {
-    patch.labels = raw.labels as string[];
+  } else if (Array.isArray(raw['labels']) && raw['labels'].every((l) => typeof l === 'string')) {
+    patch.labels = raw['labels'] as string[];
     any = true;
   }
-  if (raw.priority === null) {
+  if (raw['priority'] === null) {
     patch.priority = null;
     any = true;
-  } else if (PRIORITIES.includes(raw.priority as Priority)) {
-    patch.priority = raw.priority as Priority;
+  } else if (PRIORITIES.includes(raw['priority'] as Priority)) {
+    patch.priority = raw['priority'] as Priority;
     any = true;
   }
   for (const key of ['agent', 'status'] as const) {
@@ -537,15 +537,15 @@ function sanitizeMetaPatch(raw: Record<string, unknown>): CardMetaPatch | undefi
       any = true;
     }
   }
-  if (raw.live === null || typeof raw.live === 'boolean') {
-    patch.live = raw.live as boolean | null;
+  if (raw['live'] === null || typeof raw['live'] === 'boolean') {
+    patch.live = raw['live'] as boolean | null;
     any = true;
   }
-  if (raw.progress === null) {
+  if (raw['progress'] === null) {
     patch.progress = null;
     any = true;
-  } else if (typeof raw.progress === 'number' && Number.isFinite(raw.progress)) {
-    patch.progress = Math.max(0, Math.min(100, Math.round(raw.progress)));
+  } else if (typeof raw['progress'] === 'number' && Number.isFinite(raw['progress'])) {
+    patch.progress = Math.max(0, Math.min(100, Math.round(raw['progress'])));
     any = true;
   }
 
@@ -554,5 +554,8 @@ function sanitizeMetaPatch(raw: Record<string, unknown>): CardMetaPatch | undefi
 
 /** One line, trimmed, capped — author names never carry markup or newlines. */
 function sanitizeAuthor(raw: string): string {
-  return raw.replace(/[\r\n*]/g, ' ').trim().slice(0, 60);
+  return raw
+    .replace(/[\r\n*]/g, ' ')
+    .trim()
+    .slice(0, 60);
 }

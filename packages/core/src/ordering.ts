@@ -29,17 +29,18 @@ export function computeCardOrder(
   const without = globalOrder.filter((s) => s !== cardId);
 
   let insertPos: number;
-  if (targetOrder.length === 0) {
+  const lastInTarget = targetOrder[targetOrder.length - 1];
+  if (lastInTarget === undefined) {
     insertPos = without.length; // empty column — append at global end
   } else {
     const clamped = Math.max(0, Math.min(index, targetOrder.length));
-    if (clamped >= targetOrder.length) {
-      // Past the end — right after the target column's last card.
-      insertPos = without.indexOf(targetOrder[targetOrder.length - 1]) + 1;
-    } else {
-      // Immediately before the card currently at `index` in the column.
-      insertPos = without.indexOf(targetOrder[clamped]);
-    }
+    const anchor = targetOrder[clamped];
+    insertPos =
+      anchor === undefined
+        ? // Past the end — right after the target column's last card.
+          without.indexOf(lastInTarget) + 1
+        : // Immediately before the card currently at `index` in the column.
+          without.indexOf(anchor);
   }
   const newOrder = without.slice();
   newOrder.splice(insertPos, 0, cardId);

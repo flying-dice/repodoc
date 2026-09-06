@@ -1,6 +1,6 @@
 import { parseFrontmatter } from './frontmatter';
 import { markdownTitle, numPrefix, slugFromFileName } from './naming';
-import {
+import type {
   Card,
   ChecklistItem,
   CommentEntry,
@@ -24,11 +24,7 @@ export interface CardEntry {
  * input. `fields` are the board's custom-field defs used to coerce and adopt
  * frontmatter values into {@link Card.custom}.
  */
-export function parseCard(
-  fileName: string,
-  content: string,
-  fields: CustomFieldDef[],
-): CardEntry {
+export function parseCard(fileName: string, content: string, fields: CustomFieldDef[]): CardEntry {
   const { data, body } = parseFrontmatter(content);
   const slug = slugFromFileName(fileName);
   const title = markdownTitle(body, slug);
@@ -51,30 +47,30 @@ export function parseCard(
   if (comments.length) {
     card.comments = comments;
   }
-  const labels = asStringArray(data.labels);
-  if (labels && labels.length) {
+  const labels = asStringArray(data['labels']);
+  if (labels?.length) {
     card.labels = labels;
   }
-  const priority = asPriority(data.priority);
+  const priority = asPriority(data['priority']);
   if (priority) {
     card.priority = priority;
   }
-  const agent = asString(data.agent);
+  const agent = asString(data['agent']);
   if (agent) {
     card.agent = agent;
   }
-  if (data.live === true) {
+  if (data['live'] === true) {
     card.live = true;
   }
-  const status = asString(data.status);
+  const status = asString(data['status']);
   if (status) {
     card.status = status;
   }
-  const progress = asNumber(data.progress);
+  const progress = asNumber(data['progress']);
   if (progress !== undefined) {
     card.progress = progress;
   }
-  const updatedAt = asString(data.updatedAt);
+  const updatedAt = asString(data['updatedAt']);
   if (updatedAt) {
     card.updatedAt = updatedAt;
   }
@@ -94,7 +90,7 @@ export function parseCard(
     fileName,
     slug,
     num: numPrefix(fileName),
-    column: asString(data.column) ?? '',
+    column: asString(data['column']) ?? '',
     card,
   };
 }
@@ -110,7 +106,7 @@ function extractDescription(body: string): string {
   const start = headingIdx === -1 ? 0 : headingIdx + 1;
   let end = lines.length;
   for (let i = start; i < lines.length; i++) {
-    if (/^##\s+(checklist|gates|comments)\s*$/i.test(lines[i])) {
+    if (/^##\s+(checklist|gates|comments)\s*$/i.test(lines[i] ?? '')) {
       end = i;
       break;
     }
@@ -134,7 +130,7 @@ function collectTaskLines(body: string, headingRe: RegExp): TaskLine[] {
   const out: TaskLine[] = [];
   let inSection = false;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i] ?? '';
     if (headingRe.test(line)) {
       inSection = true;
       continue;
@@ -144,8 +140,9 @@ function collectTaskLines(body: string, headingRe: RegExp): TaskLine[] {
     }
     if (inSection) {
       const m = /^\s*-\s+\[([ xX])\]\s+(.*)$/.exec(line);
-      if (m) {
-        out.push({ text: m[2].trim(), done: m[1].toLowerCase() === 'x', index: i });
+      const [, box, text] = m ?? [];
+      if (box !== undefined && text !== undefined) {
+        out.push({ text: text.trim(), done: box.toLowerCase() === 'x', index: i });
       }
     }
   }
@@ -207,7 +204,7 @@ export function findComments(body: string): CommentEntry[] {
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i] ?? '';
     if (/^##\s+comments\s*$/i.test(line)) {
       inSection = true;
       continue;
@@ -221,19 +218,20 @@ export function findComments(body: string): CommentEntry[] {
     // New entries start with a TOP-LEVEL dash; an indented dash is a bullet
     // inside the current entry's continuation, not a new entry.
     const item = /^-\s+(.*)$/.exec(line);
-    if (item) {
+    const itemText = item?.[1];
+    if (itemText !== undefined) {
       flush();
-      current = [item[1]];
+      current = [itemText];
     } else if (current !== null && /^\s{2,}\S/.test(line)) {
       current.push(line.replace(/^\s{2}/, '')); // continuation (strip the indent)
     } else if (line.trim() === '') {
       // A blank line only ends the entry when what follows is NOT an indented
       // continuation — multi-paragraph journal entries stay whole.
       let j = i + 1;
-      while (j < lines.length && lines[j].trim() === '') {
+      while (j < lines.length && (lines[j] ?? '').trim() === '') {
         j++;
       }
-      if (current !== null && j < lines.length && /^\s{2,}\S/.test(lines[j])) {
+      if (current !== null && j < lines.length && /^\s{2,}\S/.test(lines[j] ?? '')) {
         current.push(''); // paragraph break inside the entry
       } else {
         flush();
@@ -258,11 +256,11 @@ function parseCommentItem(raw: string): CommentEntry {
   let at: string | undefined;
 
   const whoMatch = /^\*\*(.+?)\*\*\s*/.exec(rest);
-  if (whoMatch) {
+  if (whoMatch?.[1] !== undefined) {
     who = whoMatch[1].trim();
     rest = rest.slice(whoMatch[0].length);
     const atMatch = /^\(([^)]*)\)\s*/.exec(rest);
-    if (atMatch) {
+    if (atMatch?.[1] !== undefined) {
       at = atMatch[1].trim();
       rest = rest.slice(atMatch[0].length);
     }

@@ -1,6 +1,6 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
-import { makeStore } from './helpers';
+import * as assert from 'node:assert';
+import { makeStore, required } from './helpers';
 
 /** Minimal valid board config JSON with the given columns. */
 function configJson(name: string, columnIds: string[]): string {
@@ -71,9 +71,9 @@ describe('store.listBoards', () => {
     });
     const boards = store.listBoards();
     assert.strictEqual(boards.length, 1);
-    assert.strictEqual(boards[0].id, 'my-board');
-    assert.strictEqual(boards[0].name, 'My Board');
-    assert.strictEqual(boards[0].cardCount, 1);
+    assert.strictEqual(boards[0]?.id, 'my-board');
+    assert.strictEqual(boards[0]?.name, 'My Board');
+    assert.strictEqual(boards[0]?.cardCount, 1);
   });
 });
 
@@ -92,7 +92,7 @@ describe('store.getBoard', () => {
     // 01 before 02 within the todo column.
     assert.deepStrictEqual(todo.cardIds, ['first', 'second']);
     assert.deepStrictEqual(done.cardIds, ['third']);
-    assert.strictEqual(board.cards['first'].title, 'First');
+    assert.strictEqual(board.cards['first']?.title, 'First');
   });
 
   test('cards with an unknown/blank column land in the FIRST column', () => {
@@ -103,7 +103,7 @@ describe('store.getBoard', () => {
       'boards/b/03-blank.md': '# No frontmatter card\n',
     });
     const board = store.getBoard('b')!;
-    const first = board.columns[0];
+    const first = required(board.columns[0], 'first column');
     assert.strictEqual(first.id, 'todo');
     assert.ok(first.cardIds.includes('unknown'));
     assert.ok(first.cardIds.includes('blank'));

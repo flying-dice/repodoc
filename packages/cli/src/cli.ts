@@ -16,11 +16,11 @@ export interface Io {
 export function runCli(argv: string[], cwd: string, io: Io): number {
   const args = parseArgs(argv);
   const [group, maybeName, ...rest] = args.positionals;
-  if (args.flags.version === true) {
+  if (args.flags['version'] === true) {
     io.stdout(`repodoc ${VERSION}\n`);
     return 0;
   }
-  if (!group || group === 'help' || args.flags.help === true) {
+  if (!group || group === 'help' || args.flags['help'] === true) {
     io.stdout(helpText(typeof maybeName === 'string' ? maybeName : undefined));
     return 0;
   }
@@ -28,10 +28,13 @@ export function runCli(argv: string[], cwd: string, io: Io): number {
     COMMANDS.find((c) => c.group === group && c.name === '') ??
     COMMANDS.find((c) => c.group === group && c.name === maybeName);
   if (!command) {
-    io.stderr(`repodoc: unknown command "${[group, maybeName].filter(Boolean).join(' ')}"\n\n${helpText(group)}`);
+    io.stderr(
+      `repodoc: unknown command "${[group, maybeName].filter(Boolean).join(' ')}"\n\n${helpText(group)}`,
+    );
     return 2;
   }
-  const positionals = command.name === '' ? [maybeName, ...rest].filter((p): p is string => p !== undefined) : rest;
+  const positionals =
+    command.name === '' ? [maybeName, ...rest].filter((p): p is string => p !== undefined) : rest;
   try {
     const ctx = buildContext(args, cwd);
     command.run(ctx, { positionals, flags: args.flags }, makePrinter(ctx.json, io.stdout));
@@ -47,7 +50,7 @@ export function runCli(argv: string[], cwd: string, io: Io): number {
       }
       return 1;
     }
-    io.stderr(`repodoc: ${e instanceof Error ? e.stack ?? e.message : String(e)}\n`);
+    io.stderr(`repodoc: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
     return 3;
   }
 }

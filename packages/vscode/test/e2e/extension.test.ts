@@ -1,6 +1,6 @@
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { RepoDocApi } from '../../src/extension';
 
@@ -10,7 +10,7 @@ const EXTENSION_ID = 'flying-dice.repodoc';
 function workspaceRoot(): string {
   const folders = vscode.workspace.workspaceFolders;
   assert.ok(folders && folders.length > 0, 'a fixture workspace must be open');
-  return folders[0].uri.fsPath;
+  return folders[0]!.uri.fsPath; // non-empty, proven by the assertion above
 }
 
 /** Deletes everything inside the workspace, leaving the folder itself. */
@@ -69,7 +69,7 @@ suite('RepoDoc e2e', () => {
     const ext = vscode.extensions.getExtension<RepoDocApi>(EXTENSION_ID);
     assert.ok(ext, `extension ${EXTENSION_ID} should be installed`);
     api = await ext.activate();
-    assert.ok(api && api.store, 'activate() should return the store api');
+    assert.ok(api?.store, 'activate() should return the store api');
   });
 
   test('activation registers all RepoDoc commands', async () => {
@@ -129,9 +129,7 @@ suite('RepoDoc e2e', () => {
   test('repodoc.openBoard opens a board webview tab', async () => {
     await vscode.commands.executeCommand('repodoc.openBoard', 'project-backlog');
     const tab = await waitFor(() =>
-      findTab(
-        (t) => t.input instanceof vscode.TabInputWebview && t.label === 'Project Backlog',
-      ),
+      findTab((t) => t.input instanceof vscode.TabInputWebview && t.label === 'Project Backlog'),
     );
     assert.strictEqual(tab.label, 'Project Backlog');
   });
@@ -195,7 +193,7 @@ suite('RepoDoc e2e', () => {
     // The store reads the disk directly, so getBoard reflects the new file.
     await waitFor(() => {
       const board = api.store.getBoard('project-backlog');
-      return !!board && Object.prototype.hasOwnProperty.call(board.cards, 'external-card');
+      return !!board && Object.hasOwn(board.cards, 'external-card');
     });
 
     // The watcher should also have re-fired the change event (debounced ~150ms).
@@ -215,7 +213,7 @@ suite('RepoDoc e2e', () => {
       // extension-host watcher at all (observed across runs; unrelated to our
       // wiring, which the disk-read assertion above already covered). Treat
       // that specific environment as untestable rather than red.
-      if (process.platform === 'linux' && process.env.CI) {
+      if (process.platform === 'linux' && process.env['CI']) {
         console.log('watcher event not delivered on CI Linux — skipping event assertion');
         sub.dispose();
         this.skip();

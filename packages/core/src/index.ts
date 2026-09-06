@@ -7,38 +7,39 @@
  * reaches the outside world only through the ports in `ports.ts`; the Node and
  * in-memory adapters ship here too so every host wires the same pieces.
  */
-export * from './types';
-export * from './ports';
-export { RepoDocStore } from './store';
-export type { AddCardResult, CardMetaPatch, MoveCardResult, StoreError } from './store';
-export { parseFrontmatter, serializeFrontmatter } from './frontmatter';
-export { parseCard, findChecklist, findComments, findGates } from './cardParse';
-export type { CardEntry } from './cardParse';
+
+export { MemFileSystemAdapter } from './adapters/memFileSystem';
+export { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
+export { SystemClock } from './adapters/systemClock';
+export type { BoardConfig, ConfigColumn } from './boardConfig';
 export {
   DEFAULT_LABELS,
   defaultColumns,
   normalizeBoardConfig,
+  RESERVED_CARD_KEYS,
 } from './boardConfig';
-export type { BoardConfig, ConfigColumn } from './boardConfig';
-export { RESERVED_CARD_KEYS } from './boardConfig';
-export { evaluateGates, evaluateTransition, checkValue } from './gates';
-export { computeCardOrder } from './ordering';
-export { pad, slugFromFileName, slugify, titleCase } from './naming';
-export { SkillManager, SKILL_TARGETS } from './skillManager';
-export type { AgentKind } from './skillManager';
-export { SKILL_MD, SKILL_NAME } from './skillContent';
-export { seedBoardConfig } from './seed';
+export type { CardEntry } from './cardParse';
+export { findChecklist, findComments, findGates, parseCard } from './cardParse';
 export { DecisionStore } from './decisions';
-export { FeatureStore, defaultFeatureColumns, writeStatusTag } from './features';
+export { DocStore } from './docs';
+export type { ParsedFeature, ParsedScenario } from './featureParse';
 export {
-  parseFeature,
   featureIdFromFileName,
+  parseFeature,
+  STATUS_TAG_PREFIX,
   statusFromTags,
   tagsWithoutStatus,
-  STATUS_TAG_PREFIX,
 } from './featureParse';
-export type { ParsedFeature, ParsedScenario } from './featureParse';
-export { DocStore } from './docs';
-export { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
-export { MemFileSystemAdapter } from './adapters/memFileSystem';
-export { SystemClock } from './adapters/systemClock';
+export { defaultFeatureColumns, FeatureStore, writeStatusTag } from './features';
+export { parseFrontmatter, serializeFrontmatter } from './frontmatter';
+export { checkValue, evaluateGates, evaluateTransition } from './gates';
+export { pad, slugFromFileName, slugify, titleCase } from './naming';
+export { computeCardOrder } from './ordering';
+export * from './ports';
+export { seedBoardConfig } from './seed';
+export { SKILL_MD, SKILL_NAME } from './skillContent';
+export type { AgentKind } from './skillManager';
+export { SKILL_TARGETS, SkillManager } from './skillManager';
+export type { AddCardResult, CardMetaPatch, MoveCardResult, StoreError } from './store';
+export { RepoDocStore } from './store';
+export * from './types';

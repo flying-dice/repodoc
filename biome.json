@@ -18,7 +18,10 @@
       "!.agents",
       "!.codex",
       "!VS Code Trello Extension",
-      "!.playwright-mcp"
+      "!.playwright-mcp",
+      "!boards",
+      "!decisions",
+      "!features"
     ]
   },
   "formatter": {
@@ -52,22 +55,35 @@
         "useImportType": "error"
       },
       "complexity": {
-        "noForEach": "off"
+        "noForEach": "off",
+        "useLiteralKeys": "off"
       },
-      "recommended": true
+      "preset": "recommended"
     }
   },
   "overrides": [
     {
-      "includes": [
-        "**/media/*.js"
-      ],
+      "includes": ["**/media/*.js"],
       "linter": {
         "rules": {
+          "complexity": {
+            "useArrowFunction": "off",
+            "useOptionalChain": "off"
+          },
+          "correctness": {
+            "noInnerDeclarations": "off"
+          },
           "style": {
-            "useConst": "off"
+            "noParameterAssign": "off",
+            "useConst": "off",
+            "useTemplate": "off"
           },
           "suspicious": {
+            "noAssignInExpressions": "off",
+            "noGlobalIsFinite": "off",
+            "noGlobalIsNan": "off",
+            "noPrototypeBuiltins": "off",
+            "noRedundantUseStrict": "off",
             "noVar": "off"
           }
         }

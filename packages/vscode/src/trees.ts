@@ -1,5 +1,5 @@
+import type { BoardRef, DecisionRecord, DocNode, FeatureSetRef, RepoDocStore } from '@repodoc/core';
 import * as vscode from 'vscode';
-import { BoardRef, DecisionRecord, DocNode, FeatureSetRef, RepoDocStore } from '@repodoc/core';
 
 /**
  * Base class for tree providers that expose a `refresh()` which fires the
@@ -44,10 +44,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
 
   getTreeItem(node: BoardsNode): vscode.TreeItem {
     if (node.kind === 'board') {
-      const item = new vscode.TreeItem(
-        node.ref.name,
-        vscode.TreeItemCollapsibleState.Expanded,
-      );
+      const item = new vscode.TreeItem(node.ref.name, vscode.TreeItemCollapsibleState.Expanded);
       item.id = `board:${node.ref.id}`;
       item.description = String(node.ref.cardCount);
       item.iconPath = new vscode.ThemeIcon('project');
@@ -187,8 +184,8 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
           boardId: element.boardId,
           cardId: card.id,
           title: card.title,
-          priority: card.priority,
-          agent: card.agent,
+          ...(card.priority !== undefined ? { priority: card.priority } : {}),
+          ...(card.agent !== undefined ? { agent: card.agent } : {}),
         }));
     }
     return [];
@@ -216,7 +213,10 @@ export class DecisionsTreeProvider extends RefreshableTreeProvider<DecisionRecor
     item.description = record.num;
     item.tooltip = record.file;
     item.contextValue = 'repodoc.decision';
-    item.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(statusColor(record.status)));
+    item.iconPath = new vscode.ThemeIcon(
+      'circle-filled',
+      new vscode.ThemeColor(statusColor(record.status)),
+    );
     item.command = {
       command: 'repodoc.openDecision',
       title: 'Open Decision',

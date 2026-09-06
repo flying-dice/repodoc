@@ -80,14 +80,21 @@ export class FeatureStore {
       return undefined;
     }
     const config = this.readConfig(setId);
-    const columns: Column[] = config.columns.map((c) => ({
-      id: c.id,
-      name: c.name || titleCase(c.id),
-      color: c.color || '#7d828b',
-      wip: c.wip,
-      prompt: c.prompt,
-      cardIds: [],
-    }));
+    const columns: Column[] = config.columns.map((c) => {
+      const column: Column = {
+        id: c.id,
+        name: c.name || titleCase(c.id),
+        color: c.color || '#7d828b',
+        cardIds: [],
+      };
+      if (c.wip !== undefined) {
+        column.wip = c.wip;
+      }
+      if (c.prompt !== undefined) {
+        column.prompt = c.prompt;
+      }
+      return column;
+    });
     const byId = new Map(columns.map((c) => [c.id, c]));
 
     const cards: Record<string, Card> = {};
@@ -271,10 +278,11 @@ export function writeStatusTag(content: string, columnId: string): string {
   const featureIdx = lines.findIndex((l) => /^\s*Feature:/.test(l));
   const end = featureIdx === -1 ? lines.length : featureIdx;
   for (let i = 0; i < end; i++) {
-    if (!/^\s*@/.test(lines[i]) || !lines[i].includes(STATUS_TAG_PREFIX)) {
+    const line = lines[i];
+    if (line === undefined || !/^\s*@/.test(line) || !line.includes(STATUS_TAG_PREFIX)) {
       continue;
     }
-    lines[i] = lines[i].replace(/@status:\S*/, `${STATUS_TAG_PREFIX}${columnId}`);
+    lines[i] = line.replace(/@status:\S*/, `${STATUS_TAG_PREFIX}${columnId}`);
     return lines.join('\n');
   }
   lines.splice(Math.max(0, featureIdx), 0, `${STATUS_TAG_PREFIX}${columnId}`);

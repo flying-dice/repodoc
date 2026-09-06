@@ -1,6 +1,6 @@
 import { describe, test } from 'bun:test';
-import * as assert from 'assert';
-import { makeStore } from './helpers';
+import * as assert from 'node:assert';
+import { makeStore, required } from './helpers';
 
 const SEED = {
   'decisions/01-record.md':
@@ -51,7 +51,7 @@ describe('store.listDecisions', () => {
     const { store } = makeStore({
       'decisions/01-legacy.md': '# ADR-1 — Legacy\n\n**Status:** Accepted\n\nBody.\n',
     });
-    assert.strictEqual(store.listDecisions()[0].status, 'Proposed');
+    assert.strictEqual(store.listDecisions()[0]?.status, 'Proposed');
   });
 
   test('ignores non-.md and dot files', () => {
@@ -160,7 +160,7 @@ describe('store decisions — frontmatter exposure', () => {
       'decisions/01-a.md':
         '---\nstatus: Accepted\ndate: 2026-07-17\nsupersedes: none\n---\n# ADR-1 — A\n',
     });
-    const rec = store.listDecisions()[0];
+    const rec = required(store.listDecisions()[0], 'decision record');
     assert.deepStrictEqual(rec.frontmatter, {
       status: 'Accepted',
       date: '2026-07-17',

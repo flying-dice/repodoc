@@ -1,4 +1,4 @@
-import { BoardData, CardMetaPatch, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
+import type { BoardData, CardMetaPatch, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
 
 /**
  * Authoritative shapes for the board webview postMessage protocol.
@@ -71,7 +71,6 @@ export interface DataMessage {
   /** Column `prompt` text rendered to HTML, keyed by column id. */
   columnPromptHtml: Record<string, string>;
 }
-
 
 /** Host-driven card open (tests / automation) — mirrors clicking the card. */
 export interface OpenCardMessage {

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, test } from 'bun:test';
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { runCli } from '../src/cli';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { parseArgs } from '../src/args';
+import { runCli } from '../src/cli';
 import { resolveRoot } from '../src/context';
 
 let root: string;
@@ -27,7 +27,10 @@ function json(...argv: string[]): unknown {
 }
 
 function cardFiles(boardId: string): string[] {
-  return fs.readdirSync(path.join(root, 'boards', boardId)).filter((n) => n.endsWith('.md')).sort();
+  return fs
+    .readdirSync(path.join(root, 'boards', boardId))
+    .filter((n) => n.endsWith('.md'))
+    .sort();
 }
 
 beforeEach(() => {
@@ -68,7 +71,10 @@ describe('repodoc init / board', () => {
     const again = json('init') as { alreadyInitialized: boolean };
     assert.strictEqual(again.alreadyInitialized, true);
     const boards = json('board', 'list') as Array<{ id: string; cardCount: number }>;
-    assert.deepStrictEqual(boards.map((b) => [b.id, b.cardCount]), [['project-backlog', 0]]);
+    assert.deepStrictEqual(
+      boards.map((b) => [b.id, b.cardCount]),
+      [['project-backlog', 0]],
+    );
   });
 
   test('board create + column add + board show', () => {
@@ -93,20 +99,36 @@ describe('repodoc card', () => {
   });
 
   test('create → list → show round-trips metadata', () => {
-    const created = json('card', 'create', 'project-backlog', 'Ship the CLI', '--priority', 'high', '--labels', 'a,b', '--agent', 'lead') as { id: string; column: string };
+    const created = json(
+      'card',
+      'create',
+      'project-backlog',
+      'Ship the CLI',
+      '--priority',
+      'high',
+      '--labels',
+      'a,b',
+      '--agent',
+      'lead',
+    ) as { id: string; column: string };
     assert.strictEqual(created.id, 'ship-the-cli');
     assert.strictEqual(created.column, 'backlog');
-    const shown = json('card', 'show', 'project-backlog', 'ship-the-cli') as Record<string, unknown>;
-    assert.strictEqual(shown.priority, 'high');
-    assert.deepStrictEqual(shown.labels, ['a', 'b']);
-    assert.strictEqual(shown.agent, 'lead');
+    const shown = json('card', 'show', 'project-backlog', 'ship-the-cli') as Record<
+      string,
+      unknown
+    >;
+    assert.strictEqual(shown['priority'], 'high');
+    assert.deepStrictEqual(shown['labels'], ['a', 'b']);
+    assert.strictEqual(shown['agent'], 'lead');
     const listed = run('card', 'list', 'project-backlog', '--column', 'backlog');
     assert.ok(listed.out.includes('ship-the-cli'));
     assert.strictEqual(run('card', 'list', 'project-backlog', '--column', 'nope').code, 1);
   });
 
   test('create honours --column and refuses an unknown one', () => {
-    const c = json('card', 'create', 'project-backlog', 'Now', '--column', 'doing') as { column: string };
+    const c = json('card', 'create', 'project-backlog', 'Now', '--column', 'doing') as {
+      column: string;
+    };
     assert.strictEqual(c.column, 'doing');
     assert.strictEqual(run('card', 'create', 'project-backlog', 'X', '--column', 'zzz').code, 1);
   });
@@ -115,7 +137,10 @@ describe('repodoc card', () => {
     run('card', 'create', 'project-backlog', 'One');
     run('card', 'create', 'project-backlog', 'Two');
     assert.deepStrictEqual(cardFiles('project-backlog'), ['01-one.md', '02-two.md']);
-    assert.strictEqual(run('card', 'move', 'project-backlog', 'two', 'backlog', '--index', '0').code, 0);
+    assert.strictEqual(
+      run('card', 'move', 'project-backlog', 'two', 'backlog', '--index', '0').code,
+      0,
+    );
     assert.deepStrictEqual(cardFiles('project-backlog'), ['01-two.md', '02-one.md']);
     assert.strictEqual(run('card', 'move', 'project-backlog', 'one', 'doing').code, 0);
     const shown = json('card', 'show', 'project-backlog', 'one') as { column: string };
@@ -126,28 +151,63 @@ describe('repodoc card', () => {
 
   test('update sets and clears reserved keys; validates input', () => {
     run('card', 'create', 'project-backlog', 'W');
-    assert.strictEqual(run('card', 'update', 'project-backlog', 'w', '--live', 'true', '--status', 'wiring', '--progress', '40').code, 0);
+    assert.strictEqual(
+      run(
+        'card',
+        'update',
+        'project-backlog',
+        'w',
+        '--live',
+        'true',
+        '--status',
+        'wiring',
+        '--progress',
+        '40',
+      ).code,
+      0,
+    );
     let c = json('card', 'show', 'project-backlog', 'w') as Record<string, unknown>;
-    assert.strictEqual(c.live, true);
-    assert.strictEqual(c.status, 'wiring');
-    assert.strictEqual(c.progress, 40);
-    assert.strictEqual(run('card', 'update', 'project-backlog', 'w', '--live', 'false', '--status=', '--title', 'Renamed').code, 0);
+    assert.strictEqual(c['live'], true);
+    assert.strictEqual(c['status'], 'wiring');
+    assert.strictEqual(c['progress'], 40);
+    assert.strictEqual(
+      run(
+        'card',
+        'update',
+        'project-backlog',
+        'w',
+        '--live',
+        'false',
+        '--status=',
+        '--title',
+        'Renamed',
+      ).code,
+      0,
+    );
     c = json('card', 'show', 'project-backlog', 'w') as Record<string, unknown>;
-    assert.strictEqual(c.live, undefined);
-    assert.strictEqual(c.status, undefined);
-    assert.strictEqual(c.title, 'Renamed');
+    assert.strictEqual(c['live'], undefined);
+    assert.strictEqual(c['status'], undefined);
+    assert.strictEqual(c['title'], 'Renamed');
     assert.strictEqual(run('card', 'update', 'project-backlog', 'w', '--progress', '250').code, 2);
-    assert.strictEqual(run('card', 'update', 'project-backlog', 'w', '--priority', 'urgent').code, 2);
+    assert.strictEqual(
+      run('card', 'update', 'project-backlog', 'w', '--priority', 'urgent').code,
+      2,
+    );
     assert.strictEqual(run('card', 'update', 'project-backlog', 'w').code, 2);
   });
 
   test('comment appends a journal entry with the author', () => {
     run('card', 'create', 'project-backlog', 'J');
-    assert.strictEqual(run('card', 'comment', 'project-backlog', 'j', 'Did the thing in src/x.ts:3').code, 0);
-    const c = json('card', 'show', 'project-backlog', 'j') as { comments: Array<{ who: string; text: string }> };
+    assert.strictEqual(
+      run('card', 'comment', 'project-backlog', 'j', 'Did the thing in src/x.ts:3').code,
+      0,
+    );
+    const c = json('card', 'show', 'project-backlog', 'j') as {
+      comments: Array<{ who: string; text: string }>;
+    };
     assert.strictEqual(c.comments.length, 1);
-    assert.strictEqual(c.comments[0].who, 'tester');
-    assert.strictEqual(c.comments[0].text, 'Did the thing in src/x.ts:3');
+    assert.strictEqual(c.comments[0]?.who, 'tester');
+    assert.strictEqual(c.comments[0]?.text, 'Did the thing in src/x.ts:3');
   });
 
   test('check toggles a checklist item and rejects out-of-range indexes', () => {
@@ -155,8 +215,13 @@ describe('repodoc card', () => {
     const file = path.join(root, 'boards/project-backlog/01-c.md');
     fs.appendFileSync(file, '\n## Checklist\n\n- [ ] first\n- [ ] second\n');
     assert.strictEqual(run('card', 'check', 'project-backlog', 'c', '1').code, 0);
-    const c = json('card', 'show', 'project-backlog', 'c') as { checklist: Array<{ done: boolean }> };
-    assert.deepStrictEqual(c.checklist.map((i) => i.done), [false, true]);
+    const c = json('card', 'show', 'project-backlog', 'c') as {
+      checklist: Array<{ done: boolean }>;
+    };
+    assert.deepStrictEqual(
+      c.checklist.map((i) => i.done),
+      [false, true],
+    );
     assert.strictEqual(run('card', 'check', 'project-backlog', 'c', '5').code, 1);
   });
 
@@ -165,9 +230,13 @@ describe('repodoc card', () => {
     const first = run('card', 'check-add', 'project-backlog', 'c', 'first item');
     assert.strictEqual(first.code, 0);
     assert.ok(first.out.includes('Added checklist item 0'));
-    const second = json('card', 'check-add', 'project-backlog', 'c', 'second item') as { index: number };
+    const second = json('card', 'check-add', 'project-backlog', 'c', 'second item') as {
+      index: number;
+    };
     assert.strictEqual(second.index, 1);
-    const c = json('card', 'show', 'project-backlog', 'c') as { checklist: Array<{ text: string; done: boolean }> };
+    const c = json('card', 'show', 'project-backlog', 'c') as {
+      checklist: Array<{ text: string; done: boolean }>;
+    };
     assert.deepStrictEqual(c.checklist, [
       { text: 'first item', done: false },
       { text: 'second item', done: false },
@@ -178,9 +247,11 @@ describe('repodoc card', () => {
     assert.strictEqual(run('card', 'check-add', 'project-backlog', 'ghost', 'x').code, 1);
   });
 
-  test('describe sets and clears a card\'s description', () => {
+  test("describe sets and clears a card's description", () => {
     run('card', 'create', 'project-backlog', 'D');
-    const set = json('card', 'describe', 'project-backlog', 'd', 'A useful description.') as { desc: string | null };
+    const set = json('card', 'describe', 'project-backlog', 'd', 'A useful description.') as {
+      desc: string | null;
+    };
     assert.strictEqual(set.desc, 'A useful description.');
     const shown = json('card', 'show', 'project-backlog', 'd') as { desc?: string };
     assert.strictEqual(shown.desc, 'A useful description.');
@@ -213,7 +284,7 @@ describe('repodoc card', () => {
     assert.strictEqual(run('card', 'set', 'project-backlog', 'f', 'unknown', '1').code, 1);
     assert.strictEqual(run('card', 'set', 'project-backlog', 'f', 'estimate', '--clear').code, 0);
     c = json('card', 'show', 'project-backlog', 'f') as { custom: Record<string, unknown> };
-    assert.strictEqual(c.custom.estimate, undefined);
+    assert.strictEqual(c.custom['estimate'], undefined);
   });
 });
 
@@ -235,7 +306,8 @@ describe('repodoc card gates', () => {
               {
                 id: 'tests',
                 script: 'bun test',
-                prompt: 'Run `bun test` from the repo root. Only when it exits 0, record it with gate-pass.',
+                prompt:
+                  'Run `bun test` from the repo root. Only when it exits 0, record it with gate-pass.',
               },
               { id: 'reviewed', field: 'reviewed-by', check: 'nonempty' },
             ],
@@ -255,15 +327,21 @@ describe('repodoc card gates', () => {
     assert.ok(r.out.includes('FAIL  reviewed'));
   });
 
-  test('move refuses failing gates and feeds the agent each gate\'s prompt, then succeeds once satisfied', () => {
+  test("move refuses failing gates and feeds the agent each gate's prompt, then succeeds once satisfied", () => {
     const refused = run('card', 'move', 'b', 'card', 'done');
     assert.strictEqual(refused.code, 1);
     assert.ok(refused.err.includes('2 gates must be satisfied first'));
     assert.ok(refused.err.includes('Run `bun test` from the repo root.'), refused.err);
     // A gate without a prompt gets a generated instruction naming its field/check.
-    assert.ok(refused.err.includes('Set the `reviewed-by` field so that it satisfies `nonempty`'), refused.err);
+    assert.ok(
+      refused.err.includes('Set the `reviewed-by` field so that it satisfies `nonempty`'),
+      refused.err,
+    );
     assert.ok(refused.err.includes('gate-pass'));
-    assert.strictEqual(fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8').includes('column: done'), false);
+    assert.strictEqual(
+      fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8').includes('column: done'),
+      false,
+    );
 
     assert.strictEqual(run('card', 'gate-pass', 'b', 'card', 'tests', '212 pass').code, 0);
     assert.strictEqual(run('card', 'set', 'b', 'card', 'reviewed-by', 'jonathan').code, 0);
@@ -287,16 +365,29 @@ describe('repodoc card gates', () => {
   });
 
   test('board show prints column prompts', () => {
-    assert.ok(run('board', 'show', 'b').out.includes('> Card is done. Set live false and progress 100.'));
+    assert.ok(
+      run('board', 'show', 'b').out.includes('> Card is done. Set live false and progress 100.'),
+    );
   });
 
   test('--override needs a --reason, then records it per failing gate and moves', () => {
     const noReason = run('card', 'move', 'b', 'card', 'done', '--override');
     assert.strictEqual(noReason.code, 2);
     assert.ok(noReason.err.includes('--reason'));
-    assert.ok(!fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8').includes('column: done'));
+    assert.ok(
+      !fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8').includes('column: done'),
+    );
 
-    const r = json('card', 'move', 'b', 'card', 'done', '--override', '--reason', 'hotfix approved by jonathan') as { overridden: string[] };
+    const r = json(
+      'card',
+      'move',
+      'b',
+      'card',
+      'done',
+      '--override',
+      '--reason',
+      'hotfix approved by jonathan',
+    ) as { overridden: string[] };
     assert.deepStrictEqual(r.overridden, ['tests', 'reviewed']);
     const file = fs.readFileSync(path.join(root, 'boards/b/01-card.md'), 'utf8');
     assert.ok(file.includes('column: done'));
@@ -349,22 +440,26 @@ describe('repodoc feature', () => {
     const written = JSON.parse(
       fs.readFileSync(path.join(root, 'features/payments-spec/.config.json'), 'utf8'),
     ) as { columns: Array<{ id: string }> };
-    assert.deepStrictEqual(written.columns.map((c) => c.id), [
-      'proposed',
-      'specified',
-      'implemented',
-      'verified',
-    ]);
+    assert.deepStrictEqual(
+      written.columns.map((c) => c.id),
+      ['proposed', 'specified', 'implemented', 'verified'],
+    );
   });
 
   test('feature list buckets by @status: and filters by --column', () => {
     const all = json('feature', 'list', 'spec') as Array<{ column: string; id: string }>;
-    assert.deepStrictEqual(all.map((r) => [r.column, r.id]), [
-      ['proposed', 'untagged'],
-      ['specified', 'gates'],
-    ]);
+    assert.deepStrictEqual(
+      all.map((r) => [r.column, r.id]),
+      [
+        ['proposed', 'untagged'],
+        ['specified', 'gates'],
+      ],
+    );
     const only = json('feature', 'list', 'spec', '--column', 'specified') as Array<{ id: string }>;
-    assert.deepStrictEqual(only.map((r) => r.id), ['gates']);
+    assert.deepStrictEqual(
+      only.map((r) => r.id),
+      ['gates'],
+    );
     assert.strictEqual(run('feature', 'list', 'spec', '--column', 'nope').code, 1);
     assert.strictEqual(run('feature', 'list', 'nope').code, 1);
   });
@@ -382,7 +477,10 @@ describe('repodoc feature', () => {
       scenarios: Array<{ name: string }>;
     };
     assert.strictEqual(shown.status, 'specified');
-    assert.deepStrictEqual(shown.scenarios.map((s) => s.name), ['The move is refused']);
+    assert.deepStrictEqual(
+      shown.scenarios.map((s) => s.name),
+      ['The move is refused'],
+    );
     assert.strictEqual(run('feature', 'show', 'spec', 'nope').code, 1);
     assert.strictEqual(run('feature', 'show', 'nope', 'gates').code, 1);
   });
@@ -436,12 +534,15 @@ describe('repodoc decision / docs / skill', () => {
     const created = json('decision', 'create', 'Use Bun') as { id: string };
     assert.strictEqual(created.id, '01-use-bun');
     const list = json('decision', 'list') as Array<{ id: string; status: string }>;
-    assert.deepStrictEqual(list.map((d) => [d.id, d.status]), [['01-use-bun', 'Proposed']]);
+    assert.deepStrictEqual(
+      list.map((d) => [d.id, d.status]),
+      [['01-use-bun', 'Proposed']],
+    );
     assert.ok(run('decision', 'show', '01-use-bun').out.includes('# Use Bun'));
     assert.strictEqual(run('decision', 'show', 'zz').code, 1);
   });
 
-  test('status sets a decision\'s status, case-insensitively', () => {
+  test("status sets a decision's status, case-insensitively", () => {
     json('decision', 'create', 'Use Bun');
     const r = run('decision', 'status', '01-use-bun', 'accepted');
     assert.strictEqual(r.code, 0);

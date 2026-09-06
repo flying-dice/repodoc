@@ -1,7 +1,6 @@
-import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {
-  AgentKind,
+  type AgentKind,
   MemFileSystemAdapter,
   NodeFileSystemAdapter,
   RepoDocStore,
@@ -9,11 +8,12 @@ import {
   SkillManager,
   SystemClock,
 } from '@repodoc/core';
-import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
+import * as vscode from 'vscode';
 import { BoardPanel } from './panels/boardPanel';
 import { CardBoardSource, FeatureSetSource } from './panels/boardSource';
-import { WebviewToHostMessage } from './panels/protocol';
 import { MarkdownPanel } from './panels/markdownPanel';
+import type { WebviewToHostMessage } from './panels/protocol';
+import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
 
 /** Public surface returned by {@link activate}, used by e2e tests. */
 export interface RepoDocApi {
@@ -22,7 +22,7 @@ export interface RepoDocApi {
 
 export function activate(context: vscode.ExtensionContext): RepoDocApi {
   const folders = vscode.workspace.workspaceFolders;
-  const root = folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
+  const root = folders?.[0]?.uri.fsPath;
   const fileSystem = root ? new NodeFileSystemAdapter(root) : new MemFileSystemAdapter();
   const store = new RepoDocStore(fileSystem, new SystemClock(), root);
   const skillManager = new SkillManager(fileSystem);
@@ -216,7 +216,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     // the UI cannot do).
     vscode.commands.registerCommand('repodoc.openCardFile', async (arg: unknown): Promise<void> => {
       const node = arg as { kind?: string; boardId?: string; cardId?: string } | undefined;
-      if (!node || node.kind !== 'card' || !node.boardId || !node.cardId) {
+      if (node?.kind !== 'card' || !node.boardId || !node.cardId) {
         return;
       }
       const relPath = new CardBoardSource(store, node.boardId).cardFilePath(node.cardId);
@@ -261,14 +261,17 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     ),
 
     // "Open source" from the Docs tree and the docs reading view.
-    vscode.commands.registerCommand('repodoc.openDocSource', async (arg: unknown): Promise<void> => {
-      const relPath =
-        typeof arg === 'string' ? arg : (arg as { relPath?: string } | undefined)?.relPath;
-      if (!relPath) {
-        return;
-      }
-      await openRepoFile(root, relPath);
-    }),
+    vscode.commands.registerCommand(
+      'repodoc.openDocSource',
+      async (arg: unknown): Promise<void> => {
+        const relPath =
+          typeof arg === 'string' ? arg : (arg as { relPath?: string } | undefined)?.relPath;
+        if (!relPath) {
+          return;
+        }
+        await openRepoFile(root, relPath);
+      },
+    ),
 
     // G-8: change a decision's status without leaving the tree.
     vscode.commands.registerCommand(
@@ -278,10 +281,9 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         if (!id) {
           return;
         }
-        const picked = await vscode.window.showQuickPick(
-          ['Proposed', 'Accepted', 'Superseded'],
-          { placeHolder: 'Decision status' },
-        );
+        const picked = await vscode.window.showQuickPick(['Proposed', 'Accepted', 'Superseded'], {
+          placeHolder: 'Decision status',
+        });
         if (!picked) {
           return;
         }
@@ -304,7 +306,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         prompt: 'Board name',
         placeHolder: 'e.g. Sprint 24',
       });
-      if (!name || !name.trim()) {
+      if (!name?.trim()) {
         return;
       }
       const id = store.createBoard(name.trim());
@@ -316,7 +318,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         prompt: 'Decision title',
         placeHolder: 'e.g. Use PostgreSQL as the primary datastore',
       });
-      if (!title || !title.trim()) {
+      if (!title?.trim()) {
         return;
       }
       const id = store.createDecision(title.trim());
@@ -342,7 +344,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         agent: item.agent,
         label: item.label,
         detail: SKILL_TARGETS[item.agent],
-        description: installed.has(item.agent) ? '(installed)' : undefined,
+        ...(installed.has(item.agent) ? { description: '(installed)' } : {}),
       }));
       const picked = await vscode.window.showQuickPick(items, {
         placeHolder: 'Install the RepoDoc workflow skill for which agent?',
