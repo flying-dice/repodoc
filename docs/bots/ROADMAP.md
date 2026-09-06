@@ -15,9 +15,13 @@ frontmatter, so gates and file formats are enforced for everyone. Decision 09.
 - `card add-checklist` / `card set-desc` so no agent write requires a hand edit.
 - A `--watch`-free `board diff` (what changed since a timestamp) for lead check-ins.
 - Publish the skill file from the CLI's own help so the two never drift.
-- Feature presentation: `Verified` stays a recorded status, never test
-  evidence. Gherkin editing support is the user's own editor extension, not
-  RepoDoc's (GitHub #11, closed as not planned).
+- Managed feature editing (GitHub #11): edit a feature's description and
+  scenarios inside RepoDoc's detail view, persisted to the `.feature` file the
+  way card edits persist to Markdown; the raw source editor stays an escape
+  hatch. Needs a Gherkin writer that preserves every byte it does not own
+  (Decision 10's no-rename, no-pollution rules) and a CLI twin
+  (`feature describe`, `feature scenario-add`). `Verified` stays a recorded
+  status, never test evidence.
 
 Why next: the CLI is the agent surface now; every gap sends an agent back to
 editing files, which is what M1 set out to end.
