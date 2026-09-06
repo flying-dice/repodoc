@@ -51,12 +51,20 @@ export function markdownTitle(content: string, fallbackName: string): string {
 
 /**
  * `base` when it is free, else the first `base-2`, `base-3`, … not in `taken`.
- * How both cards and features de-duplicate a slug derived from a title.
+ * How cards, features, boards and feature sets de-duplicate a slug derived
+ * from a title.
+ *
+ * The comparison is CASE-INSENSITIVE, because the result names a file or a
+ * directory: `Login.feature` and `login.feature` are two entries on Linux but
+ * ONE file on macOS and Windows, so a case-sensitive check handed out a slug
+ * that silently overwrote the existing file there. Comparing lower-cased is
+ * done here, not at each call site, so no caller can forget it.
  */
 export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
+  const lower = new Set([...taken].map((t) => t.toLowerCase()));
   let slug = base;
   let suffix = 2;
-  while (taken.has(slug)) {
+  while (lower.has(slug.toLowerCase())) {
     slug = `${base}-${suffix}`;
     suffix++;
   }

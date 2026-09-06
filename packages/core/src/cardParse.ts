@@ -1,3 +1,4 @@
+import { findDescription } from './cardBody';
 import { parseFrontmatter } from './frontmatter';
 import { markdownTitle, numPrefix, slugFromFileName } from './naming';
 import type {
@@ -98,19 +99,13 @@ export function parseCard(fileName: string, content: string, fields: CustomField
 /**
  * Body text between the title heading and the first `## Checklist` / `## Gates`
  * / `## Comments` heading (whichever comes first) — each terminates the
- * description.
+ * description. The span is measured by {@link findDescription}, the same helper
+ * `replaceDescription` writes through, so reading a description and writing it
+ * straight back is a no-op.
  */
 function extractDescription(body: string): string {
   const lines = body.split('\n');
-  const headingIdx = lines.findIndex((l) => /^#\s+/.test(l));
-  const start = headingIdx === -1 ? 0 : headingIdx + 1;
-  let end = lines.length;
-  for (let i = start; i < lines.length; i++) {
-    if (/^##\s+(checklist|gates|comments)\s*$/i.test(lines[i] ?? '')) {
-      end = i;
-      break;
-    }
-  }
+  const { start, end } = findDescription(lines);
   return lines.slice(start, end).join('\n').trim();
 }
 

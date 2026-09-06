@@ -187,7 +187,7 @@ export interface AddChecklistItemMessage {
   text: string;
 }
 
-/** Replace a card's description (the body above the first `##` section). */
+/** Replace a card's description (the body above `## Checklist` / `## Gates` / `## Comments`). */
 export interface SetDescriptionMessage {
   type: 'setDescription';
   cardId: string;

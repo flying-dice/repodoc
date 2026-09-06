@@ -12,7 +12,9 @@ import { makeStore, required } from './helpers';
 const CONFIG = JSON.stringify({
   name: 'Board',
   columns: [
-    { id: 'todo', name: 'To Do', color: '#000' },
+    // `tests` is declared so evidence may be recorded for it; on `todo`'s ENTER,
+    // where it cannot gate the todo -> done moves exercised below.
+    { id: 'todo', name: 'To Do', color: '#000', enter: [{ id: 'tests', script: 'bun test' }] },
     { id: 'done', name: 'Done', color: '#000' },
   ],
   labels: {},
@@ -34,6 +36,15 @@ const MUTATIONS: Array<[string, (store: ReturnType<typeof makeStore>['store']) =
   ['setCardField', (s) => s.setCardField('b', 'card', 'note', 'hello')],
   ['moveCard', (s) => s.moveCard('b', 'card', 'done', 0)],
   ['moveCardGated', (s) => s.moveCardGated('b', 'card', 'done', 0)],
+  // Text arguments may themselves arrive with CRLF — from a Windows editor, a
+  // clipboard, or a webview. The body is edited in LF and written back with the
+  // file's own endings, so a CR that survives into it comes out as `\r\r\n`.
+  [
+    'setCardDescription (CRLF in the text)',
+    (s) => s.setCardDescription('b', 'card', 'line one\r\nline two'),
+  ],
+  ['addComment (CRLF in the text)', (s) => s.addComment('b', 'card', 'tester', 'one\r\ntwo')],
+  ['addChecklistItem (CRLF in the text)', (s) => s.addChecklistItem('b', 'card', 'one\r\ntwo')],
 ];
 
 /** The single card file in board `b`, whatever it is numbered. */
@@ -74,6 +85,35 @@ describe('store — line endings', () => {
       assert.ok(!readCard(fs).includes('\r'), `${name} must not introduce a CR`);
     });
   }
+
+  test('given an LF card, when CRLF text is written, then no lone CR is left inside the body', () => {
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': CONFIG,
+      'boards/b/01-card.md': LF_CARD,
+    });
+    store.setCardDescription('b', 'card', 'line one\r\nline two');
+    store.addComment('b', 'card', 'tester', 'said one\r\nsaid two');
+    const after = readCard(fs);
+    assert.ok(!after.includes('\r'), `an LF card must stay CR-free, file is:\n${after}`);
+    assert.ok(after.includes('line one\nline two'), 'the paragraph survives as two lines');
+  });
+
+  test('given a CRLF card, when CRLF text is written, then no line ends \\r\\r\\n', () => {
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': CONFIG,
+      'boards/b/01-card.md': CRLF_CARD,
+    });
+    store.setCardDescription('b', 'card', 'line one\r\nline two');
+    store.addComment('b', 'card', 'tester', 'said one\r\nsaid two');
+    const after = readCard(fs);
+    assert.ok(!after.includes('\r\r'), `no doubled CR may appear, file is:\n${after}`);
+    assert.ok(!/[^\r]\n/.test(after), 'every line still ends CRLF');
+    assert.strictEqual(
+      required(store.getBoard('b'), 'board').cards['card']?.desc,
+      'line one\nline two',
+      'the description reads back without a stray CR',
+    );
+  });
 
   test('given a CRLF card, when it is read, then the parsed body and title are CR-free', () => {
     const { store } = makeStore({

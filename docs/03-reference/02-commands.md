@@ -45,6 +45,6 @@ surface offers a route to the underlying file.
 
 ## Live updates
 
-RepoDoc watches the files under `boards/`, `decisions/`, and `docs/`. When those
-files change on disk — whether you edit them, or a coding agent does — the store
+RepoDoc watches the files under `boards/`, `decisions/`, `docs/`, and
+`features/`. When those files change on disk — whether you edit them, or a coding agent does — the store
 is notified and the board and views update without a manual refresh.

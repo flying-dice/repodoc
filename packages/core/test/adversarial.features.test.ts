@@ -42,10 +42,23 @@ describe('parseFeature — adversarial', () => {
     assert.deepStrictEqual(parsed.scenarios, []);
   });
 
-  test('given a file with no Feature line whose tags belong to a scenario, when parsed, then they stay with the scenario', () => {
+  test("given a file with no Feature line, when parsed, then the tags above its first scenario are the file's own", () => {
+    // A move rewrites the `@status:` tag on that line (see the paired store
+    // test below), so the board has to read the file's status from there —
+    // attributing it to the scenario left the board showing a column the file
+    // no longer claimed.
     const parsed = parseFeature('x.feature', '@wip\nScenario: S\n');
-    assert.deepStrictEqual(parsed.tags, []);
-    assert.deepStrictEqual(parsed.scenarios, [{ name: 'S', tags: ['@wip'] }]);
+    assert.deepStrictEqual(parsed.tags, ['@wip']);
+    assert.deepStrictEqual(parsed.scenarios, [{ name: 'S', tags: [] }]);
+  });
+
+  test('given a file with no Feature line, when parsed, then tags BELOW its first scenario stay with their scenario', () => {
+    const parsed = parseFeature('x.feature', '@wip\nScenario: S\n@slow\nScenario: T\n');
+    assert.deepStrictEqual(parsed.tags, ['@wip']);
+    assert.deepStrictEqual(parsed.scenarios, [
+      { name: 'S', tags: [] },
+      { name: 'T', tags: ['@slow'] },
+    ]);
   });
 
   test('given a Feature: line with no text, when parsed, then the title falls back to the file name', () => {
@@ -246,6 +259,29 @@ describe('FeatureStore through the store — adversarial', () => {
     );
   });
 
+  test('given a file whose name differs only in case, when a feature is created, then the slug is suffixed', () => {
+    // `Login.feature` and `login.feature` are one file on macOS and Windows:
+    // handing out `login` there silently overwrites the existing feature.
+    const { fs, store } = makeStore({
+      'features/s/.config.json': SET_CONFIG,
+      'features/s/Login.feature': '@status:done\nFeature: Login\n',
+    });
+    assert.deepStrictEqual(store.createFeature('s', 'Login'), { ok: true, cardId: 'login-2' });
+    assert.strictEqual(
+      required(fs.readFile('features/s/Login.feature'), 'the original file'),
+      '@status:done\nFeature: Login\n',
+    );
+  });
+
+  test('given a set directory that differs only in case, when a set is created, then the id is suffixed', () => {
+    const { fs, store } = makeStore({ 'features/Spec/.config.json': SET_CONFIG });
+    assert.strictEqual(store.createFeatureSet('spec'), 'spec-2');
+    assert.strictEqual(
+      required(fs.readFile('features/Spec/.config.json'), 'the original config'),
+      SET_CONFIG,
+    );
+  });
+
   test('given a title with no ASCII letters, when created, then the fallback slug is used and the title survives', () => {
     const { fs, store } = seed();
     assert.deepStrictEqual(store.createFeature('s', '日本語'), { ok: true, cardId: 'feature' });
@@ -406,6 +442,41 @@ describe('FeatureStore through the store — adversarial', () => {
       '@status:done\njust prose\n',
     );
     assert.strictEqual(required(store.getFeature('s', 'stray'), 'stray record').status, 'done');
+  });
+
+  test('given a Feature-less file whose tag line sits above a scenario, when moved, then the board follows the tag that was written', () => {
+    // The parse half of this contract is asserted above; pairing them is the
+    // point — the tag a move rewrites and the tag the board reads must be the
+    // same line.
+    const { fs, store } = makeStore({
+      'features/s/.config.json': SET_CONFIG,
+      'features/s/stray.feature': '@wip\nScenario: S\n',
+    });
+    assert.deepStrictEqual(store.moveFeature('s', 'stray', 'done'), { ok: true });
+    assert.strictEqual(
+      required(fs.readFile('features/s/stray.feature'), 'stray file'),
+      '@status:done\n@wip\nScenario: S\n',
+    );
+    const record = required(store.getFeature('s', 'stray'), 'stray record');
+    assert.strictEqual(record.status, 'done', 'the board must agree with the tag the move wrote');
+    assert.deepStrictEqual(record.tags, ['@wip'], 'the file keeps its other tag');
+  });
+
+  test('given a @status: tag that belongs to a scenario, when the file is moved, then that tag is left alone', () => {
+    const original = '@wip\nScenario: S\n@status:proposed\nScenario: T\n';
+    const { fs, store } = makeStore({
+      'features/s/.config.json': SET_CONFIG,
+      'features/s/stray.feature': original,
+    });
+    // The board never read the scenario's tag as the file's status, so a move
+    // must not rewrite it: the file gets its own tag line instead.
+    assert.strictEqual(required(store.getFeature('s', 'stray'), 'record').status, 'proposed');
+    assert.deepStrictEqual(store.moveFeature('s', 'stray', 'done'), { ok: true });
+    assert.strictEqual(
+      required(fs.readFile('features/s/stray.feature'), 'stray file'),
+      `@status:done\n${original}`,
+    );
+    assert.strictEqual(required(store.getFeature('s', 'stray'), 'record').status, 'done');
   });
 
   test('given a CRLF feature file, when moved, then the file keeps its CRLF endings', () => {

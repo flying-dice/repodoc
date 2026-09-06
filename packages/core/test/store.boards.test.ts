@@ -77,6 +77,25 @@ describe('store.listBoards', () => {
   });
 });
 
+describe('store.createBoard', () => {
+  test('a name whose slug is already a board directory gets the next free id', () => {
+    // Reusing the id would rewrite the existing board's `.config.json` — its
+    // name, columns, labels and fields — while leaving its cards behind.
+    const { fs, store } = makeStore({ 'boards/team/.config.json': configJson('Team', ['todo']) });
+    assert.strictEqual(store.createBoard('Team'), 'team-2');
+    assert.strictEqual(
+      required(fs.readFile('boards/team/.config.json'), 'the first board config'),
+      configJson('Team', ['todo']),
+      'the existing board is untouched',
+    );
+  });
+
+  test('the id comparison is case-insensitive, since a board id is a directory name', () => {
+    const { store } = makeStore({ 'boards/Team/.config.json': configJson('Team', ['todo']) });
+    assert.strictEqual(store.createBoard('team'), 'team-2');
+  });
+});
+
 describe('store.getBoard', () => {
   test('derives columns from config and orders cards by NN prefix', () => {
     const { store } = makeStore({

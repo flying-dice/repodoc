@@ -20,7 +20,18 @@ import { makeStore, required } from './helpers';
 const CONFIG = JSON.stringify({
   name: 'Board',
   columns: [
-    { id: 'todo', name: 'To Do', color: '#000' },
+    // The gates evidence may be recorded for are declared here: the store
+    // refuses evidence for a gate no column of the board names. They sit on
+    // `todo`'s ENTER so the todo -> done moves below stay ungated.
+    {
+      id: 'todo',
+      name: 'To Do',
+      color: '#000',
+      enter: [
+        { id: 'tests', script: 'bun test' },
+        { id: 'g', script: 'g' },
+      ],
+    },
     { id: 'done', name: 'Done', color: '#000' },
   ],
   labels: {},
@@ -167,6 +178,54 @@ describe('store.setCardField — adversarial', () => {
     store.setCardField('b', 'card', 'nope', 'x');
     store.setCardField('b', 'card', 'note', 42);
     assert.deepStrictEqual(fs.snapshot(), before, 'unknown field and wrong type are both no-ops');
+  });
+});
+
+describe('store frontmatter this parser does not model — adversarial', () => {
+  test('given labels written as a column-0 block sequence, when labels are set, then no dash line is orphaned', () => {
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': CONFIG,
+      'boards/b/01-card.md': '---\ncolumn: todo\nlabels:\n- a\n- b\n---\n# Card\n',
+    });
+    assert.strictEqual(
+      required(store.getBoard('b'), 'board').cards['card']?.labels,
+      undefined,
+      'the block is opaque, so the card claims no labels from it',
+    );
+    store.updateCardMeta('b', 'card', { labels: ['x'] });
+    assert.strictEqual(
+      read(fs),
+      `---\ncolumn: todo\nlabels: [x]\nupdatedAt: ${STAMP}\n---\n# Card\n`,
+    );
+  });
+
+  test('given a column-0 block sequence, when an unrelated key is written, then it survives byte-for-byte', () => {
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': CONFIG,
+      'boards/b/01-card.md': '---\ncolumn: todo\nlabels:\n- a\n- b\n---\n# Card\n',
+    });
+    store.updateCardMeta('b', 'card', { priority: 'high' });
+    assert.strictEqual(
+      read(fs),
+      `---\ncolumn: todo\nlabels:\n- a\n- b\npriority: high\nupdatedAt: ${STAMP}\n---\n# Card\n`,
+    );
+  });
+
+  test('given an inline # comment on a card key, when an unrelated key is written, then the comment stays put', () => {
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': CONFIG,
+      'boards/b/01-card.md': '---\ncolumn: todo\npriority: high # why\n---\n# Card\n',
+    });
+    assert.strictEqual(
+      required(store.getBoard('b'), 'board').cards['card']?.priority,
+      'high',
+      'the comment is not part of the priority',
+    );
+    store.updateCardMeta('b', 'card', { agent: 'dana' });
+    assert.strictEqual(
+      read(fs),
+      `---\ncolumn: todo\npriority: high # why\nagent: dana\nupdatedAt: ${STAMP}\n---\n# Card\n`,
+    );
   });
 });
 

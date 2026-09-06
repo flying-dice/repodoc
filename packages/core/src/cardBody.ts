@@ -136,23 +136,46 @@ export function appendChecklistLine(body: string, text: string): string {
 }
 
 /**
- * Replaces the body text between the `# ` title line and the first `## `
- * heading (or end of body) with `text`, trimmed and surrounded by a single
- * blank line on each side. A body with no `# ` heading treats position 0 as
- * the start of the description. Empty `text` removes the description entirely.
+ * The ONE heading that ends a card's description: `## Checklist`, `## Gates` or
+ * `## Comments`. Any other `## ` heading a card carries — `## Sub`, `## Notes`
+ * — is part of the description.
+ *
+ * The reader ({@link findDescription}, via `cardParse.extractDescription`) and
+ * the writer ({@link replaceDescription}) MUST agree on it: when the writer
+ * stops earlier than the reader, `describe` writes back the text `show` handed
+ * out and the sections between the two boundaries are duplicated on every save.
  */
-export function replaceDescription(body: string, text: string): string {
-  const clean = text.trim();
-  const lines = body.split('\n');
+export const DESCRIPTION_END_RE = /^##\s+(checklist|gates|comments)\s*$/i;
+
+/**
+ * The line span of a body's description: from just after the `# ` title line
+ * (or line 0 when the body has no title) up to the first
+ * {@link DESCRIPTION_END_RE} heading, or the end of the body.
+ */
+export function findDescription(lines: string[]): { start: number; end: number } {
   const titleIdx = lines.findIndex((l) => /^#\s+/.test(l));
   const start = titleIdx === -1 ? 0 : titleIdx + 1;
   let end = lines.length;
   for (let i = start; i < lines.length; i++) {
-    if (/^##\s+/.test(lines[i] ?? '')) {
+    if (DESCRIPTION_END_RE.test(lines[i] ?? '')) {
       end = i;
       break;
     }
   }
+  return { start, end };
+}
+
+/**
+ * Replaces the body text between the `# ` title line and the first
+ * `## Checklist` / `## Gates` / `## Comments` heading (or end of body) with
+ * `text`, trimmed and surrounded by a single blank line on each side. A body
+ * with no `# ` heading treats position 0 as the start of the description.
+ * Empty `text` removes the description entirely.
+ */
+export function replaceDescription(body: string, text: string): string {
+  const clean = text.trim();
+  const lines = body.split('\n');
+  const { start, end } = findDescription(lines);
   const before = lines.slice(0, start);
   const after = lines.slice(end);
   const middle = clean ? clean.split('\n') : [];
@@ -171,7 +194,8 @@ export function replaceDescription(body: string, text: string): string {
   return parts.join('\n');
 }
 
-const GATE_SEPARATOR = ' — ';
+/** What separates a gate id from its note on an evidence line. */
+export const GATE_SEPARATOR = ' — ';
 
 /**
  * Inserts or replaces a done `- [x] <gateId> — <note>` line in the body's

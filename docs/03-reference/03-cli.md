@@ -37,12 +37,12 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `card create <board> <title> [--column <id>] [--priority p] [--labels a,b] [--agent name]` | New card; first column unless `--column`. Prints the new card id (its slug). |
 | `card move <board> <card> <column> [--index n] [--override --reason <why>]` | Move to the bottom of a column (or `--index`). Refuses when gates fail and prints each failing gate's `prompt`; on success prints the target column's `prompt`. `--override` needs a `--reason`, recorded per overridden gate as the board does. |
 | `card gates <board> <card> <column>` | Evaluate the exit/enter gates for that move, with each failing gate's prompt. Exit `1` while any fails. |
-| `card gate-pass <board> <card> <gate> <result>` | Record `- [x] <gate> — <result> (<who>, <time>)` under `## Gates`. Only after a real green run. |
+| `card gate-pass <board> <card> <gate> <result>` | Record `- [x] <gate> — <result> (<who>, <time>)` under `## Gates`. Only after a real green run. `<gate>` must be a gate one of the board's columns declares. |
 | `card comment <board> <card> <text>` | Append a journal entry to `## Comments`. |
 | `card update <board> <card> [--title] [--agent] [--live] [--status] [--progress] [--priority] [--labels]` | Set reserved metadata. Pass `""` to remove a key. |
 | `card check <board> <card> <index>` | Toggle a checklist item (0-based, as shown by `card show`). |
 | `card check-add <board> <card> <text>` | Append a new `## Checklist` item (creating the section if absent). Prints the new item's index. |
-| `card describe <board> <card> <text>` | Set the card's description (the body between the title and its first `##` section). Pass `""` to clear it. |
+| `card describe <board> <card> <text>` | Set the card's description (the body between the title and its first `## Checklist` / `## Gates` / `## Comments` heading — any other `##` heading is part of the description). Pass `""` to clear it. |
 | `card set <board> <card> <field> [value] [--clear]` | Set a board-defined custom field; values are typed per the field def, multiselects comma-separated. |
 | `feature sets` | Feature sets with feature counts. |
 | `feature set-create <name>` | New feature set with the default specification columns (`proposed`, `specified`, `implemented`, `verified`). |

@@ -235,6 +235,15 @@ export const COMMANDS: Command[] = [
       const index = intFlag(args.flags, 'index') ?? Number.MAX_SAFE_INTEGER;
       const override = args.flags['override'] === true;
       const reason = stringFlag(args.flags, 'reason')?.trim() ?? '';
+      // Checked BEFORE the store, not only when a gate blocks: `--override`
+      // with no reason is a malformed invocation whether or not this particular
+      // move happens to be gated, and the caller should hear the same thing
+      // either way.
+      if (override && !reason) {
+        throw new UsageError(
+          '--override requires --reason <why> (recorded on the card next to each overridden gate)',
+        );
+      }
       // The gate policy has one owner in core, so a refused move never leaves an
       // override behind and the webview cannot drift from the CLI.
       const moved = ctx.store.moveCardGated(
@@ -242,15 +251,10 @@ export const COMMANDS: Command[] = [
         cardId,
         toColumn,
         index,
-        override && reason ? { override: { who: ctx.who, reason } } : undefined,
+        override ? { override: { who: ctx.who, reason } } : undefined,
       );
       if (!moved.ok) {
         if ('blocked' in moved) {
-          if (override) {
-            throw new UsageError(
-              '--override requires --reason <why> (recorded on the card next to each overridden gate)',
-            );
-          }
           throw new CommandError(refusalText(cardId, toColumn, moved.blocked));
         }
         throw new CommandError(storeErrorMessage(moved.error));
@@ -305,6 +309,15 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [boardId, cardId, gateId, result] = need(args, ['board', 'card', 'gate', 'result']);
       requireCard(ctx, boardId, cardId);
+      // Evidence for a gate no column declares is evidence nothing will ever
+      // read, and an id carrying whitespace or the ` — ` separator would forge
+      // extra lines under `## Gates`. Refuse both, naming the ids that exist.
+      if (!ctx.store.isRecordableGate(boardId, gateId)) {
+        const declared = ctx.store.boardGateIds(boardId);
+        throw new CommandError(
+          `unknown gate ${JSON.stringify(gateId)}; gates: ${declared.length ? declared.join(', ') : '(none declared on this board)'}`,
+        );
+      }
       if (!ctx.store.recordGateEvidence(boardId, cardId, gateId, result, ctx.who)) {
         throw new UsageError('card gate-pass: <result> must not be empty');
       }
@@ -357,6 +370,10 @@ export const COMMANDS: Command[] = [
     run(ctx, args, out): void {
       const [boardId, cardId, idx] = need(args, ['board', 'card', 'item-index']);
       const { card } = requireCard(ctx, boardId, cardId);
+      if (idx.trim() === '') {
+        // `Number('')` is 0, so a blank index used to toggle the first item.
+        throw new UsageError('card check: <item-index> must not be empty');
+      }
       const i = Number(idx);
       const count = card.checklist?.length ?? 0;
       if (!Number.isInteger(i) || i < 0 || i >= count) {
@@ -392,7 +409,7 @@ export const COMMANDS: Command[] = [
     name: 'describe',
     usage: 'card describe <board> <card> <text>',
     summary:
-      'Set the card\'s description (the body between the title and its first ## section). Pass "" to clear it.',
+      'Set the card\'s description (the body between the title and its first ## Checklist / ## Gates / ## Comments section). Pass "" to clear it.',
     run(ctx, args, out): void {
       const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
       requireCard(ctx, boardId, cardId);
@@ -915,7 +932,9 @@ function metaPatch(args: ParsedArgs): CardMetaPatch {
 function parseFieldValue(type: string, raw: string): CustomFieldValue {
   switch (type) {
     case 'number': {
-      const n = Number(raw);
+      // `Number('')` and `Number('  ')` are both 0: a blank value used to write
+      // a real zero into the field. It is a malformed invocation, not a zero.
+      const n = raw.trim() === '' ? Number.NaN : Number(raw);
       if (!Number.isFinite(n)) {
         throw new UsageError(`field expects a number, got "${raw}"`);
       }

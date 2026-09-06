@@ -117,6 +117,71 @@ describe('frontmatter.parse — opaque entries', () => {
     assert.strictEqual(serializeFrontmatter(parsed.data, parsed.body, parsed.raw), text);
   });
 
+  test('a block sequence at column 0 belongs to the key above it', () => {
+    // YAML allows an unindented `- item` list under a key. Reading those lines
+    // as unrelated chunks left `labels: [x]` sitting above orphaned `- a` lines
+    // the next parse could not make sense of.
+    const text = '---\ncolumn: todo\nlabels:\n- a\n- b\npriority: high\n---\nbody\n';
+    const parsed = parseFrontmatter(text);
+    assert.deepStrictEqual(
+      parsed.data,
+      { column: 'todo', priority: 'high' },
+      'the block is opaque: no `labels` value is invented for it',
+    );
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      text,
+      'a write that does not touch labels keeps the block byte-for-byte',
+    );
+  });
+
+  test('setting a key whose block sequence sits at column 0 replaces the whole block', () => {
+    const parsed = parseFrontmatter('---\nlabels:\n- a\n- b\npriority: high\n---\nbody\n');
+    parsed.data['labels'] = ['x'];
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      '---\nlabels: [x]\npriority: high\n---\nbody\n',
+      'no dash line may be left orphaned under the rewritten key',
+    );
+  });
+
+  test('a `- ` line under a key that HAS a value is still an opaque chunk of its own', () => {
+    // Only an empty value can own an unindented sequence; `status: Proposed`
+    // followed by a dash line is two unrelated things, and both survive.
+    const text = '---\nstatus: Proposed\n- stray\n---\nbody\n';
+    const parsed = parseFrontmatter(text);
+    assert.deepStrictEqual(parsed.data, { status: 'Proposed' });
+    assert.strictEqual(serializeFrontmatter(parsed.data, parsed.body, parsed.raw), text);
+  });
+
+  test('an inline # comment ends the value and survives an untouched round-trip', () => {
+    const text = '---\npriority: high # why\nlabels: [a, b] # and why not\n---\nbody\n';
+    const parsed = parseFrontmatter(text);
+    assert.strictEqual(parsed.data['priority'], 'high');
+    assert.deepStrictEqual(parsed.data['labels'], ['a', 'b']);
+    assert.strictEqual(
+      serializeFrontmatter(parsed.data, parsed.body, parsed.raw),
+      text,
+      'an unchanged pair keeps its line, comment and all',
+    );
+  });
+
+  test('a # that is quoted, bracketed or starts the value is part of the value', () => {
+    const { data } = parseFrontmatter(
+      ['---', 'a: "keep # this"', 'b: [x #y, z]', 'c: #fff', 'd: plain#hash', '---', ''].join('\n'),
+    );
+    assert.strictEqual(data['a'], 'keep # this');
+    assert.deepStrictEqual(data['b'], ['x #y', 'z']);
+    assert.strictEqual(data['c'], '#fff', 'a value that opens with # is not a comment');
+    assert.strictEqual(data['d'], 'plain#hash', 'only a # after whitespace starts a comment');
+  });
+
+  test('a value carrying a # is quoted on write, so it reads back whole', () => {
+    const out = serializeFrontmatter({ status: 'fixing bug #12' }, 'body\n');
+    assert.strictEqual(out, '---\nstatus: "fixing bug #12"\n---\nbody\n');
+    assert.strictEqual(parseFrontmatter(out).data['status'], 'fixing bug #12');
+  });
+
   test('an untouched value keeps its exact line; a changed one is rewritten', () => {
     const parsed = parseFrontmatter('---\nowner: "dana"\nn:   7\n---\nbody\n');
     parsed.data['n'] = 8;

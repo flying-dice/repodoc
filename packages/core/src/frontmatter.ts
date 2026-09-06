@@ -5,10 +5,13 @@
  * quoted strings, numbers, booleans, and inline string arrays `[a, b]`. Those
  * are the only values RepoDoc reads or writes.
  *
- * Everything else in the block — a key with indented continuation lines (a YAML
- * block list or nested map), `#` comments, blank lines, malformed lines — is
- * kept as an OPAQUE chunk and re-emitted byte-for-byte, so editing a card never
- * destroys frontmatter this parser does not model. {@link parseFrontmatter}
+ * A trailing ` # comment` after a scalar is a comment, not part of the value.
+ *
+ * Everything else in the block — a key whose value continues on the lines below
+ * it (a YAML block list, indented or at column 0, or a nested map), whole-line
+ * `#` comments, blank lines, malformed lines — is kept as an OPAQUE chunk and
+ * re-emitted byte-for-byte, so editing a card never destroys frontmatter this
+ * parser does not model. {@link parseFrontmatter}
  * hands those chunks back as `raw`; pass them to {@link serializeFrontmatter} to
  * preserve them. A caller writing a fresh file simply omits `raw`.
  *
@@ -21,8 +24,10 @@
 /**
  * One entry of a frontmatter block, in file order.
  *  - `pair`   — a `key: value` line this module understands.
- *  - `block`  — a key whose value continues on indented lines; opaque, but it
- *               owns its key so nothing appends a second line for it.
+ *  - `block`  — a key whose value continues on the lines below it (indented, or
+ *               a `- item` sequence at column 0); opaque, but it owns its key,
+ *               so setting that key replaces the WHOLE block and nothing is
+ *               left orphaned under a rewritten line.
  *  - `opaque` — comments, blank lines, malformed lines: emitted verbatim.
  */
 export type FrontmatterEntry =
@@ -70,10 +75,20 @@ export function parseFrontmatter(text: string): Frontmatter {
     }
     // Indented non-blank lines under a key are its value (a block sequence, a
     // nested map, a folded scalar). Keep the whole group verbatim.
+    //
+    // A key with an EMPTY value also owns the `- item` lines under it, even at
+    // column 0 — YAML allows an unindented block sequence, and reading those
+    // lines as unrelated opaque chunks left them stranded below the rewritten
+    // key (`labels: [x]` followed by orphaned `- a` lines).
     const group = [line];
+    const ownsBlockSequence = line.slice(line.indexOf(':') + 1).trim() === '';
     let j = i + 1;
-    while (j < closing && isContinuation(lines[j] ?? '')) {
-      group.push(lines[j] ?? '');
+    while (j < closing) {
+      const next = lines[j] ?? '';
+      if (!isContinuation(next) && !(ownsBlockSequence && isBlockSequenceItem(next))) {
+        break;
+      }
+      group.push(next);
       j++;
     }
     sawKey = true;
@@ -168,12 +183,18 @@ function isContinuation(line: string): boolean {
   return /^[ \t]+\S/.test(line);
 }
 
+/** A `- item` line at column 0 — an unindented YAML block-sequence entry. */
+function isBlockSequenceItem(line: string): boolean {
+  return /^-(?:[ \t]|$)/.test(line);
+}
+
 /** Whether `data` carries a writable value for `key` (absent/undefined = no). */
 function hasValue(data: Record<string, unknown>, key: string): boolean {
   return key in data && data[key] !== undefined;
 }
 
-function parseValue(raw: string): unknown {
+function parseValue(text: string): unknown {
+  const raw = stripInlineComment(text);
   if (raw === '') {
     return '';
   }
@@ -195,6 +216,41 @@ function parseValue(raw: string): unknown {
   }
   if (/^-?\d+(\.\d+)?$/.test(raw)) {
     return Number(raw);
+  }
+  return raw;
+}
+
+/**
+ * The value with an unquoted trailing ` # comment` cut off. YAML ends a scalar
+ * at a `#` that follows whitespace, so `priority: high # why` is the value
+ * `high`; keeping the comment made it part of the priority, and a card that
+ * merely round-tripped could be written back with the comment inside the value.
+ *
+ * A `#` inside quotes, inside an inline `[…]` array, or at the very start of
+ * the value (`color: #fff`) is part of the value — only a ` #` suffix is a
+ * comment. The comment itself is not lost: an unchanged pair keeps its original
+ * line byte-for-byte (see {@link serializeFrontmatter}).
+ */
+function stripInlineComment(raw: string): string {
+  let quote: string | null = null;
+  let depth = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (quote !== null) {
+      if (ch === quote && raw[i - 1] !== '\\') {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '[') {
+      depth++;
+    } else if (ch === ']' && depth > 0) {
+      depth--;
+    } else if (ch === '#' && depth === 0 && i > 0 && /[ \t]/.test(raw[i - 1] ?? '')) {
+      return raw.slice(0, i).trimEnd();
+    }
   }
   return raw;
 }
@@ -267,6 +323,11 @@ function needsQuote(s: string, inArray: boolean): boolean {
     return true;
   }
   if (/^[["'#]/.test(s)) {
+    return true;
+  }
+  // ` #` starts a comment on re-read, so an unquoted value carrying one would
+  // come back truncated: `status: fixing bug #12` -> `fixing bug`.
+  if (/[ \t]#/.test(s)) {
     return true;
   }
   // Splitting on the first colon means a colon in the value is safe, but commas

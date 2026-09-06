@@ -26,6 +26,7 @@ import {
 import { detectEol } from './eol';
 import {
   featureIdFromFileName,
+  featureTagRegionEnd,
   parseFeature,
   STATUS_TAG_PREFIX,
   statusFromTags,
@@ -131,9 +132,14 @@ export class FeatureStore {
     return this.list(setId).find((f) => f.id === featureId);
   }
 
-  /** Writes a new set config and returns its id. Does not fire events. */
+  /**
+   * Writes a new set config and returns its id. Does not fire events. The id is
+   * unique among the existing set directories, compared case-insensitively:
+   * `features/Login/` and `features/login/` are one directory on macOS and
+   * Windows, where the second config would silently replace the first.
+   */
   createSet(name: string): string {
-    const id = slugify(name);
+    const id = uniqueSlug(slugify(name), new Set(this.setDirNames()));
     const config: BoardConfig = {
       name: name.trim() || titleCase(id),
       columns: defaultFeatureColumns(),
@@ -209,6 +215,14 @@ export class FeatureStore {
     return fileName ? `features/${setId}/${fileName}` : undefined;
   }
 
+  /** Every `features/<id>/` directory name, ignoring dot-directories. */
+  private setDirNames(): string[] {
+    return this.fs
+      .listDir('features')
+      .filter((e) => e.kind === 'dir' && !e.name.startsWith('.'))
+      .map((e) => e.name);
+  }
+
   private featureFileNames(setId: string): string[] {
     return this.fs
       .listDir(`features/${setId}`)
@@ -271,11 +285,16 @@ function toCard(record: FeatureRecord): Card {
  * token is replaced where it stands; when there is none, a tag line is inserted
  * immediately above the `Feature:` line (or at the top of a file that has no
  * `Feature:` line). Pure — every other byte is preserved.
+ *
+ * Only the file's OWN tag region is considered — {@link featureTagRegionEnd},
+ * the region {@link parseFeature} reads the feature's tags from. A `@status:`
+ * tag below it belongs to a scenario, and rewriting one there would move a
+ * feature the board never showed in that column.
  */
 export function writeStatusTag(content: string, columnId: string): string {
   const lines = content.split('\n');
   const featureIdx = lines.findIndex((l) => /^\s*Feature:/.test(l));
-  const end = featureIdx === -1 ? lines.length : featureIdx;
+  const end = featureTagRegionEnd(lines);
   for (let i = 0; i < end; i++) {
     const line = lines[i];
     if (line === undefined || !/^\s*@/.test(line) || !line.includes(STATUS_TAG_PREFIX)) {

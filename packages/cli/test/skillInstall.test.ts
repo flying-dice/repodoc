@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { SKILL_MD, SKILL_TARGETS } from '../../core/src/index';
 import { runCli } from '../src/cli';
 
 let root: string;
@@ -39,5 +40,26 @@ describe('skill install argument guard', () => {
   test('a real agent kind still installs', () => {
     assert.strictEqual(run('skill', 'install', 'opencode').code, 0);
     assert.ok(fs.existsSync(path.join(root, '.opencode/skill/repodoc-workflow/SKILL.md')));
+  });
+
+  test('each agent kind writes the canonical skill file at its own path', () => {
+    // Existing coverage only asserted that a file appeared; an installer that
+    // wrote an empty file (or the wrong agent's path) passed it.
+    for (const [kind, target] of Object.entries(SKILL_TARGETS)) {
+      assert.strictEqual(run('skill', 'install', kind).code, 0, kind);
+      assert.strictEqual(
+        fs.readFileSync(path.join(root, target), 'utf8'),
+        SKILL_MD,
+        `${kind} must install the canonical SKILL.md at ${target}`,
+      );
+    }
+  });
+
+  test('re-installing over a drifted file restores the canonical content', () => {
+    const target = path.join(root, SKILL_TARGETS.claude);
+    assert.strictEqual(run('skill', 'install', 'claude').code, 0);
+    fs.writeFileSync(target, '# hand-edited\n');
+    assert.strictEqual(run('skill', 'install', 'claude').code, 0);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), SKILL_MD);
   });
 });

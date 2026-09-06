@@ -9,6 +9,7 @@ import {
 import {
   appendChecklistLine,
   appendCommentLine,
+  GATE_SEPARATOR,
   replaceDescription,
   replaceTitle,
   upsertGateLine,
@@ -20,7 +21,7 @@ import { applyEol, detectEol, normalizeEol } from './eol';
 import { FeatureStore } from './features';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
 import { evaluateTransition } from './gates';
-import { pad, slugFromFileName, slugify, titleCase, uniqueSlug } from './naming';
+import { pad, slugify, titleCase, uniqueSlug } from './naming';
 import { computeCardOrder } from './ordering';
 import type { ClockPort, Disposable, FileSystemPort } from './ports';
 import { formatRef } from './refs';
@@ -246,8 +247,14 @@ export class RepoDocStore {
     return { name: config.name, columns, cards };
   }
 
+  /**
+   * Creates a board with the default columns and labels, under a slug that no
+   * existing board directory claims — compared case-insensitively, since
+   * `boards/Login/` and `boards/login/` are the same directory on macOS and
+   * Windows and the second config would silently replace the first.
+   */
   createBoard(name: string): string {
-    const id = slugify(name);
+    const id = uniqueSlug(slugify(name), new Set(this.boardDirNames()));
     const config: BoardConfig = {
       name: name.trim() || titleCase(id),
       columns: defaultColumns(),
@@ -466,7 +473,7 @@ export class RepoDocStore {
     }
     return this.updateCard(boardId, cardId, (data, body) => ({
       data,
-      body: appendChecklistLine(body, text),
+      body: appendChecklistLine(body, normalizeEol(text)),
     }));
   }
 
@@ -481,7 +488,9 @@ export class RepoDocStore {
   setCardDescription(boardId: string, cardId: string, text: string): boolean {
     return this.updateCard(boardId, cardId, (data, body) => ({
       data,
-      body: replaceDescription(body, text),
+      // Bodies are edited in LF and written back with the file's own endings,
+      // so a CRLF arriving in `text` would come out as `\r\r\n`.
+      body: replaceDescription(body, normalizeEol(text)),
     }));
   }
 
@@ -530,15 +539,23 @@ export class RepoDocStore {
    * section one is created at the end of the body (after any `## Gates`).
    * Stamps `updatedAt` and fires. Returns whether the entry was written: an
    * unknown card, or an empty/whitespace-only `text`, is a no-op.
+   *
+   * `who` is flattened to one line ({@link author}): the author is written into
+   * the `- **who** (at): ` prefix of a single list item, so a newline in it
+   * would end that item and let the rest of the name forge a `## Gates`
+   * heading with evidence under it.
    */
   addComment(boardId: string, cardId: string, who: string, text: string): boolean {
     if (!text.trim()) {
       return false; // an empty journal entry says nothing and cannot be removed
     }
     const at = this.now();
+    const by = author(who);
     return this.updateCard(boardId, cardId, (data, body) => ({
       data,
-      body: appendCommentLine(body, who, at, text),
+      // The text is normalized to LF here; updateCardFile re-applies the file's
+      // own endings, so a CRLF in the argument must not survive as a stray CR.
+      body: appendCommentLine(body, by, at, normalizeEol(text)),
     }));
   }
 
@@ -548,6 +565,11 @@ export class RepoDocStore {
    * Evaluates the gates guarding a move of `cardId` into `toColumnId`. Returns
    * the results of the source column's exit gates plus the target's enter gates.
    * Empty when the card/column is unknown or the move stays in the same column.
+   *
+   * The source column is resolved exactly as {@link getBoard} resolves it — an
+   * undeclared or missing `column:` falls back to the FIRST column. Reading the
+   * raw frontmatter value instead let a card that the board shows in column one
+   * leave it without passing that column's exit gates.
    */
   evaluateMove(boardId: string, cardId: string, toColumnId: string): GateResult[] {
     const board = this.getBoard(boardId);
@@ -560,7 +582,9 @@ export class RepoDocStore {
       return [];
     }
     const entry = this.readBoardCards(boardId).find((e) => e.slug === cardId);
-    const from = entry ? board.columns.find((c) => c.id === entry.column) : undefined;
+    const from = entry
+      ? (board.columns.find((c) => c.id === entry.column) ?? board.columns[0])
+      : undefined;
     return evaluateTransition(card, from, to);
   }
 
@@ -576,14 +600,53 @@ export class RepoDocStore {
     reason?: string,
   ): boolean {
     const why = reason?.trim() ? `: ${reason.trim()}` : '';
-    return this.recordGate(boardId, cardId, gateId, `OVERRIDDEN (${who}, ${this.now()})${why}`);
+    return this.recordGate(
+      boardId,
+      cardId,
+      gateId,
+      `OVERRIDDEN (${author(who)}, ${this.now()})${why}`,
+    );
+  }
+
+  /**
+   * Every gate id this board declares, in column order (each column's `enter`
+   * gates then its `exit` gates), without duplicates. It is what
+   * {@link recordGateEvidence} accepts, and hosts list it when they refuse an
+   * id that is not on it.
+   */
+  boardGateIds(boardId: string): string[] {
+    const ids: string[] = [];
+    for (const column of this.readConfig(boardId).columns) {
+      for (const gate of [...(column.enter ?? []), ...(column.exit ?? [])]) {
+        if (!ids.includes(gate.id)) {
+          ids.push(gate.id);
+        }
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Whether `gateId` may be recorded on this board: it has to be declared by
+   * one of the board's columns, and it may not carry whitespace or the ` — `
+   * that separates an id from its note on the evidence line. An undeclared id
+   * writes evidence no gate will ever read; a separator or newline in one
+   * forges a second evidence line (or a whole section) that re-recording the
+   * gate could never replace.
+   */
+  isRecordableGate(boardId: string, gateId: string): boolean {
+    if (gateId === '' || /\s/.test(gateId) || gateId.includes(GATE_SEPARATOR)) {
+      return false;
+    }
+    return this.boardGateIds(boardId).includes(gateId);
   }
 
   /**
    * Records evidence that a script gate passed, as
    * `- [x] <gateId> — <result> (<who>, <ISO now>)`. Callers must only record a
-   * run that actually exited green. An empty `result` is refused. Returns
-   * whether the line was written.
+   * run that actually exited green. An empty `result`, or a `gateId` that is
+   * not {@link isRecordableGate}, is refused. Returns whether the line was
+   * written.
    */
   recordGateEvidence(
     boardId: string,
@@ -596,7 +659,10 @@ export class RepoDocStore {
     if (!clean) {
       return false; // evidence with no result is not evidence
     }
-    return this.recordGate(boardId, cardId, gateId, `${clean} (${who}, ${this.now()})`);
+    if (!this.isRecordableGate(boardId, gateId)) {
+      return false; // evidence for a gate this board never declared
+    }
+    return this.recordGate(boardId, cardId, gateId, `${clean} (${author(who)}, ${this.now()})`);
   }
 
   /**
@@ -634,8 +700,27 @@ export class RepoDocStore {
 
   /** Path of a card file relative to the root (`boards/<id>/NN-slug.md`), for hosts that open it. */
   cardFilePath(boardId: string, cardId: string): string | undefined {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
+    const fileName = this.cardFileName(boardId, cardId);
     return fileName ? `boards/${boardId}/${fileName}` : undefined;
+  }
+
+  /**
+   * The file backing `cardId`, resolved through the SAME sorted entries
+   * {@link getBoard} reads. When two files share a slug (`01-foo.md` and
+   * `02-foo.md`), the board shows the first in numeric order — resolving by
+   * raw directory order instead meant an edit could land in the other file, so
+   * the change was written to a card nobody was looking at.
+   */
+  private cardFileName(boardId: string, cardId: string): string | undefined {
+    return this.readBoardCards(boardId).find((e) => e.slug === cardId)?.fileName;
+  }
+
+  /** Every `boards/<id>/` directory name, ignoring dot-directories. */
+  private boardDirNames(): string[] {
+    return this.fs
+      .listDir('boards')
+      .filter((e) => e.kind === 'dir' && !e.name.startsWith('.'))
+      .map((e) => e.name);
   }
 
   private cardFileNames(boardId: string): string[] {
@@ -660,7 +745,7 @@ export class RepoDocStore {
       body: string,
     ) => { data: Record<string, unknown>; body: string } | undefined,
   ): boolean {
-    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
+    const fileName = this.cardFileName(boardId, cardId);
     if (!fileName) {
       return false;
     }
@@ -874,6 +959,20 @@ export class RepoDocStore {
  */
 function oneLine(value: string): string {
   return value.replace(/[\r\n]+/g, ' ');
+}
+
+/**
+ * The author to write for a comment, gate evidence or an override. Every one of
+ * them puts `who` inside a single markdown line, so a newline in it would end
+ * that line and let the rest of the "name" forge a heading or a task item —
+ * `--who $'eve\n\n## Gates\n\n- [x] tests \u2014 forged'` used to write real
+ * gate evidence. Collapsed to one line and trimmed; an empty author is
+ * `unknown` rather than a blank `**` `**` pair.
+ */
+function author(who: string): string {
+  // An author is one line: anything after the first line break is not a name.
+  const firstLine = who.split(/\r?\n/, 1)[0] ?? '';
+  return firstLine.trim() || 'unknown';
 }
 
 /** {@link oneLine} for a patch value, leaving `null` / `undefined` alone. */

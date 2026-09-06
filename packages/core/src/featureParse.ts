@@ -34,11 +34,34 @@ const SCENARIO_KEYWORD = /^(Scenario Outline|Scenario Template|Scenario|Example)
 const OTHER_KEYWORD = /^(Background|Rule|Examples|Scenarios):/;
 
 /**
+ * Index of the line where a file's OWN tag lines stop: the `Feature:` line when
+ * there is one, else the first scenario/`Rule:`/`Background:` line, else the
+ * end of the file. Tags ABOVE it belong to the file (its `@status:` among
+ * them); tags below it belong to the scenario underneath them.
+ *
+ * {@link parseFeature} and `writeStatusTag` both measure the region here, so
+ * the tag the board reads is always the tag a move rewrites. A file with no
+ * `Feature:` line used to hand its first tag line to the scenario below it,
+ * while a move happily rewrote that same line — the board then showed a column
+ * the file did not claim.
+ */
+export function featureTagRegionEnd(lines: readonly string[]): number {
+  const featureIdx = lines.findIndex((l) => FEATURE_KEYWORD.test(l.trim()));
+  if (featureIdx !== -1) {
+    return featureIdx;
+  }
+  const keywordIdx = lines.findIndex(
+    (l) => SCENARIO_KEYWORD.test(l.trim()) || OTHER_KEYWORD.test(l.trim()),
+  );
+  return keywordIdx === -1 ? lines.length : keywordIdx;
+}
+
+/**
  * Parses one `.feature` file. `fileName` is used only as the title fallback for
  * a file with no `Feature:` line — such a file still parses so a stray feature
- * is never invisible on the board, and the tags it declares (its `@status:`
- * among them) still count as the feature's own, so the board agrees with the
- * tag a move would rewrite.
+ * is never invisible on the board, and the tags it declares before its first
+ * scenario (its `@status:` among them) still count as the feature's own, so the
+ * board agrees with the tag a move would rewrite.
  */
 export function parseFeature(fileName: string, content: string): ParsedFeature {
   const parsed: ParsedFeature = {
@@ -53,8 +76,11 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
   let inDescription = false;
   const descriptionLines: string[] = [];
 
-  for (const raw of content.split('\n')) {
-    const line = raw.trim();
+  const lines = content.split('\n');
+  const tagRegionEnd = featureTagRegionEnd(lines);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = (lines[i] ?? '').trim();
     if (line === '' || line.startsWith('#')) {
       // Blank lines and comments are transparent: they neither detach pending
       // tags from the keyword below them nor end a description.
@@ -64,7 +90,11 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
       continue;
     }
     if (line.startsWith('@')) {
-      pendingTags = pendingTags.concat(tagsOnLine(line));
+      if (i < tagRegionEnd) {
+        parsed.tags = parsed.tags.concat(tagsOnLine(line)); // the file's own
+      } else {
+        pendingTags = pendingTags.concat(tagsOnLine(line)); // the scenario below
+      }
       inDescription = false;
       continue;
     }
@@ -73,8 +103,6 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
     if (featureName !== undefined && !sawFeature) {
       sawFeature = true;
       parsed.title = featureName.trim() || featureIdFromFileName(fileName);
-      parsed.tags = pendingTags;
-      pendingTags = [];
       inDescription = true;
       continue;
     }
@@ -96,13 +124,6 @@ export function parseFeature(fileName: string, content: string): ParsedFeature {
     if (inDescription) {
       descriptionLines.push(line);
     }
-  }
-
-  if (!sawFeature && pendingTags.length) {
-    // No `Feature:` line ever claimed them, so the tags collected before the
-    // end of the file belong to the file itself. Without this a stray file's
-    // `@status:` tag is invisible while a move happily rewrites it.
-    parsed.tags = pendingTags;
   }
 
   parsed.description = descriptionLines.join('\n').trim();

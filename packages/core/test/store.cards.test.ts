@@ -35,6 +35,18 @@ describe('store.addCard', () => {
     ]);
   });
 
+  test('a slug taken by a file that differs only in case is suffixed', () => {
+    // On macOS and Windows `Login.md` and `01-login.md` are different files,
+    // but `Login.md` and `login.md` are not — and a hand-named card file can be
+    // either. Slugs are compared without case so a new card never claims one.
+    const { store } = makeStore({
+      'boards/b/.config.json': configJson(['todo']),
+      'boards/b/01-Login.md': '---\ncolumn: todo\n---\n# Login\n',
+    });
+    const created = store.addCard('b', 'todo', 'Login');
+    assert.deepStrictEqual(created, { ok: true, cardId: 'login-2' });
+  });
+
   test('empty/emoji-only titles fall back to the "card" slug', () => {
     const { fs, store } = makeStore({ 'boards/b/.config.json': configJson(['todo']) });
     store.addCard('b', 'todo', '🚀');
@@ -254,6 +266,35 @@ describe('store.setCardDescription', () => {
     store.setCardDescription('b', 'card', 'Fresh desc.');
     const { body } = parseFrontmatter(fs.readFile('boards/b/01-card.md')!);
     assert.strictEqual(body, '# Card\n\nFresh desc.\n\n## Checklist\n\n- [ ] one\n');
+  });
+
+  test('given a description holding a ## Sub heading, when it is read and written straight back, then the file is byte-identical', () => {
+    // The reader and the writer must bound the description at the SAME
+    // headings. When the writer stopped at any `## `, `describe` wrote back
+    // exactly what `show` printed and duplicated every custom section.
+    const body =
+      '# Card\n\nIntro.\n\n## Sub\n\nDetail.\n\n## Checklist\n\n- [ ] one\n\n## Comments\n\n- **a** (t): hi\n';
+    const { fs, store } = makeStore({
+      'boards/b/.config.json': configJson(['todo']),
+      'boards/b/01-card.md': `---\ncolumn: todo\n---\n${body}`,
+    });
+    const shown = required(
+      required(store.getBoard('b'), 'board').cards['card']?.desc,
+      'the description',
+    );
+    assert.strictEqual(shown, 'Intro.\n\n## Sub\n\nDetail.', 'the custom section is described');
+    store.setCardDescription('b', 'card', shown);
+    assert.strictEqual(
+      parseFrontmatter(required(fs.readFile('boards/b/01-card.md'), 'card file')).body,
+      body,
+      'describe -> show -> describe must not change one byte of the body',
+    );
+    // And it stays a fixed point: a second round adds nothing either.
+    store.setCardDescription('b', 'card', shown);
+    assert.strictEqual(
+      parseFrontmatter(required(fs.readFile('boards/b/01-card.md'), 'card file')).body,
+      body,
+    );
   });
 
   test('a body with no # heading treats the top of the body as the description', () => {

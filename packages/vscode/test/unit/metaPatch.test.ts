@@ -86,6 +86,19 @@ describe('sanitizeMetaPatch', () => {
     assert.deepStrictEqual(sanitizeMetaPatch({ labels: [] }), { labels: [] });
   });
 
+  test('given an empty labels array, when narrowed, then it survives as "remove every label"', () => {
+    // `[]` is not "nothing usable": it is the webview clearing the last label,
+    // and it must reach the store as an empty array (which writes `labels: []`),
+    // distinct from `null`, which removes the key altogether.
+    const patch = sanitizeMetaPatch({ labels: [] });
+    assert.deepStrictEqual(patch, { labels: [] });
+    assert.notStrictEqual(patch?.labels, null, 'an empty array is not a removal');
+    assert.deepStrictEqual(sanitizeMetaPatch({ labels: [], title: 'Keep' }), {
+      labels: [],
+      title: 'Keep',
+    });
+  });
+
   test('given progress out of range or fractional, when narrowed, then it is clamped and rounded', () => {
     assert.strictEqual(sanitizeMetaPatch({ progress: 150 })?.progress, 100);
     assert.strictEqual(sanitizeMetaPatch({ progress: -5 })?.progress, 0);

@@ -7,7 +7,9 @@ import { makeStore, required } from './helpers';
 const CONFIG = JSON.stringify({
   name: 'B',
   columns: [
-    { id: 'todo', name: 'To Do', color: '#000' },
+    // `tests` is declared so evidence may be recorded for it; on ENTER of the
+    // column the card already sits in, so no move in this file is gated.
+    { id: 'todo', name: 'To Do', color: '#000', enter: [{ id: 'tests', script: 'bun test' }] },
     { id: 'doing', name: 'Doing', color: '#000' },
   ],
   labels: {},

@@ -142,3 +142,81 @@ describe('store.moveCardGated', () => {
     assert.ok(fired > 0);
   });
 });
+
+/**
+ * The gates guarding a move are the SOURCE column's exit gates plus the
+ * target's enter gates — and the source column is the one the board shows the
+ * card in. A card whose `column:` names nothing the config declares is shown in
+ * the first column, so that column's exit gates guard it; reading the raw
+ * frontmatter value instead let such a card leave the column ungated.
+ */
+describe('store.moveCardGated — an undeclared source column', () => {
+  const EXIT_CONFIG = JSON.stringify({
+    name: 'Board',
+    columns: [
+      {
+        id: 'todo',
+        name: 'To Do',
+        color: '#000',
+        exit: [{ id: 'signoff', field: 'approved', check: '= true' }],
+      },
+      { id: 'done', name: 'Done', color: '#000' },
+    ],
+    labels: {},
+    fields: [{ id: 'approved', type: 'boolean' }],
+  });
+
+  /** A board whose only card declares `column: <column>` (or no column at all). */
+  function strayCard(column: string | undefined): ReturnType<typeof makeStore> {
+    const frontmatter = column === undefined ? '' : `column: ${column}\n`;
+    return makeStore({
+      'boards/b/.config.json': EXIT_CONFIG,
+      'boards/b/01-one.md': `---\n${frontmatter}---\n# One\n`,
+    });
+  }
+
+  for (const [name, column] of [
+    ['an unknown column id', 'mystery'],
+    ['no column key at all', undefined],
+  ] as Array<[string, string | undefined]>) {
+    test(`given a card with ${name}, when moved, then the first column's exit gate blocks it`, () => {
+      const { fs, store } = strayCard(column);
+      const board = required(store.getBoard('b'), 'board');
+      assert.deepStrictEqual(
+        required(board.columns[0], 'first column').cardIds,
+        ['one'],
+        'the board shows the card in the first column',
+      );
+
+      assert.deepStrictEqual(
+        store.evaluateMove('b', 'one', 'done').map((r) => [r.gate.id, r.satisfied]),
+        [['signoff', false]],
+        "the first column's exit gates are evaluated",
+      );
+
+      const before = fs.snapshot();
+      const result = store.moveCardGated('b', 'one', 'done', 0);
+      assert.strictEqual(result.ok, false);
+      assert.deepStrictEqual(
+        'blocked' in result ? result.blocked.map((r) => r.gate.id) : undefined,
+        ['signoff'],
+      );
+      assert.deepStrictEqual(fs.snapshot(), before, 'a blocked move writes nothing');
+    });
+  }
+
+  test('given the exit gate is satisfied, when the stray card is moved, then it goes through', () => {
+    const { store } = strayCard('mystery');
+    store.setCardField('b', 'one', 'approved', true);
+    assert.deepStrictEqual(store.moveCardGated('b', 'one', 'done', 0), {
+      ok: true,
+      overridden: [],
+    });
+  });
+
+  test('given a move into the column the board already shows it in, then there are no gates', () => {
+    // `todo` is where the board puts it, so this is a no-op move, not an exit.
+    const { store } = strayCard('mystery');
+    assert.deepStrictEqual(store.evaluateMove('b', 'one', 'todo'), []);
+  });
+});

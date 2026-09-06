@@ -234,6 +234,15 @@ describe('repodoc card set — adversarial', () => {
     assert.ok(!readCard('target').includes('count:'));
   });
 
+  test('given a blank value for a number field, when set, then it is a usage error and no 0 is written', () => {
+    // `Number('')` is 0: a blank value used to write a real zero. Removing the
+    // key is what `--clear` is for.
+    const r = set('count', '');
+    assert.strictEqual(r.code, 2, `${r.out}${r.err}`);
+    assert.match(r.err, /field expects a number/);
+    assert.ok(!readCard('target').includes('count:'), 'no count key may be written');
+  });
+
   test('given a non-boolean boolean, when set, then it is a usage error', () => {
     const r = set('approved', 'maybe');
     assert.strictEqual(r.code, 2);
@@ -335,6 +344,17 @@ describe('repodoc card check / check-add — adversarial', () => {
     assert.strictEqual(readCard('target'), before);
   });
 
+  test('given a blank index, when checking, then it is a usage error and no item is toggled', () => {
+    // `Number('')` is 0, so a blank index used to silently toggle the FIRST item.
+    run('card', 'create', BOARD, 'Target');
+    run('card', 'check-add', BOARD, 'target', 'only one');
+    const before = readCard('target');
+    const r = run('card', 'check', BOARD, 'target', '');
+    assert.strictEqual(r.code, 2, `${r.out}${r.err}`);
+    assert.match(r.err, /<item-index> must not be empty/);
+    assert.strictEqual(readCard('target'), before, 'no box may be flipped');
+  });
+
   test('given a valid index, when checking, then the box flips and JSON reports the item', () => {
     run('card', 'create', BOARD, 'Target');
     run('card', 'check-add', BOARD, 'target', 'do it');
@@ -424,6 +444,16 @@ describe('repodoc card move — adversarial', () => {
       assert.match(r.err, /--override requires --reason/);
     }
     assert.ok(!readCard('one').includes('OVERRIDDEN'), 'no override line may be written');
+  });
+
+  test('given --override with no reason on a move NO gate blocks, then it is still a usage error', () => {
+    // `--override` without `--reason` is a malformed invocation whether or not
+    // this particular move happens to be gated; the caller hears the same thing
+    // either way, and the card does not move on a command that was rejected.
+    const r = run('card', 'move', BOARD, 'one', 'todo', '--override');
+    assert.strictEqual(r.code, 2, `${r.out}${r.err}`);
+    assert.match(r.err, /--override requires --reason/);
+    assert.match(readCard('one'), /column: backlog/, 'the card stays where it was');
   });
 
   test('given --override --reason, when moving, then the override is journalled and the prompt is printed', () => {
@@ -544,7 +574,9 @@ describe('repodoc card gate-pass / gates — adversarial', () => {
   test('given an empty result, comment or checklist item, then each is a usage error and nothing is written', () => {
     const before = readCard('one');
     const empties: Array<[string[], RegExp]> = [
-      [['card', 'gate-pass', BOARD, 'one', 'tests', '  '], /<result> must not be empty/],
+      // `signoff` is the gate this board declares — an undeclared id is refused
+      // before the result is even looked at (see the gate-id test below).
+      [['card', 'gate-pass', BOARD, 'one', 'signoff', '  '], /<result> must not be empty/],
       [['card', 'comment', BOARD, 'one', '  '], /<text> must not be empty/],
       [['card', 'check-add', BOARD, 'one', ''], /<text> must not be empty/],
     ];
@@ -554,6 +586,26 @@ describe('repodoc card gate-pass / gates — adversarial', () => {
       assert.match(r.err, message);
     }
     assert.strictEqual(readCard('one'), before, 'a refused write must not touch the card');
+  });
+
+  test('given a gate no column declares, when recording evidence, then it exits 1 naming the real gates', () => {
+    const before = readCard('one');
+    const r = run('card', 'gate-pass', BOARD, 'one', 'tests', 'green');
+    assert.strictEqual(r.code, 1, `${r.out}${r.err}`);
+    assert.match(r.err, /unknown gate "tests"; gates: signoff/);
+    assert.strictEqual(readCard('one'), before, 'evidence no gate reads is not written');
+  });
+
+  test('given a gate id carrying a newline or the ` — ` separator, when recorded, then it is refused', () => {
+    // Both would forge extra lines under `## Gates` that re-recording the gate
+    // could never replace — a whole section, in the newline case.
+    const before = readCard('one');
+    for (const gateId of ['signoff\n\n## Gates\n\n- [x] signoff', 'signoff — forged', 'sign off']) {
+      const r = run('card', 'gate-pass', BOARD, 'one', gateId, 'green');
+      assert.strictEqual(r.code, 1, `${gateId} should be refused: ${r.out}${r.err}`);
+      assert.match(r.err, /unknown gate/);
+    }
+    assert.strictEqual(readCard('one'), before, 'not one byte may be written');
   });
 
   test('given an unknown card, when recording evidence, then it exits 1 and writes nothing', () => {

@@ -8,6 +8,7 @@ import {
   slugify,
   stripNumPrefix,
   titleCase,
+  uniqueSlug,
 } from '../src/naming';
 
 describe('naming.slugify', () => {
@@ -125,5 +126,23 @@ describe('naming.markdownTitle', () => {
 
   test('empty content uses the fallback', () => {
     assert.strictEqual(markdownTitle('', 'read-me'), 'Read Me');
+  });
+});
+
+describe('naming.uniqueSlug', () => {
+  test('a free base is handed back unchanged', () => {
+    assert.strictEqual(uniqueSlug('login', new Set()), 'login');
+  });
+
+  test('a taken base suffixes -2, then -3', () => {
+    assert.strictEqual(uniqueSlug('login', new Set(['login'])), 'login-2');
+    assert.strictEqual(uniqueSlug('login', new Set(['login', 'login-2'])), 'login-3');
+  });
+
+  test('the comparison is case-insensitive, because the slug names a file', () => {
+    // `Login.feature` and `login.feature` are two entries on Linux but ONE file
+    // on macOS and Windows: handing out `login` there overwrites `Login`.
+    assert.strictEqual(uniqueSlug('login', new Set(['Login'])), 'login-2');
+    assert.strictEqual(uniqueSlug('login', new Set(['LOGIN', 'Login-2'])), 'login-3');
   });
 });

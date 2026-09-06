@@ -26,6 +26,8 @@ export {
   appendChecklistLine,
   appendCommentLine,
   appendSection,
+  DESCRIPTION_END_RE,
+  findDescription,
   findSection,
   replaceDescription,
   replaceTitle,

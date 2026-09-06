@@ -40,6 +40,36 @@ describe('duplicate ids on a board', () => {
     });
   });
 
+  test('an edit lands in the file the board shows, whatever order the directory lists', () => {
+    // The board reads cards in NUMERIC order, so `01-foo.md` owns the id. A
+    // mutation that resolved the id by raw directory order could write to
+    // `02-foo.md` instead — an edit that then appeared to do nothing.
+    const { fs, store } = makeStore({
+      // Seeded (and so listed) with the second file FIRST.
+      'boards/b/.config.json': seed['boards/b/.config.json'],
+      'boards/b/02-foo.md': seed['boards/b/02-foo.md'] as string,
+      'boards/b/01-foo.md': seed['boards/b/01-foo.md'] as string,
+    });
+    assert.strictEqual(
+      fs.listDir('boards/b').find((e) => e.name.endsWith('.md'))?.name,
+      '02-foo.md',
+      'the directory lists 02 first, so resolving by list order would pick it',
+    );
+    assert.strictEqual(store.cardFilePath('b', 'foo'), 'boards/b/01-foo.md');
+
+    assert.strictEqual(store.setCardDescription('b', 'foo', 'edited'), true);
+    assert.ok(
+      required(fs.readFile('boards/b/01-foo.md'), 'the first file').includes('edited'),
+      'the edit lands in the file the board shows',
+    );
+    assert.strictEqual(
+      required(fs.readFile('boards/b/02-foo.md'), 'the second file'),
+      seed['boards/b/02-foo.md'],
+      'the shadowed file is not touched at all',
+    );
+    assert.strictEqual(required(store.getBoard('b'), 'board').cards['foo']?.desc, 'edited');
+  });
+
   test('a feature set lists a duplicated feature id once', () => {
     const { store } = makeStore({
       'features/s/.config.json': JSON.stringify({
