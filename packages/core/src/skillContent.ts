@@ -151,11 +151,14 @@ bunx github:flying-dice/repodoc card create <board> "<title>" [--column <id>] [-
 bunx github:flying-dice/repodoc card update <board> <card> --agent <you> --live true --status "<one line>" --progress <0-100>
 bunx github:flying-dice/repodoc card comment <board> <card> "<journal entry with path:line refs>" --who <you>
 bunx github:flying-dice/repodoc card check <board> <card> <item-index>
+bunx github:flying-dice/repodoc card check-add <board> <card> "<text>"
+bunx github:flying-dice/repodoc card describe <board> <card> "<text>"
 bunx github:flying-dice/repodoc card set <board> <card> <field> <value>
 bunx github:flying-dice/repodoc card gates <board> <card> <column>        # exit 1 while any gate fails
 bunx github:flying-dice/repodoc card gate-pass <board> <card> <gate> "<result>" --who <you>
 bunx github:flying-dice/repodoc card move <board> <card> <column> [--index n]
 bunx github:flying-dice/repodoc decision create "<title>"
+bunx github:flying-dice/repodoc decision status <id> <Proposed|Accepted|Superseded>
 bunx github:flying-dice/repodoc feature sets
 bunx github:flying-dice/repodoc feature list <set> [--column <id>]
 bunx github:flying-dice/repodoc feature show <set> <feature>

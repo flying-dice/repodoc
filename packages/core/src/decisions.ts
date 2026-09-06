@@ -84,4 +84,29 @@ export class DecisionStore {
     );
     return id;
   }
+
+  /**
+   * Rewrites a decision's `status:` frontmatter key, adding frontmatter when
+   * the file has none. The body is preserved byte-for-byte. Never writes an
+   * empty status. Returns whether the decision exists.
+   */
+  setStatus(id: string, status: string): boolean {
+    const clean = status.trim();
+    if (!clean) {
+      return false;
+    }
+    const rec = this.list().find((d) => d.id === id);
+    if (!rec) {
+      return false;
+    }
+    const path = `decisions/${rec.file}`;
+    const content = this.fs.readFile(path);
+    if (content === undefined) {
+      return false;
+    }
+    const { data, body } = parseFrontmatter(content);
+    data.status = clean;
+    this.fs.writeFile(path, serializeFrontmatter(data, body));
+    return true;
+  }
 }

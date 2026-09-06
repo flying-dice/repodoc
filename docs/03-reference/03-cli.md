@@ -41,6 +41,8 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `card comment <board> <card> <text>` | Append a journal entry to `## Comments`. |
 | `card update <board> <card> [--title] [--agent] [--live] [--status] [--progress] [--priority] [--labels]` | Set reserved metadata. Pass `""` to remove a key. |
 | `card check <board> <card> <index>` | Toggle a checklist item (0-based, as shown by `card show`). |
+| `card check-add <board> <card> <text>` | Append a new `## Checklist` item (creating the section if absent). Prints the new item's index. |
+| `card describe <board> <card> <text>` | Set the card's description (the body between the title and its first `##` section). Pass `""` to clear it. |
 | `card set <board> <card> <field> [value] [--clear]` | Set a board-defined custom field; values are typed per the field def, multiselects comma-separated. |
 | `feature sets` | Feature sets with feature counts. |
 | `feature set-create <name>` | New feature set with the default specification columns (`proposed`, `specified`, `implemented`, `verified`). |
@@ -49,6 +51,7 @@ duplicate slugs…), `2` usage error, `3` unexpected failure.
 | `feature create <set> <title> [--column <id>]` | New `<slug>.feature` holding a `@status:` tag and a `Feature:` line; first column unless `--column`. |
 | `feature move <set> <feature> <column>` | Rewrite the feature's `@status:` tag — the file is never renamed — and print the target column's `prompt`. Gates are not enforced for features. |
 | `decision list` / `decision show <id>` / `decision create <title>` | Decision records. |
+| `decision status <id> <Proposed\|Accepted\|Superseded>` | Set a decision's status. |
 | `docs tree` / `docs show <relPath>` | The documentation tree. |
 | `skill install [claude\|opencode]` | Write the RepoDoc agent skill file into the repo. |
 

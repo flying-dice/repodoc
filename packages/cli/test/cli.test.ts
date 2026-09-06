@@ -160,6 +160,40 @@ describe('repodoc card', () => {
     assert.strictEqual(run('card', 'check', 'project-backlog', 'c', '5').code, 1);
   });
 
+  test('check-add appends a checklist item and prints its index', () => {
+    run('card', 'create', 'project-backlog', 'C');
+    const first = run('card', 'check-add', 'project-backlog', 'c', 'first item');
+    assert.strictEqual(first.code, 0);
+    assert.ok(first.out.includes('Added checklist item 0'));
+    const second = json('card', 'check-add', 'project-backlog', 'c', 'second item') as { index: number };
+    assert.strictEqual(second.index, 1);
+    const c = json('card', 'show', 'project-backlog', 'c') as { checklist: Array<{ text: string; done: boolean }> };
+    assert.deepStrictEqual(c.checklist, [
+      { text: 'first item', done: false },
+      { text: 'second item', done: false },
+    ]);
+  });
+
+  test('check-add exits 1 for an unknown card', () => {
+    assert.strictEqual(run('card', 'check-add', 'project-backlog', 'ghost', 'x').code, 1);
+  });
+
+  test('describe sets and clears a card\'s description', () => {
+    run('card', 'create', 'project-backlog', 'D');
+    const set = json('card', 'describe', 'project-backlog', 'd', 'A useful description.') as { desc: string | null };
+    assert.strictEqual(set.desc, 'A useful description.');
+    const shown = json('card', 'show', 'project-backlog', 'd') as { desc?: string };
+    assert.strictEqual(shown.desc, 'A useful description.');
+    const cleared = json('card', 'describe', 'project-backlog', 'd', '') as { desc: string | null };
+    assert.strictEqual(cleared.desc, null);
+    const after = json('card', 'show', 'project-backlog', 'd') as { desc?: string };
+    assert.strictEqual(after.desc, undefined);
+  });
+
+  test('describe exits 1 for an unknown card', () => {
+    assert.strictEqual(run('card', 'describe', 'project-backlog', 'ghost', 'x').code, 1);
+  });
+
   test('set writes typed custom fields and --clear removes them', () => {
     const cfg = path.join(root, 'boards/project-backlog/.config.json');
     const config = JSON.parse(fs.readFileSync(cfg, 'utf8'));
@@ -405,6 +439,21 @@ describe('repodoc decision / docs / skill', () => {
     assert.deepStrictEqual(list.map((d) => [d.id, d.status]), [['01-use-bun', 'Proposed']]);
     assert.ok(run('decision', 'show', '01-use-bun').out.includes('# Use Bun'));
     assert.strictEqual(run('decision', 'show', 'zz').code, 1);
+  });
+
+  test('status sets a decision\'s status, case-insensitively', () => {
+    json('decision', 'create', 'Use Bun');
+    const r = run('decision', 'status', '01-use-bun', 'accepted');
+    assert.strictEqual(r.code, 0);
+    assert.ok(r.out.includes('status = Accepted'));
+    const shown = json('decision', 'show', '01-use-bun') as { status: string };
+    assert.strictEqual(shown.status, 'Accepted');
+  });
+
+  test('status rejects a bad value with exit 2 and an unknown id with exit 1', () => {
+    json('decision', 'create', 'Use Bun');
+    assert.strictEqual(run('decision', 'status', '01-use-bun', 'Nope').code, 2);
+    assert.strictEqual(run('decision', 'status', 'zz', 'Accepted').code, 1);
   });
 
   test('docs tree/show', () => {

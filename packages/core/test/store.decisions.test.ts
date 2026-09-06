@@ -6,8 +6,7 @@ const SEED = {
   'decisions/01-record.md':
     '---\nstatus: Accepted\ndate: 2020-01-01\n---\n' +
     '# Decision 0001 — Record architecture decisions\n\nBody.\n',
-  'decisions/03-postgres.md':
-    '---\nstatus: Proposed\n---\n# ADR-3 — Use PostgreSQL\n\nBody.\n',
+  'decisions/03-postgres.md': '---\nstatus: Proposed\n---\n# ADR-3 — Use PostgreSQL\n\nBody.\n',
   'decisions/02-loose.md': '# A title with no ADR prefix\n\nNo frontmatter here.\n',
 };
 
@@ -109,10 +108,57 @@ describe('store.createDecision', () => {
   });
 });
 
+describe('store.setDecisionStatus', () => {
+  test('rewrites the status key and preserves the body byte-for-byte', () => {
+    const { fs, store } = makeStore(SEED);
+    const ok = store.setDecisionStatus('03-postgres', 'Accepted');
+    assert.strictEqual(ok, true);
+    const content = fs.readFile('decisions/03-postgres.md')!;
+    assert.strictEqual(content, '---\nstatus: Accepted\n---\n# ADR-3 — Use PostgreSQL\n\nBody.\n');
+    assert.strictEqual(store.getDecision('03-postgres')!.status, 'Accepted');
+  });
+
+  test('adds frontmatter to a file that has none, preserving the body byte-for-byte', () => {
+    const { fs, store } = makeStore(SEED);
+    const ok = store.setDecisionStatus('02-loose', 'Superseded');
+    assert.strictEqual(ok, true);
+    const content = fs.readFile('decisions/02-loose.md')!;
+    assert.strictEqual(
+      content,
+      '---\nstatus: Superseded\n---\n# A title with no ADR prefix\n\nNo frontmatter here.\n',
+    );
+  });
+
+  test('does not write an empty status', () => {
+    const { fs, store } = makeStore(SEED);
+    const before = fs.snapshot();
+    assert.strictEqual(store.setDecisionStatus('03-postgres', ''), false);
+    assert.strictEqual(store.setDecisionStatus('03-postgres', '   '), false);
+    assert.deepStrictEqual(fs.snapshot(), before);
+  });
+
+  test('unknown id returns false and writes nothing', () => {
+    const { fs, store } = makeStore(SEED);
+    const before = fs.snapshot();
+    assert.strictEqual(store.setDecisionStatus('nope', 'Accepted'), false);
+    assert.deepStrictEqual(fs.snapshot(), before);
+  });
+
+  test('fires listeners once per change', () => {
+    const { store } = makeStore(SEED);
+    let fired = 0;
+    store.onDidChange(() => fired++);
+    store.setDecisionStatus('03-postgres', 'Accepted');
+    store.setDecisionStatus('nope', 'Accepted');
+    assert.strictEqual(fired, 1);
+  });
+});
+
 describe('store decisions — frontmatter exposure', () => {
   test('all frontmatter keys are exposed for the reading-view table', () => {
     const { store } = makeStore({
-      'decisions/01-a.md': '---\nstatus: Accepted\ndate: 2026-07-17\nsupersedes: none\n---\n# ADR-1 — A\n',
+      'decisions/01-a.md':
+        '---\nstatus: Accepted\ndate: 2026-07-17\nsupersedes: none\n---\n# ADR-1 — A\n',
     });
     const rec = store.listDecisions()[0];
     assert.deepStrictEqual(rec.frontmatter, {

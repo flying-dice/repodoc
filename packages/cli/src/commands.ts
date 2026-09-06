@@ -27,6 +27,8 @@ export interface Command {
 
 const PRIORITIES: readonly Priority[] = ['high', 'med', 'low'];
 
+const DECISION_STATUSES = ['Proposed', 'Accepted', 'Superseded'] as const;
+
 export const COMMANDS: Command[] = [
   {
     group: 'init',
@@ -311,6 +313,37 @@ export const COMMANDS: Command[] = [
   },
   {
     group: 'card',
+    name: 'check-add',
+    usage: 'card check-add <board> <card> <text>',
+    summary: 'Append a new item to the card\'s ## Checklist section (created if absent).',
+    run(ctx, args, out): void {
+      const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
+      const { card } = requireCard(ctx, boardId, cardId);
+      const index = card.checklist?.length ?? 0;
+      ctx.store.addChecklistItem(boardId, cardId, text);
+      const after = requireCard(ctx, boardId, cardId).card.checklist?.[index];
+      out.emit({ board: boardId, card: cardId, index, item: after }, () => [
+        `Added checklist item ${index}: [${after?.done ? 'x' : ' '}] ${after?.text ?? ''}`,
+      ]);
+    },
+  },
+  {
+    group: 'card',
+    name: 'describe',
+    usage: 'card describe <board> <card> <text>',
+    summary: 'Set the card\'s description (the body between the title and its first ## section). Pass "" to clear it.',
+    run(ctx, args, out): void {
+      const [boardId, cardId, text] = need(args, ['board', 'card', 'text']);
+      requireCard(ctx, boardId, cardId);
+      ctx.store.setCardDescription(boardId, cardId, text);
+      const { card } = requireCard(ctx, boardId, cardId);
+      out.emit({ board: boardId, card: cardId, desc: card.desc ?? null }, () => [
+        card.desc ? card.desc.trim() : `Cleared the description on ${cardId}`,
+      ]);
+    },
+  },
+  {
+    group: 'card',
     name: 'set',
     usage: 'card set <board> <card> <field> [value] [--clear]',
     summary: 'Set a board-defined custom field (multiselect values are comma-separated). --clear removes it.',
@@ -494,6 +527,25 @@ export const COMMANDS: Command[] = [
       const [title] = need(args, ['title']);
       const id = ctx.store.createDecision(title);
       out.emit({ id, path: `decisions/${id}.md` }, () => [`Created decisions/${id}.md`]);
+    },
+  },
+  {
+    group: 'decision',
+    name: 'status',
+    usage: 'decision status <id> <Proposed|Accepted|Superseded>',
+    summary: 'Set a decision record\'s status.',
+    run(ctx, args, out): void {
+      const [id, statusRaw] = need(args, ['id', 'status']);
+      const status = DECISION_STATUSES.find(
+        (s) => s.toLowerCase() === statusRaw.trim().toLowerCase(),
+      );
+      if (!status) {
+        throw new UsageError(`decision status expects ${DECISION_STATUSES.join(' | ')}, got "${statusRaw}"`);
+      }
+      if (!ctx.store.setDecisionStatus(id, status)) {
+        throw new CommandError(`unknown decision ${id}`);
+      }
+      out.emit({ id, status }, () => [`${id}: status = ${status}`]);
     },
   },
   {

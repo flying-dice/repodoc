@@ -359,6 +359,52 @@ export class RepoDocStore {
     }
   }
 
+  /**
+   * Appends `- [ ] <text>` to the card's `## Checklist` section, after its last
+   * non-blank line. When the section is absent, one is created after the
+   * description and before any `## Gates` / `## Comments` section (RepoDoc's
+   * mandated section order is Checklist, Gates, Comments). A `text` with
+   * newlines is collapsed to a single line. Stamps `updatedAt` and fires.
+   * Returns whether the card exists.
+   */
+  addChecklistItem(boardId: string, cardId: string, text: string): boolean {
+    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
+    if (!fileName) {
+      return false;
+    }
+    const changed = this.updateCardFile(boardId, fileName, (data, body) => ({
+      data,
+      body: appendChecklistLine(body, text),
+    }));
+    if (changed) {
+      this.fire();
+    }
+    return changed;
+  }
+
+  /**
+   * Replaces the card's description — the body text between the `# ` title
+   * line and the first `## ` heading (or end of body) — with `text` (trimmed,
+   * surrounded by a single blank line on each side). A body with no `# `
+   * heading gets the description treated as the top of the body. Empty `text`
+   * removes the description. All other bytes are preserved. Stamps
+   * `updatedAt` and fires. Returns whether the card exists.
+   */
+  setCardDescription(boardId: string, cardId: string, text: string): boolean {
+    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
+    if (!fileName) {
+      return false;
+    }
+    const changed = this.updateCardFile(boardId, fileName, (data, body) => ({
+      data,
+      body: replaceDescription(body, text),
+    }));
+    if (changed) {
+      this.fire();
+    }
+    return changed;
+  }
+
   // ---- custom fields ----
 
   /**
@@ -599,6 +645,19 @@ export class RepoDocStore {
     return id;
   }
 
+  /**
+   * Rewrites a decision's `status:` frontmatter key, adding frontmatter when
+   * the file has none. The body is preserved byte-for-byte. Fires. Returns
+   * whether the decision exists (validating `status` is the caller's job).
+   */
+  setDecisionStatus(id: string, status: string): boolean {
+    const changed = this.decisions.setStatus(id, status);
+    if (changed) {
+      this.fire();
+    }
+    return changed;
+  }
+
   // ---- feature sets ----
 
   /** Every `features/<set-id>/` folder, with its feature count. */
@@ -783,6 +842,100 @@ function appendCommentLine(body: string, who: string, at: string, text: string):
   }
   lines.splice(insertAt, 0, block);
   return lines.join('\n');
+}
+
+/**
+ * Appends `- [ ] <text>` to the card body's `## Checklist` section, after its
+ * last non-blank line. When absent, a `## Checklist` section is inserted
+ * right before the first `## Gates` / `## Comments` heading (or at the end of
+ * the body when there is neither) — RepoDoc's mandated section order is
+ * Checklist, Gates, Comments. `text` is collapsed to a single line. Other
+ * bytes are preserved.
+ */
+function appendChecklistLine(body: string, text: string): string {
+  const line = `- [ ] ${text.replace(/\s+/g, ' ').trim()}`;
+  const lines = body.split('\n');
+
+  const headingIdx = lines.findIndex((l) => /^##\s+checklist\s*$/i.test(l));
+  if (headingIdx !== -1) {
+    // Section spans from the heading to the next heading (or end of body).
+    let end = lines.length;
+    for (let i = headingIdx + 1; i < lines.length; i++) {
+      if (/^#{1,6}\s+/.test(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+    let insertAt = end;
+    while (insertAt > headingIdx + 1 && lines[insertAt - 1].trim() === '') {
+      insertAt--;
+    }
+    lines.splice(insertAt, 0, line);
+    return lines.join('\n');
+  }
+
+  // No existing section — insert a new one before Gates/Comments, else at the end.
+  let sectionIdx = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+(gates|comments)\s*$/i.test(lines[i])) {
+      sectionIdx = i;
+      break;
+    }
+  }
+  const before = lines.slice(0, sectionIdx);
+  while (before.length && before[before.length - 1].trim() === '') {
+    before.pop();
+  }
+  const after = lines.slice(sectionIdx);
+
+  const out: string[] = [...before];
+  if (out.length) {
+    out.push('');
+  }
+  out.push('## Checklist', '', line);
+  if (after.length) {
+    out.push('', ...after);
+  } else {
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+/**
+ * Replaces the body text between the `# ` title line and the first `## `
+ * heading (or end of body) with `text`, trimmed and surrounded by a single
+ * blank line on each side. A body with no `# ` heading treats position 0 as
+ * the start of the description. Empty `text` removes the description
+ * entirely. All other bytes are preserved.
+ */
+function replaceDescription(body: string, text: string): string {
+  const clean = text.trim();
+  const lines = body.split('\n');
+  const titleIdx = lines.findIndex((l) => /^#\s+/.test(l));
+  const start = titleIdx === -1 ? 0 : titleIdx + 1;
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  const before = lines.slice(0, start);
+  const after = lines.slice(end);
+  const middle = clean ? clean.split('\n') : [];
+
+  const groups = [before, middle, after].filter((g) => g.length > 0);
+  const parts: string[] = [];
+  groups.forEach((g, i) => {
+    if (i > 0) {
+      parts.push('');
+    }
+    parts.push(...g);
+  });
+  if (after.length === 0 && parts[parts.length - 1] !== '') {
+    parts.push(''); // keep the body's trailing newline
+  }
+  return parts.join('\n');
 }
 
 const GATE_SEPARATOR = ' — ';
