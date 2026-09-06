@@ -106,6 +106,10 @@ export class BoardPanel {
     if (!panel) {
       return false;
     }
+    if (!panel.webviewReady) {
+      panel.pendingCardId = cardId; // delivered by the `ready` handler
+      return true;
+    }
     const msg: OpenCardMessage = { type: 'openCard', cardId };
     void panel.panel.webview.postMessage(msg);
     return true;
