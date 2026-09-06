@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import {
   AgentKind,
   MemFileSystemAdapter,
@@ -210,6 +211,84 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       },
     ),
 
+    // Open the file behind a Boards-tree card node (G-1: every surface has a
+    // route to the file, because hand-editing is the fallback for everything
+    // the UI cannot do).
+    vscode.commands.registerCommand('repodoc.openCardFile', async (arg: unknown): Promise<void> => {
+      const node = arg as { kind?: string; boardId?: string; cardId?: string } | undefined;
+      if (!node || node.kind !== 'card' || !node.boardId || !node.cardId) {
+        return;
+      }
+      const relPath = new CardBoardSource(store, node.boardId).cardFilePath(node.cardId);
+      if (!relPath) {
+        void vscode.window.showWarningMessage(
+          `RepoDoc: could not find the file for card ${node.cardId}.`,
+        );
+        return;
+      }
+      await openRepoFile(root, relPath);
+    }),
+
+    // Open a board's or feature set's `.config.json` — columns, gates, labels
+    // and fields are authored there.
+    vscode.commands.registerCommand(
+      'repodoc.openBoardConfig',
+      async (arg: unknown): Promise<void> => {
+        const node = arg as { kind?: string; ref?: { id?: string } } | undefined;
+        const id = typeof arg === 'string' ? arg : node?.ref?.id;
+        if (!id) {
+          return;
+        }
+        const dir = node?.kind === 'featureSet' ? 'features' : 'boards';
+        await openRepoFile(root, `${dir}/${id}/.config.json`);
+      },
+    ),
+
+    // "Open source" from the Decisions tree and the decision reading view.
+    vscode.commands.registerCommand(
+      'repodoc.openDecisionSource',
+      async (arg: unknown): Promise<void> => {
+        const id = typeof arg === 'string' ? arg : (arg as { id?: string } | undefined)?.id;
+        if (!id) {
+          return;
+        }
+        const record = store.getDecision(id);
+        if (!record) {
+          return;
+        }
+        await openRepoFile(root, `decisions/${record.file}`);
+      },
+    ),
+
+    // "Open source" from the Docs tree and the docs reading view.
+    vscode.commands.registerCommand('repodoc.openDocSource', async (arg: unknown): Promise<void> => {
+      const relPath =
+        typeof arg === 'string' ? arg : (arg as { relPath?: string } | undefined)?.relPath;
+      if (!relPath) {
+        return;
+      }
+      await openRepoFile(root, relPath);
+    }),
+
+    // G-8: change a decision's status without leaving the tree.
+    vscode.commands.registerCommand(
+      'repodoc.setDecisionStatus',
+      async (arg: unknown): Promise<void> => {
+        const id = typeof arg === 'string' ? arg : (arg as { id?: string } | undefined)?.id;
+        if (!id) {
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          ['Proposed', 'Accepted', 'Superseded'],
+          { placeHolder: 'Decision status' },
+        );
+        if (!picked) {
+          return;
+        }
+        store.setDecisionStatus(id, picked);
+      },
+    ),
+
     vscode.commands.registerCommand('repodoc.openDecision', (id: string) => {
       MarkdownPanel.showDecision(context.extensionUri, store, id);
     }),
@@ -282,3 +361,24 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
 }
 
 export function deactivate(): void {}
+
+/**
+ * Open a repo-relative file in an editor beside the RepoDoc views. The path is
+ * containment-checked against the workspace root before opening.
+ */
+async function openRepoFile(root: string | undefined, relPath: string): Promise<void> {
+  if (!root) {
+    return;
+  }
+  const rootResolved = path.resolve(root);
+  const abs = path.resolve(rootResolved, relPath);
+  if (abs !== rootResolved && !abs.startsWith(rootResolved + path.sep)) {
+    return;
+  }
+  try {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
+    await vscode.window.showTextDocument(doc, { preview: false });
+  } catch {
+    void vscode.window.showWarningMessage(`RepoDoc: could not open ${relPath}`);
+  }
+}

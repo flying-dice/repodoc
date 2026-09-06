@@ -6,17 +6,51 @@
 
   /* ---- Local UI state (survives data re-renders) ---- */
   var state = {
-    data: null, // { boardId, board, config, boardPath, capabilities }
+    data: null, // { boardId, board, config, boardPath, capabilities, cardFiles, ... }
     query: '',
     addingCol: null, // column id currently showing the composer
     openCardId: null,
-    blocked: null, // {cardId, toColumn, results:[{id,label,satisfied,reason}]} for the blocked-move dialog
+    // {cardId, toColumn, results:[MoveBlockedGate], overriding} — the guided
+    // blocked-move dialog. Kept across data refreshes so a human can tick two
+    // gates in a row; cleared only by Move / Cancel.
+    blocked: null,
     lastMove: null, // {cardId, toColumn, index} of the most recent move attempt (for override retry)
+    editingTitle: false, // card modal: the title is a text input
+    editingDesc: false, // card modal: the description is a textarea
+    addingCheck: false, // card modal: the checklist composer is open
+    showAllGates: false, // card modal: show every transition, not just this one
+    openGateHow: {}, // "<colId>:<dir>:<gateId>" -> "How to satisfy" is expanded
+    dismissedPrompts: {}, // "<cardId>|<colId>" -> the column prompt is dismissed
   };
+
+  // Bottom of the target column — the CLI's default move index.
+  var MOVE_TO_END = Number.MAX_SAFE_INTEGER;
 
   var addText = ''; // uncontrolled composer text; never triggers a render
   var commentText = ''; // uncontrolled comment-composer text; never triggers a render
   var commentWho = null; // composer author override; null = use the configured name
+  var descText = ''; // uncontrolled description-editor text
+  var checkText = ''; // uncontrolled checklist-composer text
+  var gatePassText = {}; // "<cardId>|<gateId>" -> uncontrolled evidence input text
+  var overrideReason = ''; // uncontrolled override-reason text
+
+  // Column prompts a human has dismissed live in webview state only — never on
+  // disk (the prompt belongs to the board's process, not to one reader).
+  try {
+    var saved = vscode.getState();
+    if (saved && saved.dismissedPrompts) {
+      state.dismissedPrompts = saved.dismissedPrompts;
+    }
+  } catch (stateErr) {
+    /* ignore */
+  }
+  function persistDismissed() {
+    try {
+      vscode.setState({ dismissedPrompts: state.dismissedPrompts });
+    } catch (err) {
+      /* ignore */
+    }
+  }
 
   /* ---- Drag state ---- */
   var drag = {
@@ -39,6 +73,8 @@
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>',
     shield:
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
+    file:
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg>',
   };
 
   /* ---- Priority mappings (single source of truth) ---- */
@@ -49,8 +85,16 @@
     high: { token: '--vscode-charts-red' },
     med: { token: '--vscode-charts-yellow' },
     low: { token: '--vscode-descriptionForeground' },
+    // D-1: an unset priority is "None", not a silent "Medium".
+    none: { token: '--vscode-descriptionForeground' },
   };
-  var PRIORITY_LABELS = { high: 'High', med: 'Medium', low: 'Low' };
+  var PRIORITY_LABELS = { high: 'High', med: 'Medium', low: 'Low', none: 'None' };
+  var PRIORITY_OPTIONS = [
+    { value: '', label: 'None' },
+    { value: 'low', label: 'Low' },
+    { value: 'med', label: 'Medium' },
+    { value: 'high', label: 'High' },
+  ];
 
   /* ---- Helpers ---- */
   // Intentionally mirrors the host-side escapeHtml: the webview is deliberately
@@ -75,6 +119,7 @@
     onDrop: 'drop',
     onMouseDown: 'mousedown',
     onWheel: 'wheel',
+    onBlur: 'blur',
   };
 
   /**
@@ -226,6 +271,32 @@
   function fieldDefs() {
     var f = config().fields;
     return Array.isArray(f) ? f : [];
+  }
+  function fieldDefById(fieldId) {
+    var defs = fieldDefs();
+    for (var i = 0; i < defs.length; i++) {
+      if (defs[i].id === fieldId) {
+        return defs[i];
+      }
+    }
+    return null;
+  }
+  // The skill's human sign-off heuristic (skillContent.ts): an agent must not
+  // set these for someone else, so the UI says the same thing to a human.
+  function isSignOffField(fieldId) {
+    return /(^|[-_])(approv|review|sign-?off)/i.test(String(fieldId || ''));
+  }
+  function isFiltering() {
+    return state.query.trim() !== '';
+  }
+  function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(String(text));
+      }
+    } catch (err) {
+      /* clipboard unavailable — the command is still selectable text */
+    }
   }
   function titleCase(id) {
     return String(id == null ? '' : id)
@@ -386,13 +457,6 @@
     return false;
   }
 
-  // True when a gate's target field is editable from this board's Fields UI.
-  function fieldIsEditable(fieldId) {
-    return fieldDefs().some(function (d) {
-      return d.id === fieldId;
-    });
-  }
-
   // Human display name for a field id (board label, else title-cased id).
   function fieldDisplayName(fieldId) {
     var defs = fieldDefs();
@@ -537,17 +601,22 @@
     children.push(h('div', { class: 'card-titlerow' }, titleRow));
 
     if (card.live) {
-      var pct = (card.progress || 0) + '%';
+      // D-8: an unset progress is not "0% complete" — omit the number and the
+      // bar entirely rather than implying no work has been done.
+      var hasPct = typeof card.progress === 'number' && isFinite(card.progress);
+      var pct = (hasPct ? card.progress : 0) + '%';
       children.push(
         h('div', { class: 'live-block' }, [
           h('div', { class: 'live-row' }, [
             h('span', { class: 'live-dot' }),
             h('span', { class: 'live-status' }, card.status || ''),
-            h('span', { class: 'live-pct' }, pct),
+            hasPct ? h('span', { class: 'live-pct' }, pct) : null,
           ]),
-          h('div', { class: 'progress-track' }, [
-            h('div', { class: 'progress-fill', style: 'width:' + pct + ';' }),
-          ]),
+          hasPct
+            ? h('div', { class: 'progress-track' }, [
+                h('div', { class: 'progress-fill', style: 'width:' + pct + ';' }),
+              ])
+            : null,
         ]),
       );
     }
@@ -624,12 +693,20 @@
   function buildColumn(col) {
     var b = board();
     var visible = [];
+    var total = 0;
     for (var i = 0; i < col.cardIds.length; i++) {
       var c = b.cards[col.cardIds[i]];
-      if (c && matches(c)) {
+      if (!c) {
+        continue;
+      }
+      total++;
+      if (matches(c)) {
         visible.push({ id: col.cardIds[i], card: c });
       }
     }
+    // D-2: the count and the WIP state describe the COLUMN, not the current
+    // search — a filter must never make an over-WIP column look healthy.
+    var filtering = isFiltering();
 
     var head = [
       h('span', { class: 'col-dot', style: 'background:' + col.color + ';' }),
@@ -649,12 +726,22 @@
         h('span', { class: 'col-gate-glyph', title: tip.join(' / '), html: ICON.shield }),
       );
     }
-    head.push(h('span', { class: 'col-count' }, String(visible.length)));
+    head.push(
+      h(
+        'span',
+        { class: 'col-count' },
+        filtering ? visible.length + ' of ' + total : String(total),
+      ),
+    );
     head.push(h('div', { class: 'col-head-spacer' }));
     if (col.wip) {
-      var over = visible.length > col.wip;
+      var over = total > col.wip;
       head.push(
-        h('span', { class: 'wip' + (over ? ' over' : '') }, visible.length + '/' + col.wip),
+        h(
+          'span',
+          { class: 'wip' + (over ? ' over' : ''), title: 'Work-in-progress limit' },
+          total + '/' + col.wip,
+        ),
       );
     }
 
@@ -712,7 +799,11 @@
           },
           'Add card',
         ),
-        h('button', { class: 'btn-cancel', onClick: cancelComposer }, '✕'),
+        h(
+          'button',
+          { class: 'btn-cancel', 'aria-label': 'Cancel adding a card', onClick: cancelComposer },
+          '✕',
+        ),
       ]);
       return h('div', { class: 'composer' }, [textarea, actions]);
     }
@@ -796,10 +887,27 @@
       });
     });
     var boardPath = (state.data && state.data.boardPath) || '';
+    // G-1: the data directory was plain text; it now opens the board config,
+    // where columns, gates, labels and fields are authored.
+    var configPath = boardPath ? boardPath.replace(/\/*$/, '/') + '.config.json' : '';
+    var pathNode = configPath
+      ? h(
+          'button',
+          {
+            class: 'status-datadir status-link',
+            title: 'Open ' + configPath,
+            'aria-label': 'Open board config ' + configPath,
+            onClick: function () {
+              vscode.postMessage({ type: 'openFile', path: configPath });
+            },
+          },
+          boardPath,
+        )
+      : h('span', { class: 'status-datadir' }, boardPath);
     return h('div', { class: 'statusbar' }, [
       h('span', {}, total + (total === 1 ? ' card' : ' cards')),
       h('div', { class: 'status-spacer' }),
-      h('span', { class: 'status-datadir' }, boardPath),
+      pathNode,
     ]);
   }
 
@@ -830,67 +938,521 @@
     return null;
   }
 
+  // The repo-relative file backing a card (host-resolved, see DataMessage).
+  function cardFileOf(cardId) {
+    var files = state.data && state.data.cardFiles;
+    return files && files[cardId] ? files[cardId] : null;
+  }
+
+  // G-2: one message carries every reserved-metadata edit.
+  function postMeta(cardId, patch) {
+    if (!cardId || !can('meta')) {
+      return;
+    }
+    vscode.postMessage({ type: 'updateMeta', cardId: cardId, patch: patch });
+  }
+
   function modalHead(card, col) {
     var badges = (card.labels || []).map(labelChip).filter(Boolean);
     badges.push(h('span', { class: 'col-badge' }, col ? col.name : ''));
+
+    var titleNode;
+    if (can('meta') && state.editingTitle) {
+      // Same post-on-change pattern as the text field editor: typing never
+      // re-renders, so the input keeps focus and the caret.
+      var titleInput = h('input', {
+        id: 'title-input',
+        class: 'title-input',
+        'aria-label': 'Card title',
+        onChange: function (e) {
+          var next = String(e.target.value).replace(/\s+/g, ' ').trim();
+          state.editingTitle = false;
+          if (next && next !== card.title) {
+            postMeta(card.id, { title: next });
+          } else {
+            render();
+          }
+        },
+        onKeyDown: function (e) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            state.editingTitle = false;
+            render(); // revert: the input is discarded unsaved
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            e.target.blur(); // fires change, which saves
+          }
+        },
+        onBlur: function () {
+          // Leave edit mode on blur, but late enough that a click on another
+          // header button still lands.
+          setTimeout(function () {
+            if (state.editingTitle) {
+              state.editingTitle = false;
+              render();
+            }
+          }, 150);
+        },
+      });
+      titleInput.value = card.title;
+      titleNode = titleInput;
+    } else {
+      titleNode = h(
+        'div',
+        {
+          class: 'modal-title' + (can('meta') ? ' editable' : ''),
+          title: can('meta') ? 'Click to rename' : null,
+          onClick: can('meta')
+            ? function () {
+                state.editingTitle = true;
+                render();
+              }
+            : null,
+        },
+        card.title,
+      );
+    }
+
+    var actions = [];
+    var file = cardFileOf(card.id);
+    if (file) {
+      actions.push(
+        h(
+          'button',
+          {
+            class: 'ghost-btn',
+            title: 'Open ' + file,
+            'aria-label': 'Open file ' + file,
+            onClick: function () {
+              vscode.postMessage({ type: 'openFile', path: file });
+            },
+          },
+          [icon(ICON.file, 'icon'), ' Open file'],
+        ),
+      );
+    }
+    actions.push(
+      h('button', { class: 'modal-close', 'aria-label': 'Close card', onClick: closeModal }, '✕'),
+    );
+
     return h('div', { class: 'modal-head' }, [
       h('div', { class: 'modal-head-row' }, [
         h('div', { class: 'modal-head-main' }, [
           h('div', { class: 'modal-badges' }, badges),
-          h('div', { class: 'modal-title' }, card.title),
+          titleNode,
         ]),
-        h('button', { class: 'modal-close', onClick: closeModal }, '✕'),
+        h('div', { class: 'modal-head-actions' }, actions),
       ]),
     ]);
   }
 
-  function modalLiveBanner(card) {
-    if (!card.live) {
+  // Surface 4: what the CLI prints after a successful move ("Now that <card> is
+  // in <Column>: …") shown where a human meets it — in the card, under the
+  // header. Dismissal is per card+column and lives in webview state only.
+  function modalColumnPrompt(card, col) {
+    if (!col) {
       return null;
     }
-    return h('div', { class: 'modal-live' }, [
-      h('span', { class: 'modal-live-dot' }),
-      h('div', { class: 'modal-live-main' }, [
-        h('div', { class: 'modal-live-status' }, card.status || ''),
+    var html =
+      state.data && state.data.columnPromptHtml ? state.data.columnPromptHtml[col.id] : null;
+    if (!html && !col.prompt) {
+      return null;
+    }
+    var key = card.id + '|' + col.id;
+    if (state.dismissedPrompts[key]) {
+      return null;
+    }
+    return h('div', { class: 'col-prompt' }, [
+      h('div', { class: 'col-prompt-head' }, [
+        h('div', { class: 'field-label', style: 'margin-bottom:0;' }, 'In this column'),
+        h('div', { class: 'col-prompt-spacer' }),
         h(
-          'div',
-          { class: 'modal-live-sub' },
-          (card.agent ? card.agent + ' · ' : '') + (card.progress || 0) + '% complete',
+          'button',
+          {
+            class: 'ghost-btn',
+            'aria-label': 'Dismiss this column note',
+            onClick: function () {
+              state.dismissedPrompts[key] = true;
+              persistDismissed();
+              render();
+            },
+          },
+          'Dismiss',
         ),
       ]),
+      contentBlock('col-prompt-body', html, col.prompt || ''),
     ]);
+  }
+
+  function priorityEditor(card) {
+    if (!can('meta')) {
+      var prV = PRIORITY_VARS[card.priority] || PRIORITY_VARS.none;
+      var prL = PRIORITY_LABELS[card.priority] || PRIORITY_LABELS.none;
+      return h('span', { class: 'priority-pill', style: tintVar(prV.token) }, prL);
+    }
+    var select = h(
+      'select',
+      {
+        class: 'field-select',
+        'aria-label': 'Priority',
+        onChange: function (e) {
+          var v = e.target.value;
+          postMeta(card.id, { priority: v === '' ? null : v });
+        },
+      },
+      PRIORITY_OPTIONS.map(function (opt) {
+        return h('option', { value: opt.value }, opt.label);
+      }),
+    );
+    select.value = card.priority || '';
+    return select;
+  }
+
+  // Declared labels as toggle chips, tinted with the label's own (data) colour.
+  function labelsEditor(card) {
+    var labels = config().labels || {};
+    var keys = Object.keys(labels);
+    if (!keys.length) {
+      return null;
+    }
+    var current = Array.isArray(card.labels) ? card.labels.slice() : [];
+    var toggle = function (key) {
+      var next = current.slice();
+      var at = next.indexOf(key);
+      if (at === -1) {
+        next.push(key);
+      } else {
+        next.splice(at, 1);
+      }
+      postMeta(card.id, { labels: next.length ? next : null });
+    };
+    var chips = keys.map(function (key) {
+      var def = labels[key];
+      var on = current.indexOf(key) !== -1;
+      return h(
+        'span',
+        {
+          class: 'ms-chip label-toggle' + (on ? ' on' : ''),
+          style: on ? tintStyle(def.color) : 'border-color:' + def.color + '55;',
+          role: 'checkbox',
+          tabindex: '0',
+          'aria-checked': on ? 'true' : 'false',
+          onClick: function () {
+            toggle(key);
+          },
+          onKeyDown: function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggle(key);
+            }
+          },
+        },
+        def.name,
+      );
+    });
+    return h('div', { class: 'ms-chips' }, chips);
+  }
+
+  // G-2 / D-7: an always-present Activity row. The old banner only appeared
+  // while a card was live, so the owner was invisible the rest of the time.
+  function activityRow(card) {
+    if (!can('meta')) {
+      return null; // features own agent/status in the .feature file
+    }
+    var live = card.live === true;
+    var setLive = function () {
+      postMeta(card.id, { live: live ? null : true }); // off clears the key, like `card update --live false`
+    };
+
+    var agentInput = h('input', {
+      class: 'field-input',
+      placeholder: 'who is on this',
+      'aria-label': 'Agent',
+      onChange: function (e) {
+        var v = String(e.target.value).trim();
+        postMeta(card.id, { agent: v === '' ? null : v });
+      },
+    });
+    agentInput.value = card.agent || '';
+
+    var liveToggle = h(
+      'div',
+      {
+        class: 'field-bool',
+        role: 'checkbox',
+        tabindex: '0',
+        'aria-checked': live ? 'true' : 'false',
+        'aria-label': 'Live',
+        onClick: setLive,
+        onKeyDown: function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setLive();
+          }
+        },
+      },
+      [
+        h('span', { class: 'check-box' + (live ? ' done' : '') }, live ? [icon(ICON.check, 'icon')] : []),
+        h('span', { class: 'field-bool-label' }, live ? 'Live' : 'Not live'),
+      ],
+    );
+
+    var cells = [
+      h('div', { class: 'activity-cell activity-agent' }, [
+        h('div', { class: 'field-label' }, 'Agent'),
+        agentInput,
+      ]),
+      h('div', { class: 'activity-cell' }, [h('div', { class: 'field-label' }, 'Live'), liveToggle]),
+    ];
+
+    if (live) {
+      var statusInput = h('input', {
+        class: 'field-input',
+        placeholder: 'what is happening right now',
+        'aria-label': 'Status',
+        onChange: function (e) {
+          var v = String(e.target.value).trim();
+          postMeta(card.id, { status: v === '' ? null : v });
+        },
+      });
+      statusInput.value = card.status || '';
+      var progressInput = h('input', {
+        type: 'number',
+        min: '0',
+        max: '100',
+        class: 'field-input field-input-num',
+        'aria-label': 'Progress percent',
+        onChange: function (e) {
+          var raw = String(e.target.value).trim();
+          if (raw === '') {
+            postMeta(card.id, { progress: null });
+            return;
+          }
+          var n = Number(raw);
+          if (!isNaN(n)) {
+            postMeta(card.id, { progress: n });
+          }
+        },
+      });
+      progressInput.value =
+        typeof card.progress === 'number' ? String(card.progress) : '';
+      cells.push(
+        h('div', { class: 'activity-cell activity-status' }, [
+          h('div', { class: 'field-label' }, 'Status'),
+          statusInput,
+        ]),
+        h('div', { class: 'activity-cell' }, [
+          h('div', { class: 'field-label' }, 'Progress %'),
+          progressInput,
+        ]),
+      );
+    }
+
+    return h('div', { class: 'section activity-row' }, cells);
   }
 
   function modalMeta(card) {
-    var prV = PRIORITY_VARS[card.priority] || PRIORITY_VARS.low;
-    var prL = PRIORITY_LABELS[card.priority] || PRIORITY_LABELS.med;
-    var priorityPill = h('span', { class: 'priority-pill', style: tintVar(prV.token) }, prL);
-    return h('div', { class: 'modal-cols' }, [
-      h('div', {}, [h('div', { class: 'field-label' }, 'Priority'), priorityPill]),
+    var cells = [
+      h('div', {}, [h('div', { class: 'field-label' }, 'Priority'), priorityEditor(card)]),
+    ];
+    if (can('meta')) {
+      var labelsNode = labelsEditor(card);
+      if (labelsNode) {
+        cells.push(
+          h('div', { class: 'modal-cols-labels' }, [
+            h('div', { class: 'field-label' }, 'Labels'),
+            labelsNode,
+          ]),
+        );
+      }
+    }
+    return h('div', { class: 'modal-cols' }, cells);
+  }
+
+  function saveDescription(card) {
+    vscode.postMessage({ type: 'setDescription', cardId: card.id, text: descText });
+    state.editingDesc = false;
+    render();
+  }
+
+  // G-7: the Description section is always present when this surface can write
+  // it, so a new card offers somewhere to say what it is about.
+  function modalDescription(card) {
+    var editable = can('description');
+    var html = state.data && state.data.descHtml ? state.data.descHtml[card.id] : null;
+
+    if (editable && state.editingDesc) {
+      var textarea = h('textarea', {
+        id: 'desc-editor',
+        class: 'comment-input',
+        'aria-label': 'Card description',
+        placeholder: 'What is this card about?',
+        onInput: function (e) {
+          descText = e.target.value; // no render
+        },
+        onKeyDown: function (e) {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            saveDescription(card);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            state.editingDesc = false;
+            render();
+          }
+        },
+      });
+      textarea.value = descText;
+      return h('div', { class: 'section' }, [
+        h('div', { class: 'field-label' }, 'Description'),
+        textarea,
+        h('div', { class: 'composer-actions' }, [
+          h(
+            'button',
+            {
+              class: 'btn-primary',
+              onClick: function () {
+                saveDescription(card);
+              },
+            },
+            'Save',
+          ),
+          h(
+            'button',
+            {
+              class: 'btn-secondary',
+              onClick: function () {
+                state.editingDesc = false;
+                render();
+              },
+            },
+            'Cancel',
+          ),
+        ]),
+      ]);
+    }
+
+    if (!editable && !card.desc) {
+      return null;
+    }
+
+    var head = [h('div', { class: 'field-label', style: 'margin-bottom:0;' }, 'Description')];
+    var startEditing = function () {
+      state.editingDesc = true;
+      descText = card.desc || '';
+      render();
+    };
+    if (editable) {
+      head.push(h('div', { class: 'section-head-spacer' }));
+      head.push(h('button', { class: 'ghost-btn', onClick: startEditing }, card.desc ? 'Edit' : 'Add'));
+    }
+    var body = card.desc
+      ? contentBlock('section-desc', html, card.desc)
+      : h(
+          'div',
+          {
+            class: 'section-desc desc-placeholder',
+            onClick: startEditing,
+          },
+          'Add a description…',
+        );
+    return h('div', { class: 'section' }, [h('div', { class: 'section-head' }, head), body]);
+  }
+
+  function saveChecklistItem(card) {
+    var text = checkText.trim();
+    if (!text) {
+      return;
+    }
+    vscode.postMessage({ type: 'addChecklistItem', cardId: card.id, text: text });
+    // Clear locally and stay open so several steps can be typed in a row; the
+    // resulting data refresh brings the persisted item.
+    checkText = '';
+    var input = document.getElementById('check-composer');
+    if (input) {
+      input.value = '';
+    }
+  }
+
+  function checklistComposer(card) {
+    if (!can('checklistAdd')) {
+      return null;
+    }
+    if (!state.addingCheck) {
+      return h(
+        'button',
+        {
+          class: 'add-card-btn',
+          onClick: function () {
+            state.addingCheck = true;
+            checkText = '';
+            render();
+          },
+        },
+        [h('span', { class: 'plus' }, '+'), ' Add item'],
+      );
+    }
+    var input = h('input', {
+      id: 'check-composer',
+      class: 'field-input',
+      placeholder: 'Add an item…',
+      'aria-label': 'New checklist item',
+      onInput: function (e) {
+        checkText = e.target.value; // no render
+      },
+      onKeyDown: function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveChecklistItem(card);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          state.addingCheck = false;
+          checkText = '';
+          render();
+        }
+      },
+    });
+    input.value = checkText;
+    return h('div', { class: 'check-composer' }, [
+      input,
+      h(
+        'button',
+        {
+          class: 'btn-primary',
+          onClick: function () {
+            saveChecklistItem(card);
+          },
+        },
+        'Add',
+      ),
+      h(
+        'button',
+        {
+          class: 'btn-cancel',
+          'aria-label': 'Cancel adding an item',
+          onClick: function () {
+            state.addingCheck = false;
+            checkText = '';
+            render();
+          },
+        },
+        '✕',
+      ),
     ]);
   }
 
-  function modalDescription(card) {
-    if (!card.desc) {
-      return null;
-    }
-    var html = state.data && state.data.descHtml ? state.data.descHtml[card.id] : null;
-    var body = contentBlock('section-desc', html, card.desc);
-    return h('div', { class: 'section' }, [h('div', { class: 'field-label' }, 'Description'), body]);
-  }
-
   function modalChecklist(card) {
-    if (!card.checklist || !card.checklist.length) {
+    var items = card.checklist || [];
+    if (!items.length && !can('checklistAdd')) {
       return null;
     }
     var done = 0;
-    card.checklist.forEach(function (x) {
+    items.forEach(function (x) {
       if (x.done) {
         done++;
       }
     });
     var toggles = can('checklist');
-    var items = card.checklist.map(function (item, index) {
+    var itemNodes = items.map(function (item, index) {
       var boxChildren = item.done ? [icon(ICON.check, 'icon')] : [];
       return h(
         'div',
@@ -915,9 +1477,12 @@
     return h('div', { class: 'section' }, [
       h('div', { class: 'checklist-head' }, [
         h('div', { class: 'field-label', style: 'margin-bottom:0;' }, 'Checklist'),
-        h('span', { class: 'checklist-count' }, done + '/' + card.checklist.length),
+        items.length
+          ? h('span', { class: 'checklist-count' }, done + '/' + items.length)
+          : null,
       ]),
-      h('div', { class: 'checklist' }, items),
+      itemNodes.length ? h('div', { class: 'checklist' }, itemNodes) : null,
+      checklistComposer(card),
     ]);
   }
 
@@ -1161,8 +1726,10 @@
   // Editor node for one custom field. Text/number/date post on 'change' (blur or
   // Enter) so typing never re-renders and the input keeps focus; toggles/selects
   // post immediately (the host echo re-render is harmless for those).
+  // Editable inline from the modal AND from a gate row, so the card id comes
+  // from the card itself rather than from whichever modal happens to be open.
   function fieldEditor(def, card) {
-    var cardId = state.openCardId;
+    var cardId = card.id;
     var val = (card.custom || {})[def.id];
 
     if (def.type === 'boolean') {
@@ -1299,56 +1866,314 @@
     return '';
   }
 
-  function gateRow(card, def) {
+  function recordGatePass(cardId, gateId) {
+    var key = cardId + '|' + gateId;
+    var text = String(gatePassText[key] || '').trim();
+    if (!text) {
+      return;
+    }
+    vscode.postMessage({
+      type: 'recordGatePass',
+      cardId: cardId,
+      gateId: gateId,
+      result: text,
+    });
+    gatePassText[key] = '';
+    // The host echo re-renders and the row turns green in place.
+  }
+
+  /**
+   * The kind-specific action that SATISFIES a gate, used by both the blocked-
+   * move dialog and the card modal's Gates section. `gate` may be a config
+   * GateDef or a MoveBlockedGate — both carry id/script/field/check.
+   */
+  function gateAction(card, gate) {
+    if (gate.script) {
+      var cmdRow = h('div', { class: 'gate-cmd-row' }, [
+        h('code', { class: 'gate-cmd' }, gate.script),
+        h(
+          'button',
+          {
+            class: 'ghost-btn',
+            'aria-label': 'Copy the command',
+            onClick: function () {
+              copyText(gate.script);
+            },
+          },
+          'Copy',
+        ),
+      ]);
+      if (!can('gateEvidence')) {
+        return h('div', { class: 'gate-action' }, [
+          cmdRow,
+          h('div', { class: 'gate-hint' }, 'Record the result in the card file.'),
+        ]);
+      }
+      var key = card.id + '|' + gate.id;
+      var input = h('input', {
+        id: 'gatepass-' + gate.id,
+        class: 'field-input',
+        placeholder: 'What ran and what happened, e.g. bun test green, 130 unit + 9 e2e',
+        'aria-label': 'Result of the run',
+        onInput: function (e) {
+          gatePassText[key] = e.target.value; // no render
+        },
+        onKeyDown: function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            recordGatePass(card.id, gate.id);
+          }
+        },
+      });
+      input.value = gatePassText[key] || '';
+      return h('div', { class: 'gate-action' }, [
+        cmdRow,
+        h('div', { class: 'gate-record-row' }, [
+          input,
+          h(
+            'button',
+            {
+              class: 'btn-primary',
+              onClick: function () {
+                recordGatePass(card.id, gate.id);
+              },
+            },
+            'Record',
+          ),
+        ]),
+        h('div', { class: 'gate-hint' }, 'Only record a run that actually passed.'),
+      ]);
+    }
+
+    // Field gate. When the board declares the field, edit it right here rather
+    // than pointing at the Fields section.
+    var children = [];
+    var def = fieldDefById(gate.field);
+    if (def && can('fields')) {
+      children.push(
+        h('div', { class: 'gate-field-row' }, [
+          h('div', { class: 'field-row-label' }, fieldLabel(def)),
+          fieldEditor(def, card),
+        ]),
+      );
+    } else {
+      var current = fieldValue(card, gate.field);
+      var shown = isPresent(current)
+        ? Array.isArray(current)
+          ? current.join(', ')
+          : String(current)
+        : 'unset';
+      children.push(
+        h(
+          'div',
+          { class: 'gate-hint' },
+          fieldDisplayName(gate.field) + ' is currently ' + shown + '.',
+        ),
+      );
+    }
+    if (isSignOffField(gate.field)) {
+      children.push(
+        h(
+          'div',
+          { class: 'gate-hint' },
+          'This is a sign-off — set it only if you are the reviewer.',
+        ),
+      );
+    }
+    return h('div', { class: 'gate-action' }, children);
+  }
+
+  // Host-rendered prompt HTML for a gate on a column transition.
+  function gatePromptHtmlFor(colId, dir, gateId) {
+    var map = state.data && state.data.gatePromptHtml;
+    var key = colId + ':' + dir + ':' + gateId;
+    return map && map[key] ? map[key] : null;
+  }
+
+  // Mirrors nextColumnId() in src/panels/gateGuidance.ts — kept in sync by hand.
+  function nextColumnOf(col) {
+    var b = board();
+    if (!b || !col) {
+      return null;
+    }
+    for (var i = 0; i < b.columns.length; i++) {
+      if (b.columns[i].id === col.id) {
+        return i + 1 < b.columns.length ? b.columns[i + 1] : null;
+      }
+    }
+    return null;
+  }
+
+  function gateRow(card, def, colId, dir) {
     var sat = gateSatisfied(card, def);
     var status = sat
       ? h('span', { class: 'gate-status ok', html: ICON.check })
       : h('span', { class: 'gate-status' });
     var main = [
-      h('div', { class: 'gate-label' }, gateLabel(def)),
+      h('div', { class: 'gate-label' }, [gateLabel(def), h('span', { class: 'gate-id' }, def.id)]),
       h('div', { class: 'gate-note' }, gateNote(card, def, sat)),
     ];
-    // Unsatisfied field gates whose field is editable here point at the Fields
-    // section rather than offering an inline action.
-    if (!sat && def.field && fieldIsEditable(def.field)) {
-      main.push(h('div', { class: 'gate-hint' }, 'set via Fields above'));
+    if (!sat) {
+      var key = colId + ':' + dir + ':' + def.id;
+      var open = state.openGateHow[key] === true;
+      main.push(
+        h(
+          'button',
+          {
+            class: 'disclosure',
+            'aria-expanded': open ? 'true' : 'false',
+            onClick: function () {
+              state.openGateHow[key] = !open;
+              render();
+            },
+          },
+          (open ? '▾ ' : '▸ ') + 'How to satisfy',
+        ),
+      );
+      if (open) {
+        main.push(
+          contentBlock('gate-prompt', gatePromptHtmlFor(colId, dir, def.id), def.prompt || ''),
+        );
+        main.push(gateAction(card, def));
+      }
     }
     return h('div', { class: 'gate-row' }, [status, h('div', { class: 'gate-main' }, main)]);
   }
 
+  function gateGroupNode(card, grp) {
+    return h('div', { class: 'gate-group' }, [
+      h('div', { class: 'gate-group-head' }, grp.heading),
+      h(
+        'div',
+        { class: 'gate-list' },
+        grp.gates.map(function (def) {
+          return gateRow(card, def, grp.colId, grp.dir);
+        }),
+      ),
+    ]);
+  }
+
+  /**
+   * Surface 2 — the gates a human meets BEFORE the drag. D-6: show the exit
+   * gates of this column and the enter gates of the NEXT one by default;
+   * everything else is behind "Show all transitions".
+   */
   function modalGates(card, col) {
     var b = board();
-    var groups = [];
+    var next = nextColumnOf(col);
+    var primary = [];
     if (col && col.exit && col.exit.length) {
-      groups.push({ heading: 'To leave ' + col.name, gates: col.exit });
+      primary.push({ heading: 'To leave ' + col.name, colId: col.id, dir: 'exit', gates: col.exit });
     }
+    if (next && next.enter && next.enter.length) {
+      primary.push({
+        heading: 'To enter ' + next.name,
+        colId: next.id,
+        dir: 'enter',
+        gates: next.enter,
+      });
+    }
+    var others = [];
     (b.columns || []).forEach(function (c) {
-      if (col && c.id === col.id) {
+      if ((col && c.id === col.id) || (next && c.id === next.id)) {
         return;
       }
       if (c.enter && c.enter.length) {
-        groups.push({ heading: 'To enter ' + c.name, gates: c.enter });
+        others.push({ heading: 'To enter ' + c.name, colId: c.id, dir: 'enter', gates: c.enter });
       }
     });
-    if (!groups.length) {
+    // Gates are only enforced where evidence has a home (Decision 10): a feature
+    // set shows no gate rows, only the keyboard move below.
+    if (!can('gateEvidence')) {
+      primary = [];
+      others = [];
+    }
+    if (!primary.length && !others.length && !next) {
       return null;
     }
-    var blocks = groups.map(function (grp) {
-      return h('div', { class: 'gate-group' }, [
-        h('div', { class: 'gate-group-head' }, grp.heading),
+
+    var shown = primary.concat(state.showAllGates ? others : []);
+    var children = shown.length
+      ? [
+          h('div', { class: 'field-label' }, 'Gates'),
+          h(
+            'div',
+            { class: 'gates' },
+            shown.map(function (grp) {
+              return gateGroupNode(card, grp);
+            }),
+          ),
+        ]
+      : [];
+
+    if (others.length) {
+      children.push(
         h(
-          'div',
-          { class: 'gate-list' },
-          grp.gates.map(function (def) {
-            return gateRow(card, def);
-          }),
+          'button',
+          {
+            class: 'disclosure',
+            'aria-expanded': state.showAllGates ? 'true' : 'false',
+            onClick: function () {
+              state.showAllGates = !state.showAllGates;
+              render();
+            },
+          },
+          (state.showAllGates ? '▾ ' : '▸ ') + 'Show all transitions',
         ),
-      ]);
-    });
-    return h('div', { class: 'section' }, [
-      h('div', { class: 'field-label' }, 'Gates'),
-      h('div', { class: 'gates' }, blocks),
-    ]);
+      );
+    }
+
+    // A keyboard-reachable move that does not need drag and drop. Enabled when
+    // every gate on THIS transition passes; the host re-validates regardless.
+    if (next) {
+      var blocking = [];
+      ((col && col.exit) || []).forEach(function (def) {
+        blocking.push(def);
+      });
+      (next.enter || []).forEach(function (def) {
+        blocking.push(def);
+      });
+      // Gates are only enforced where evidence has a home — a feature set has
+      // no sidecar, so its moves are never gate-blocked (CHANGELOG 0.9.0) and
+      // the button must not pretend otherwise.
+      var enforced = can('gateEvidence');
+      var ok =
+        !enforced ||
+        blocking.every(function (def) {
+          return gateSatisfied(card, def);
+        });
+      children.push(
+        h(
+          'button',
+          {
+            class: 'btn-primary move-next',
+            disabled: ok ? null : 'disabled',
+            title: ok
+              ? 'Move to ' + next.name
+              : blocking.length + ' gates must be satisfied first',
+            onClick: ok
+              ? function () {
+                  state.lastMove = {
+                    cardId: card.id,
+                    toColumn: next.id,
+                    index: MOVE_TO_END,
+                  };
+                  vscode.postMessage({
+                    type: 'moveCard',
+                    cardId: card.id,
+                    toColumn: next.id,
+                    index: MOVE_TO_END,
+                  });
+                  closeModal();
+                }
+              : null,
+          },
+          'Move to ' + next.name,
+        ),
+      );
+    }
+
+    return h('div', { class: 'section' }, children);
   }
 
   function buildModal() {
@@ -1359,7 +2184,8 @@
     var col = columnOfCard(state.openCardId);
 
     var body = [
-      modalLiveBanner(card),
+      modalColumnPrompt(card, col),
+      activityRow(card),
       modalMeta(card),
       modalDescription(card),
       modalFields(card),
@@ -1372,6 +2198,10 @@
       'div',
       {
         class: modalWidthClass(),
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': card.title,
+        tabindex: '-1',
         style: modalWidthStyle(),
         onClick: function (e) {
           e.stopPropagation();
@@ -1385,28 +2215,70 @@
 
   function closeModal() {
     state.openCardId = null;
+    state.editingTitle = false;
+    state.editingDesc = false;
+    state.addingCheck = false;
     render();
   }
 
-  /* ---- Blocked-move dialog ---- */
+  /* ---- Blocked-move dialog (Surface 1: the moment of refusal) ---- */
   function closeBlocked() {
     state.blocked = null;
+    overrideReason = '';
     render();
   }
 
-  function overrideMove() {
+  // Re-send the stashed attempt. Without override this is the "I did the work"
+  // path; with override the host records a reason against every failing gate.
+  function retryMove(override, reason) {
     var lm = state.lastMove;
     state.blocked = null;
+    overrideReason = '';
     if (lm) {
-      vscode.postMessage({
+      var msg = {
         type: 'moveCard',
         cardId: lm.cardId,
         toColumn: lm.toColumn,
         index: lm.index,
-        override: true,
-      });
+      };
+      if (override) {
+        msg.override = true;
+        msg.reason = reason;
+      }
+      vscode.postMessage(msg);
     }
     render();
+  }
+
+  function overrideMove() {
+    var why = overrideReason.trim();
+    if (!why) {
+      return; // the reason is required, exactly as the CLI requires --reason
+    }
+    retryMove(true, why);
+  }
+
+  // Client-side re-evaluation of a blocked gate against the CURRENT card, so a
+  // row turns green as soon as evidence lands or a field is set.
+  function blockedGateSatisfied(card, r) {
+    if (!card) {
+      return false;
+    }
+    return gateSatisfied(card, { id: r.id, script: r.script, field: r.field, check: r.check });
+  }
+
+  // Toggle the override button without a re-render, so the reason input keeps
+  // focus while typing.
+  function syncOverrideButton() {
+    var btn = document.getElementById('override-move-btn');
+    if (!btn) {
+      return;
+    }
+    if (overrideReason.trim()) {
+      btn.removeAttribute('disabled');
+    } else {
+      btn.setAttribute('disabled', 'disabled');
+    }
   }
 
   function buildBlockedDialog() {
@@ -1414,21 +2286,139 @@
     if (!bl) {
       return null;
     }
+    var b = board();
+    var card = b ? b.cards[bl.cardId] : null;
     var col = columnById(bl.toColumn);
     var name = col ? col.name : bl.toColumn;
-    var rows = (bl.results || []).map(function (r) {
+    var results = bl.results || [];
+
+    var rows = results.map(function (r) {
+      var sat = blockedGateSatisfied(card, r);
+      var main = [
+        h('div', { class: 'gate-label' }, [r.label, h('span', { class: 'gate-id' }, r.id)]),
+        h('div', { class: 'gate-note' }, sat ? 'Satisfied' : r.reason),
+      ];
+      if (!sat) {
+        if (r.promptHtml || r.prompt) {
+          main.push(contentBlock('gate-prompt', r.promptHtml, r.prompt || ''));
+        }
+        if (card) {
+          main.push(gateAction(card, r));
+        }
+      }
       return h('div', { class: 'blocked-gate' }, [
-        h('span', { class: 'gate-status' }),
-        h('div', { class: 'gate-main' }, [
-          h('div', { class: 'gate-label' }, r.label),
-          h('div', { class: 'gate-note' }, r.reason),
-        ]),
+        sat
+          ? h('span', { class: 'gate-status ok', html: ICON.check })
+          : h('span', { class: 'gate-status' }),
+        h('div', { class: 'gate-main' }, main),
       ]);
     });
+
+    var allOk = results.every(function (r) {
+      return blockedGateSatisfied(card, r);
+    });
+
+    var bodyChildren = [
+      h(
+        'div',
+        { class: 'blocked-lead' },
+        results.length + (results.length === 1 ? ' gate' : ' gates') + ' must be satisfied first',
+      ),
+      h('div', { class: 'blocked-gates' }, rows),
+    ];
+
+    if (bl.overriding) {
+      var reasonInput = h('input', {
+        id: 'override-reason',
+        class: 'field-input',
+        placeholder: 'Why are you bypassing these gates?',
+        'aria-label': 'Override reason',
+        onInput: function (e) {
+          overrideReason = e.target.value; // no render
+          syncOverrideButton();
+        },
+        onKeyDown: function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            overrideMove();
+          }
+        },
+      });
+      reasonInput.value = overrideReason;
+      bodyChildren.push(
+        h('div', { class: 'override-box' }, [
+          h('div', { class: 'field-label' }, 'Reason (required)'),
+          reasonInput,
+          h('div', { class: 'gate-hint' }, 'Only a human may override — say why.'),
+        ]),
+      );
+    } else {
+      bodyChildren.push(
+        h('div', { class: 'blocked-foot-note' }, 'Do the work above, then move again.'),
+      );
+    }
+
+    var actions = [h('button', { class: 'btn-cancel-text', onClick: closeBlocked }, 'Cancel')];
+    if (bl.overriding) {
+      actions.push(
+        h(
+          'button',
+          {
+            id: 'override-move-btn',
+            class: 'btn-secondary',
+            disabled: overrideReason.trim() ? null : 'disabled',
+            onClick: overrideMove,
+          },
+          'Override & move',
+        ),
+      );
+    } else {
+      actions.push(
+        h(
+          'button',
+          {
+            class: 'btn-secondary',
+            onClick: function () {
+              state.blocked.overriding = true;
+              overrideReason = '';
+              render();
+            },
+          },
+          'Override…',
+        ),
+      );
+    }
+    actions.push(
+      h(
+        'button',
+        {
+          class: 'btn-primary',
+          disabled: allOk ? null : 'disabled',
+          title: allOk ? 'Move now' : 'Satisfy every gate above first',
+          onClick: allOk
+            ? function () {
+                retryMove(false);
+              }
+            : null,
+        },
+        'Move',
+      ),
+    );
+    bodyChildren.push(h('div', { class: 'blocked-actions' }, actions));
+
+    var wide = results.some(function (r) {
+      return !!(r.promptHtml || r.prompt);
+    });
+    var title = 'Before ' + (card ? card.title : bl.cardId) + ' can move to ' + name;
+
     var panel = h(
       'div',
       {
-        class: 'modal blocked-modal',
+        class: 'modal blocked-modal' + (wide ? ' blocked-wide' : ''),
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': title,
+        tabindex: '-1',
         onClick: function (e) {
           e.stopPropagation();
         },
@@ -1437,18 +2427,16 @@
         h('div', { class: 'modal-head' }, [
           h('div', { class: 'modal-head-row' }, [
             h('div', { class: 'modal-head-main' }, [
-              h('div', { class: 'modal-title blocked-title' }, "Can't move to " + name),
+              h('div', { class: 'modal-title blocked-title' }, title),
             ]),
-            h('button', { class: 'modal-close', onClick: closeBlocked }, '✕'),
+            h(
+              'button',
+              { class: 'modal-close', 'aria-label': 'Close', onClick: closeBlocked },
+              '✕',
+            ),
           ]),
         ]),
-        h('div', { class: 'modal-body' }, [
-          h('div', { class: 'blocked-gates' }, rows),
-          h('div', { class: 'blocked-actions' }, [
-            h('button', { class: 'btn-secondary', onClick: overrideMove }, 'Override & move'),
-            h('button', { class: 'btn-primary', onClick: closeBlocked }, 'Cancel'),
-          ]),
-        ]),
+        h('div', { class: 'modal-body' }, bodyChildren),
       ],
     );
     return h('div', { class: 'modal-overlay', onClick: closeBlocked }, [panel]);
@@ -1629,6 +2617,32 @@
   }
 
   /* ---- Render ---- */
+  // Which dialog last received focus, so a data refresh does not keep stealing
+  // it back (D-4: focus the panel when it OPENS).
+  var focusedDialog = null;
+
+  // D-4: Escape closes the blocked dialog first, then the card modal. The two
+  // composers still own Escape while they are focused (they cancel themselves).
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') {
+      return;
+    }
+    if (state.blocked) {
+      e.preventDefault();
+      closeBlocked();
+      return;
+    }
+    if (!state.openCardId) {
+      return;
+    }
+    var target = e.target;
+    if (target && target.closest && target.closest('input, textarea, select')) {
+      return; // the focused editor handles its own Escape
+    }
+    e.preventDefault();
+    closeModal();
+  });
+
   function render() {
     if (drag.active) {
       return; // never re-render mid-drag
@@ -1638,11 +2652,20 @@
       return;
     }
 
-    // Preserve search focus + caret across the rebuild.
+    // Preserve focus + caret across the rebuild for ANY identified field —
+    // search, the inline gate-evidence inputs, the override reason.
     var active = document.activeElement;
-    var restoreSearch = active && active.id === 'search-input';
-    var caretStart = restoreSearch ? active.selectionStart : 0;
-    var caretEnd = restoreSearch ? active.selectionEnd : 0;
+    var activeId = active && active.id ? active.id : null;
+    var caretStart = 0;
+    var caretEnd = 0;
+    try {
+      if (active && typeof active.selectionStart === 'number') {
+        caretStart = active.selectionStart;
+        caretEnd = active.selectionEnd;
+      }
+    } catch (caretErr) {
+      /* number/date inputs expose no selection */
+    }
 
     if (!state.data) {
       while (app.firstChild) {
@@ -1654,6 +2677,10 @@
     // Drop a stale open card.
     if (state.openCardId && !board().cards[state.openCardId]) {
       state.openCardId = null;
+    }
+    // ...and a blocked dialog whose card disappeared underneath it.
+    if (state.blocked && !board().cards[state.blocked.cardId]) {
+      state.blocked = null;
     }
 
     // Build into a detached fragment FIRST. If any builder throws on an
@@ -1696,25 +2723,62 @@
       console.error('RepoDoc: content enhancement failed', enhanceErr);
     }
 
-    if (restoreSearch) {
-      var input = document.getElementById('search-input');
-      if (input) {
-        input.focus();
+    restoreFocus(activeId, caretStart, caretEnd);
+  }
+
+  function focusEnd(el) {
+    if (!el) {
+      return false;
+    }
+    el.focus();
+    try {
+      var len = el.value.length;
+      el.setSelectionRange(len, len);
+    } catch (err) {
+      /* not a text field */
+    }
+    return true;
+  }
+
+  /**
+   * Focus, in priority order: whatever was focused before the rebuild, then a
+   * composer/editor that was just opened, then — when a dialog has just
+   * appeared — the dialog itself (D-4).
+   */
+  function restoreFocus(activeId, caretStart, caretEnd) {
+    if (activeId) {
+      var previous = document.getElementById(activeId);
+      if (previous) {
+        previous.focus();
         try {
-          input.setSelectionRange(caretStart, caretEnd);
+          previous.setSelectionRange(caretStart, caretEnd);
         } catch (err) {
           /* ignore */
         }
+        return;
       }
-    } else if (state.addingCol) {
-      var ta = document.getElementById('composer-' + state.addingCol);
-      if (ta) {
-        ta.focus();
-        var len = ta.value.length;
-        try {
-          ta.setSelectionRange(len, len);
-        } catch (err2) {
-          /* ignore */
+    }
+    if (state.addingCol && focusEnd(document.getElementById('composer-' + state.addingCol))) {
+      return;
+    }
+    if (state.editingTitle && focusEnd(document.getElementById('title-input'))) {
+      return;
+    }
+    if (state.editingDesc && focusEnd(document.getElementById('desc-editor'))) {
+      return;
+    }
+    if (state.addingCheck && focusEnd(document.getElementById('check-composer'))) {
+      return;
+    }
+    var want = state.blocked ? 'blocked' : state.openCardId ? 'modal' : null;
+    if (want !== focusedDialog) {
+      focusedDialog = want;
+      if (want) {
+        var panel = document.querySelector(
+          want === 'blocked' ? '.blocked-modal' : '.modal:not(.blocked-modal)',
+        );
+        if (panel) {
+          panel.focus();
         }
       }
     }
@@ -1754,10 +2818,12 @@
     if (msg.type === 'moveBlocked' && typeof msg.cardId === 'string') {
       // A gated move was refused; surface the unmet gates with an override path.
       // The drop already ended, so drag.active is false — safe to render now.
+      overrideReason = '';
       state.blocked = {
         cardId: msg.cardId,
         toColumn: msg.toColumn,
         results: Array.isArray(msg.results) ? msg.results : [],
+        overriding: false,
       };
       if (state.data) {
         render();

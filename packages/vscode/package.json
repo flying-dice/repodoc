@@ -108,6 +108,36 @@
         "icon": "$(add)"
       },
       {
+        "command": "repodoc.openCardFile",
+        "title": "Open Card File",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.openBoardConfig",
+        "title": "Open Board Config",
+        "category": "RepoDoc",
+        "icon": "$(json)"
+      },
+      {
+        "command": "repodoc.openDecisionSource",
+        "title": "Open Source",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.openDocSource",
+        "title": "Open Source",
+        "category": "RepoDoc",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "repodoc.setDecisionStatus",
+        "title": "Set Status...",
+        "category": "RepoDoc",
+        "icon": "$(circle-outline)"
+      },
+      {
         "command": "repodoc.installAgentSkill",
         "title": "Install Agent Skill",
         "category": "RepoDoc"
@@ -158,6 +188,26 @@
         {
           "command": "repodoc.openDoc",
           "when": "false"
+        },
+        {
+          "command": "repodoc.openCardFile",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openBoardConfig",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openDecisionSource",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.openDocSource",
+          "when": "false"
+        },
+        {
+          "command": "repodoc.setDecisionStatus",
+          "when": "false"
         }
       ],
       "view/item/context": [
@@ -170,6 +220,51 @@
           "command": "repodoc.openBoard",
           "when": "view == repodoc.boards && viewItem == repodoc.featureSet",
           "group": "inline"
+        },
+        {
+          "command": "repodoc.openBoardConfig",
+          "when": "view == repodoc.boards && viewItem == repodoc.board",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.openBoardConfig",
+          "when": "view == repodoc.boards && viewItem == repodoc.featureSet",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.openCardFile",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openCardFile",
+          "when": "view == repodoc.boards && viewItem == repodoc.card",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.openDecisionSource",
+          "when": "view == repodoc.decisions && viewItem == repodoc.decision",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openDecisionSource",
+          "when": "view == repodoc.decisions && viewItem == repodoc.decision",
+          "group": "navigation@1"
+        },
+        {
+          "command": "repodoc.setDecisionStatus",
+          "when": "view == repodoc.decisions && viewItem == repodoc.decision",
+          "group": "navigation@2"
+        },
+        {
+          "command": "repodoc.openDocSource",
+          "when": "view == repodoc.docs && viewItem == repodoc.docFile",
+          "group": "inline"
+        },
+        {
+          "command": "repodoc.openDocSource",
+          "when": "view == repodoc.docs && viewItem == repodoc.docFile",
+          "group": "navigation@1"
         }
       ]
     },

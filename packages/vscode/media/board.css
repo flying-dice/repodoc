@@ -1022,3 +1022,257 @@ input::placeholder {
 .content-md del {
   color: var(--vscode-descriptionForeground);
 }
+
+/* ---- Ghost actions (modal header, disclosures, dismiss) ---- */
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 11.5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghost-btn:hover {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+.ghost-btn:focus-visible,
+.disclosure:focus-visible,
+.ms-chip:focus-visible,
+.field-bool:focus-visible,
+.status-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+.modal-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.disclosure {
+  background: none;
+  border: none;
+  padding: 4px 0 0;
+  margin: 0;
+  color: var(--vscode-textLink-foreground);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.disclosure:hover {
+  text-decoration: underline;
+}
+
+/* ---- Status bar: the data dir opens the board config ---- */
+.status-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: inherit;
+  color: var(--vscode-descriptionForeground);
+}
+.status-link:hover {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+}
+
+/* ---- Editable card title ---- */
+.modal-title.editable {
+  cursor: text;
+  border-radius: 6px;
+  margin: -2px -6px;
+  padding: 2px 6px;
+}
+.modal-title.editable:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+.title-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 8px;
+  padding: 2px 6px;
+  outline: none;
+}
+
+/* ---- Column prompt panel ("In this column") ---- */
+.col-prompt {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+.col-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.col-prompt-spacer {
+  flex: 1;
+}
+.col-prompt-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+}
+
+/* ---- Activity row (agent / live / status / progress) ---- */
+.activity-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+.activity-cell {
+  min-width: 110px;
+}
+.activity-cell.activity-agent,
+.activity-cell.activity-status {
+  flex: 1;
+  min-width: 160px;
+}
+.field-input-num {
+  width: 84px;
+}
+.modal-cols-labels {
+  min-width: 0;
+}
+.label-toggle {
+  border: 1px solid transparent;
+}
+
+/* ---- Description section ---- */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.section-head-spacer {
+  flex: 1;
+}
+.desc-placeholder {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  cursor: text;
+}
+
+/* ---- Checklist composer ---- */
+.check-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.check-composer .field-input {
+  flex: 1;
+}
+
+/* ---- Gate guidance (blocked dialog + modal Gates) ---- */
+.gate-id {
+  margin-left: 7px;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--font-mono);
+}
+.gate-prompt {
+  margin-top: 7px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vscode-editor-foreground);
+}
+.gate-action {
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.gate-cmd-row,
+.gate-record-row,
+.gate-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gate-record-row .field-input {
+  flex: 1;
+}
+.gate-cmd {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  color: var(--vscode-textPreformat-foreground);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.move-next {
+  margin-top: 14px;
+}
+.btn-primary[disabled],
+.btn-secondary[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Blocked-move dialog (guided checklist) ---- */
+.blocked-modal.blocked-wide {
+  width: 640px;
+}
+.blocked-lead {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 14px;
+}
+.blocked-gates {
+  gap: 18px;
+}
+.blocked-foot-note {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 14px;
+}
+.override-box {
+  border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 35%, transparent);
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 8%, transparent);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+.btn-cancel-text {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.btn-cancel-text:hover {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+}
+.blocked-actions {
+  align-items: center;
+}

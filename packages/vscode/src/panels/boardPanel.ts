@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { CustomFieldValue, RepoDocStore } from '@repodoc/core';
+import { CardMetaPatch, CustomFieldValue, Priority, RepoDocStore } from '@repodoc/core';
 import { type BoardSource, CardBoardSource } from './boardSource';
 import { resolveReadingWidth } from './readingWidth';
 import { renderMarkdownWithDiagrams } from './diagrams';
@@ -14,6 +14,7 @@ import {
   WebviewToHostMessage,
 } from './protocol';
 import { localIdentity } from './identity';
+import { collectGatePrompts, toBlockedGate } from './gateGuidance';
 
 /**
  * A kanban surface rendered in a webview — a card board or a feature set,
@@ -162,12 +163,30 @@ export class BoardPanel {
     const render = (md: string): string => renderMarkdownWithDiagrams(md, { plantUmlServer: server }).html;
     const descHtml: Record<string, string> = {};
     const commentHtml: Record<string, string[]> = {};
+    const cardFiles: Record<string, string> = {};
     for (const card of Object.values(board.cards)) {
       if (card.desc) {
         descHtml[card.id] = render(card.desc);
       }
       if (card.comments && card.comments.length) {
         commentHtml[card.id] = card.comments.map((c) => render(c.text));
+      }
+      const file = this.source.cardFilePath?.(card.id);
+      if (file) {
+        cardFiles[card.id] = file;
+      }
+    }
+
+    // Gate and column prompts are authored markdown, so they go through the
+    // same renderer as descriptions and comments — one renderer, every block.
+    const gatePromptHtml: Record<string, string> = {};
+    for (const { key, prompt } of collectGatePrompts(board.columns)) {
+      gatePromptHtml[key] = render(prompt);
+    }
+    const columnPromptHtml: Record<string, string> = {};
+    for (const column of board.columns) {
+      if (column.prompt) {
+        columnPromptHtml[column.id] = render(column.prompt);
       }
     }
 
@@ -182,6 +201,9 @@ export class BoardPanel {
       readingWidth: resolveReadingWidth(),
       commentAuthor: resolveCommentAuthor(this.store.root),
       capabilities: this.capabilities(),
+      cardFiles,
+      gatePromptHtml,
+      columnPromptHtml,
     };
     void this.panel.webview.postMessage(message);
   }
@@ -192,7 +214,11 @@ export class BoardPanel {
       comments: this.source.addComment !== undefined,
       fields: this.source.setCardField !== undefined,
       checklist: this.source.toggleChecklistItem !== undefined,
+      checklistAdd: this.source.addChecklistItem !== undefined,
       addColumn: this.source.addColumn !== undefined,
+      meta: this.source.updateCardMeta !== undefined,
+      description: this.source.setCardDescription !== undefined,
+      gateEvidence: this.source.recordGateEvidence !== undefined,
     };
   }
 
@@ -219,7 +245,13 @@ export class BoardPanel {
           typeof m.toColumn === 'string' &&
           typeof m.index === 'number'
         ) {
-          this.handleMove(m.cardId, m.toColumn, m.index, m.override === true);
+          this.handleMove(
+            m.cardId,
+            m.toColumn,
+            m.index,
+            m.override === true,
+            typeof m.reason === 'string' ? m.reason : undefined,
+          );
         }
         break;
       }
@@ -291,6 +323,48 @@ export class BoardPanel {
         void this.promptAddColumn();
         break;
       }
+      case 'addChecklistItem': {
+        if (typeof m.cardId === 'string' && typeof m.text === 'string') {
+          const text = m.text.trim();
+          if (text) {
+            this.source.addChecklistItem?.(m.cardId, text);
+          }
+        }
+        break;
+      }
+      case 'setDescription': {
+        if (typeof m.cardId === 'string' && typeof m.text === 'string') {
+          this.source.setCardDescription?.(m.cardId, m.text);
+        }
+        break;
+      }
+      case 'updateMeta': {
+        if (typeof m.cardId === 'string' && m.patch && typeof m.patch === 'object') {
+          const patch = sanitizeMetaPatch(m.patch as Record<string, unknown>);
+          if (patch) {
+            this.source.updateCardMeta?.(m.cardId, patch);
+          }
+        }
+        break;
+      }
+      case 'recordGatePass': {
+        if (
+          typeof m.cardId === 'string' &&
+          typeof m.gateId === 'string' &&
+          typeof m.result === 'string'
+        ) {
+          const result = m.result.replace(/[\r\n]/g, ' ').trim();
+          if (result) {
+            this.source.recordGateEvidence?.(
+              m.cardId,
+              m.gateId,
+              result,
+              resolveCommentAuthor(this.store.root),
+            );
+          }
+        }
+        break;
+      }
       case 'toggleCheck': {
         if (typeof m.cardId === 'string' && typeof m.index === 'number') {
           this.source.toggleChecklistItem?.(m.cardId, m.index);
@@ -313,28 +387,41 @@ export class BoardPanel {
     toColumn: string,
     index: number,
     override: boolean,
+    reason?: string,
   ): void {
     const results = this.source.evaluateMove(cardId, toColumn);
     const blocking = results.filter((r) => !r.satisfied);
+    const why = (reason ?? '').replace(/[\r\n]/g, ' ').trim();
     if (blocking.length && !override) {
+      const server = plantUmlServer();
       const message: MoveBlockedMessage = {
         type: 'moveBlocked',
         cardId,
         toColumn,
-        results: blocking.map((r) => ({
-          id: r.gate.id,
-          label: r.gate.label ?? r.gate.id,
-          satisfied: r.satisfied,
-          reason: r.reason,
-        })),
+        results: blocking.map((r) => {
+          const gate = toBlockedGate(r);
+          gate.promptHtml = renderMarkdownWithDiagrams(gate.prompt ?? '', {
+            plantUmlServer: server,
+          }).html;
+          return gate;
+        }),
       };
       void this.panel.webview.postMessage(message);
       return;
     }
     if (blocking.length && override) {
-      const who = localIdentity(this.store.root);
+      // The CLI refuses `--override` without `--reason` (commands.ts:209-211);
+      // the UI must not write a weaker audit line than an agent does.
+      if (!why) {
+        void vscode.window.showWarningMessage(
+          'RepoDoc: an override needs a reason — say why the gate was bypassed.',
+        );
+        return;
+      }
+      // Same identity rule as comments, so both hosts write the same name.
+      const who = resolveCommentAuthor(this.store.root);
       for (const r of blocking) {
-        this.source.recordGateOverride(cardId, r.gate.id, who);
+        this.source.recordGateOverride(cardId, r.gate.id, who, why);
       }
     }
     this.source.moveCard(cardId, toColumn, index);
@@ -407,6 +494,62 @@ function resolveCommentAuthor(root: string | undefined): string {
     vscode.workspace.getConfiguration('repodoc').get<string>('commentAuthor') ?? '',
   );
   return configured || localIdentity(root);
+}
+
+const PRIORITIES: Priority[] = ['high', 'med', 'low'];
+
+/**
+ * Narrow an untrusted `updateMeta` payload to a {@link CardMetaPatch}. Unknown
+ * keys and wrong-typed values are dropped; `null` is kept, because clearing is
+ * how the webview mirrors the CLI's `--priority ""` convention. Returns
+ * undefined when nothing usable survives.
+ */
+function sanitizeMetaPatch(raw: Record<string, unknown>): CardMetaPatch | undefined {
+  const patch: CardMetaPatch = {};
+  let any = false;
+
+  if (typeof raw.title === 'string' && raw.title.trim()) {
+    patch.title = raw.title.replace(/[\r\n]/g, ' ').trim();
+    any = true;
+  }
+  if (raw.labels === null) {
+    patch.labels = null;
+    any = true;
+  } else if (Array.isArray(raw.labels) && raw.labels.every((l) => typeof l === 'string')) {
+    patch.labels = raw.labels as string[];
+    any = true;
+  }
+  if (raw.priority === null) {
+    patch.priority = null;
+    any = true;
+  } else if (PRIORITIES.includes(raw.priority as Priority)) {
+    patch.priority = raw.priority as Priority;
+    any = true;
+  }
+  for (const key of ['agent', 'status'] as const) {
+    const value = raw[key];
+    if (value === null) {
+      patch[key] = null;
+      any = true;
+    } else if (typeof value === 'string') {
+      const trimmed = value.replace(/[\r\n]/g, ' ').trim();
+      patch[key] = trimmed === '' ? null : trimmed;
+      any = true;
+    }
+  }
+  if (raw.live === null || typeof raw.live === 'boolean') {
+    patch.live = raw.live as boolean | null;
+    any = true;
+  }
+  if (raw.progress === null) {
+    patch.progress = null;
+    any = true;
+  } else if (typeof raw.progress === 'number' && Number.isFinite(raw.progress)) {
+    patch.progress = Math.max(0, Math.min(100, Math.round(raw.progress)));
+    any = true;
+  }
+
+  return any ? patch : undefined;
 }
 
 /** One line, trimmed, capped — author names never carry markup or newlines. */

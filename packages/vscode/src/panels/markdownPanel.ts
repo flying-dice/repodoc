@@ -120,6 +120,8 @@ export class MarkdownPanel {
     return {
       // Scripts stay nonce-gated by the CSP; needed for mermaid rendering.
       enableScripts: true,
+      // The topbar's "Open source" action is a `command:` link (no script).
+      enableCommandUris: ['repodoc.openDecisionSource', 'repodoc.openDocSource'],
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
     };
@@ -161,6 +163,7 @@ export class MarkdownPanel {
       fileCrumb,
       bodyHtml,
       rendered.hasMermaid,
+      commandUri('repodoc.openDecisionSource', decision.id),
     );
   }
 
@@ -187,6 +190,7 @@ export class MarkdownPanel {
       this.state.target,
       bodyHtml,
       rendered.hasMermaid,
+      commandUri('repodoc.openDocSource', this.state.target),
     );
   }
 
@@ -196,7 +200,16 @@ export class MarkdownPanel {
     fileCrumb: string,
     bodyHtml: string,
     hasMermaid = false,
+    sourceUri?: string,
   ): string {
+    // G-1: the reading views name their file; now they open it too. A
+    // `command:` link keeps this script-free.
+    const openSource = sourceUri
+      ? `<a class="topbar-action" href="${sourceUri}" title="Open the markdown file in an editor">Open source</a>`
+      : '';
+    const crumbFile = sourceUri
+      ? `<a class="filecrumb-link" href="${sourceUri}">${escapeHtml(fileCrumb)}</a>`
+      : escapeHtml(fileCrumb);
     const body = `  <div class="page">
     <div class="topbar">
       <div class="crumb">
@@ -204,10 +217,12 @@ export class MarkdownPanel {
         <span class="crumb-sep">/</span>
         <span class="crumb-leaf">${escapeHtml(leaf)}</span>
       </div>
+      <div class="topbar-spacer"></div>
+      ${openSource}
     </div>
     <div class="content">
       <div class="reading-column ${readingColumnAttrs().cls}"${readingColumnAttrs().style}>
-        <div class="filecrumb">${escapeHtml(fileCrumb)}</div>
+        <div class="filecrumb">${crumbFile}</div>
         <div class="adr-md">${bodyHtml}</div>
       </div>
     </div>
@@ -230,6 +245,11 @@ export class MarkdownPanel {
     }
     return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
   }
+}
+
+/** A `command:` URI for a webview link, with one string argument. */
+function commandUri(command: string, arg: string): string {
+  return `command:${command}?${encodeURIComponent(JSON.stringify([arg]))}`;
 }
 
 /** Renders frontmatter as a compact key/value table for the reading view. */

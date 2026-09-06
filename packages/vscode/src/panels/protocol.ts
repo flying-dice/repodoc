@@ -1,4 +1,4 @@
-import { BoardData, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
+import { BoardData, CardMetaPatch, CustomFieldValue, RepoDocConfig } from '@repodoc/core';
 
 /**
  * Authoritative shapes for the board webview postMessage protocol.
@@ -22,7 +22,19 @@ export interface BoardCapabilities {
   comments: boolean;
   fields: boolean;
   checklist: boolean;
+  /** Appending new checklist items (not just toggling existing ones). */
+  checklistAdd: boolean;
   addColumn: boolean;
+  /**
+   * Reserved card metadata (title, labels, priority, agent, live, status,
+   * progress) is editable. False for feature sets: a feature's title and tags
+   * are owned by the `.feature` file, so they are edited there.
+   */
+  meta: boolean;
+  /** The card body text is editable from the modal. */
+  description: boolean;
+  /** Script-gate evidence can be recorded from the UI. */
+  gateEvidence: boolean;
 }
 
 /** Messages sent from the extension host down to the webview. */
@@ -43,6 +55,21 @@ export interface DataMessage {
   commentAuthor: string;
   /** Which editing affordances this surface supports. */
   capabilities: BoardCapabilities;
+  /**
+   * Repo-relative file backing each card (`boards/<id>/NN-slug.md`, or a
+   * feature's `.feature`), keyed by card id — the modal's "Open file" action.
+   * A card whose file cannot be resolved is simply absent.
+   */
+  cardFiles: Record<string, string>;
+  /**
+   * Gate `prompt` text rendered to HTML by the shared renderer, keyed by
+   * `<columnId>:<enter|exit>:<gateId>` (see `gatePromptKey` in
+   * `gateGuidance.ts`). Gates without an authored prompt carry the same default
+   * wording the CLI prints.
+   */
+  gatePromptHtml: Record<string, string>;
+  /** Column `prompt` text rendered to HTML, keyed by column id. */
+  columnPromptHtml: Record<string, string>;
 }
 
 
@@ -58,6 +85,18 @@ export interface MoveBlockedGate {
   label: string;
   satisfied: boolean;
   reason: string;
+  /** How the gate is satisfied — drives the dialog's action row. */
+  kind: 'script' | 'field';
+  /** Script gates: the command that must have run green. */
+  script?: string;
+  /** Field gates: the inspected (custom or reserved) field id. */
+  field?: string;
+  /** Field gates: the check expression the value must satisfy. */
+  check?: string;
+  /** The gate's instructions, or the CLI's default wording when unauthored. */
+  prompt?: string;
+  /** `prompt` rendered to HTML by the shared markdown renderer. */
+  promptHtml?: string;
 }
 
 /**
@@ -85,6 +124,12 @@ export interface MoveCardMessage {
   index: number;
   /** Force the move past any unsatisfied gates (records overrides). */
   override?: boolean;
+  /**
+   * Why the move was overridden. Required by the host whenever `override` is
+   * true and gates are failing — the CLI requires `--reason` too, so both hosts
+   * write the same audit line.
+   */
+  reason?: string;
 }
 
 /** Set (or clear, when `value` is null) a card's custom field. */
@@ -133,12 +178,49 @@ export interface ToggleCheckMessage {
   index: number;
 }
 
+/** Append an item to a card's `## Checklist` section. */
+export interface AddChecklistItemMessage {
+  type: 'addChecklistItem';
+  cardId: string;
+  text: string;
+}
+
+/** Replace a card's description (the body above the first `##` section). */
+export interface SetDescriptionMessage {
+  type: 'setDescription';
+  cardId: string;
+  text: string;
+}
+
+/** Edit reserved card metadata (title/labels/priority/agent/live/status/progress). */
+export interface UpdateMetaMessage {
+  type: 'updateMeta';
+  cardId: string;
+  patch: CardMetaPatch;
+}
+
+/**
+ * Record a green run of a script gate's command. `result` is what the human
+ * saw, e.g. "bun test green, 130 unit + 9 e2e"; the host stamps the author and
+ * time. Only a run that actually passed may be recorded.
+ */
+export interface RecordGatePassMessage {
+  type: 'recordGatePass';
+  cardId: string;
+  gateId: string;
+  result: string;
+}
+
 export type WebviewToHostMessage =
   | ReadyMessage
   | MoveCardMessage
   | AddCardMessage
   | AddColumnMessage
   | ToggleCheckMessage
+  | AddChecklistItemMessage
+  | SetDescriptionMessage
+  | UpdateMetaMessage
+  | RecordGatePassMessage
   | SetFieldMessage
   | AddCommentMessage
   | OpenFileMessage;

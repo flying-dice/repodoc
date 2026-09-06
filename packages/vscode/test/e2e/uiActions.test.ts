@@ -184,14 +184,23 @@ suite('RepoDoc UI actions -> filesystem', () => {
     const blocked = api.store.evaluateMove(BOARD, 'alpha', 'done').filter((r) => !r.satisfied);
     assert.strictEqual(blocked.length, 1, 'the signoff gate should block');
 
-    // Override via the same message the blocked-move dialog posts.
-    await bounce({ type: 'moveCard', cardId: 'alpha', toColumn: 'done', index: 0, override: true });
+    // Override via the same message the blocked-move dialog posts. The reason
+    // is required — the host refuses a reasonless override, as the CLI does.
+    await bounce({
+      type: 'moveCard',
+      cardId: 'alpha',
+      toColumn: 'done',
+      index: 0,
+      override: true,
+      reason: 'shipping the hotfix; review follows',
+    });
     await waitFor(() => {
       const board = api.store.getBoard(BOARD);
       return !!board && board.columns.find((c) => c.id === 'done')!.cardIds.includes('alpha');
     });
     assert.match(readCard('alpha'), /column:\s*done/);
     assert.match(readCard('alpha'), /OVERRIDDEN/);
+    assert.match(readCard('alpha'), /shipping the hotfix; review follows/);
   });
 
   test('setting the gate field satisfies the gate (approval as a field edit)', async () => {

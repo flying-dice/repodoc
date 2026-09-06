@@ -541,6 +541,12 @@ export class RepoDocStore {
 
   // ---- card file helpers ----
 
+  /** Path of a card file relative to the root (`boards/<id>/NN-slug.md`), for hosts that open it. */
+  cardFilePath(boardId: string, cardId: string): string | undefined {
+    const fileName = this.cardFileNames(boardId).find((n) => slugFromFileName(n) === cardId);
+    return fileName ? `boards/${boardId}/${fileName}` : undefined;
+  }
+
   private cardFileNames(boardId: string): string[] {
     return this.fs
       .listDir(`boards/${boardId}`)

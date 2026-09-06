@@ -1,5 +1,6 @@
 import type {
   BoardData,
+  CardMetaPatch,
   CustomFieldValue,
   GateResult,
   RepoDocConfig,
@@ -28,9 +29,18 @@ export interface BoardSource {
   /** Gates guarding a move; `[]` when the source does not gate moves. */
   evaluateMove(cardId: string, toColumn: string): GateResult[];
   recordGateOverride(cardId: string, gateId: string, who: string, reason?: string): void;
+  /**
+   * The repo-relative file backing a card, for the host's "Open file" action.
+   * `undefined` when it cannot be resolved (no workspace root, missing file).
+   */
+  cardFilePath?(cardId: string): string | undefined;
   addComment?(cardId: string, who: string, text: string): void;
   setCardField?(cardId: string, fieldId: string, value: CustomFieldValue | undefined): void;
   toggleChecklistItem?(cardId: string, index: number): void;
+  addChecklistItem?(cardId: string, text: string): void;
+  setCardDescription?(cardId: string, text: string): void;
+  updateCardMeta?(cardId: string, patch: CardMetaPatch): void;
+  recordGateEvidence?(cardId: string, gateId: string, result: string, who: string): void;
   addColumn?(name: string): void;
 }
 
@@ -71,6 +81,18 @@ export class CardBoardSource implements BoardSource {
     this.store.recordGateOverride(this.id, cardId, gateId, who, reason);
   }
 
+  recordGateEvidence(cardId: string, gateId: string, result: string, who: string): void {
+    this.store.recordGateEvidence(this.id, cardId, gateId, result, who);
+  }
+
+  updateCardMeta(cardId: string, patch: CardMetaPatch): void {
+    this.store.updateCardMeta(this.id, cardId, patch);
+  }
+
+  cardFilePath(cardId: string): string | undefined {
+    return this.store.cardFilePath(this.id, cardId);
+  }
+
   addComment(cardId: string, who: string, text: string): void {
     this.store.addComment(this.id, cardId, who, text);
   }
@@ -81,6 +103,14 @@ export class CardBoardSource implements BoardSource {
 
   toggleChecklistItem(cardId: string, index: number): void {
     this.store.toggleChecklistItem(this.id, cardId, index);
+  }
+
+  addChecklistItem(cardId: string, text: string): void {
+    this.store.addChecklistItem(this.id, cardId, text);
+  }
+
+  setCardDescription(cardId: string, text: string): void {
+    this.store.setCardDescription(this.id, cardId, text);
   }
 
   addColumn(name: string): void {
@@ -129,5 +159,10 @@ export class FeatureSetSource implements BoardSource {
 
   recordGateOverride(): void {
     // No gates, so there is never anything to override.
+  }
+
+  /** The `.feature` file itself — source code, so "Open file" is a must. */
+  cardFilePath(featureId: string): string | undefined {
+    return this.store.featureFilePath(this.id, featureId);
   }
 }

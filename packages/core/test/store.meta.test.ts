@@ -144,3 +144,12 @@ describe('store.recordGateEvidence', () => {
     assert.strictEqual(store.recordGateEvidence('b', 'nope', 'tests', 'x', 'claude'), false);
   });
 });
+
+describe('store.cardFilePath', () => {
+  test('resolves a card id to its numbered file, undefined when unknown', () => {
+    const { store } = seed();
+    assert.strictEqual(store.cardFilePath('b', 'card'), 'boards/b/01-card.md');
+    assert.strictEqual(store.cardFilePath('b', 'nope'), undefined);
+    assert.strictEqual(store.cardFilePath('zzz', 'card'), undefined);
+  });
+});
