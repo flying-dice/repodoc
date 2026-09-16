@@ -176,6 +176,10 @@
   function hasEditConflict(base, current) {
     return base !== current;
   }
+  // A scenario flattened for the base comparison: name first, then each step.
+  function scenarioBaseText(name, steps) {
+    return [name].concat(steps || []).join('\n');
+  }
   /* ---- end of the edit-conflict mirror ---- */
 
   /* ---- Drag state ---- */
@@ -1881,7 +1885,16 @@
     vscode.postMessage(
       index === NEW_SCENARIO
         ? { type: 'addScenario', cardId: card.id, name: name, steps: steps }
-        : { type: 'setScenario', cardId: card.id, index: index, name: name, steps: steps },
+        : {
+            type: 'setScenario',
+            cardId: card.id,
+            index: index,
+            name: name,
+            steps: steps,
+            // What this block was opened over. The host refuses the write when
+            // the file no longer holds it (mirrors setDescription's `base`).
+            base: scenarioBaseText(draft.base.name, splitSteps(draft.base.steps)),
+          },
     );
     scenarioPending[key] = { cardId: card.id, index: index, name: name, steps: steps };
     lastPosted[key] = scenarioPending[key];
@@ -3802,8 +3815,22 @@
       typeof msg.cardId === 'string' &&
       typeof msg.current === 'string'
     ) {
-      // The save was REFUSED — nothing was written. Re-open the editor over the
-      // text that was typed and let the human choose which side wins.
+      // The save was REFUSED — nothing was written.
+      if (msg.field === 'scenario') {
+        // The block keeps its text and its own "Changed on disk" strip, which
+        // is already driven by the draft's base. Only the pending flag has to
+        // go, or the watchdog would claim the write was simply lost.
+        var scenarioKey = scenarioDraftKey(boardIdOf(), msg.cardId, msg.index);
+        delete scenarioPending[scenarioKey];
+        delete lastPosted[scenarioKey];
+        state.openCardId = msg.cardId;
+        if (state.data) {
+          render();
+        }
+        return;
+      }
+      // Re-open the editor over the text that was typed and let the human
+      // choose which side wins.
       state.editConflict = { cardId: msg.cardId, field: msg.field, current: msg.current };
       state.openCardId = msg.cardId;
       if (msg.field === 'title') {

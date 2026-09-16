@@ -9,7 +9,7 @@ import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { editBase, hasEditConflict } from '../../src/panels/editConflict';
+import { editBase, hasEditConflict, scenarioBaseText } from '../../src/panels/editConflict';
 
 describe('edit conflicts', () => {
   test('given an untouched value, when a save arrives over it, then there is no conflict', () => {
@@ -44,6 +44,41 @@ describe('edit conflicts', () => {
     assert.strictEqual(editBase({ base: 'Original' }), undefined);
   });
 
+  test('given a scenario, when flattened, then the name leads and the steps follow', () => {
+    assert.strictEqual(
+      scenarioBaseText('Logs in', ['Given a user', 'When they sign in', 'Then they are in']),
+      'Logs in\nGiven a user\nWhen they sign in\nThen they are in',
+    );
+    assert.strictEqual(scenarioBaseText('No steps yet', []), 'No steps yet');
+  });
+
+  test('given two scenarios differing only in a step, when flattened, then they conflict', () => {
+    const base = scenarioBaseText('Logs in', ['Given a user']);
+    const current = scenarioBaseText('Logs in', ['Given an admin']);
+    assert.strictEqual(hasEditConflict(base, current), true);
+  });
+
+  test('given a renamed scenario with the same steps, when flattened, then they conflict', () => {
+    assert.strictEqual(
+      hasEditConflict(
+        scenarioBaseText('Old name', ['Given a user']),
+        scenarioBaseText('New name', ['Given a user']),
+      ),
+      true,
+    );
+  });
+
+  /**
+   * A scenario whose name carried a newline would flatten into something a
+   * different name-and-steps pair could also produce. The editor collapses
+   * whitespace in the name before it is ever sent, so this pins that the
+   * comparison is only ever fed single-line names.
+   */
+  test('given a single-line name, when flattened, then the first line is the whole name', () => {
+    const text = scenarioBaseText('Logs in', ['Given a user']);
+    assert.strictEqual(text.split('\n')[0], 'Logs in');
+  });
+
   /**
    * `media/board.js` mirrors the decision by hand (the webview has no build
    * step). This lifts the mirrored block out of the shipped file and holds it
@@ -57,8 +92,11 @@ describe('edit conflicts', () => {
     );
     const end = source.indexOf('  /* ---- end of the edit-conflict mirror ---- */');
     assert.ok(start > 0 && end > start, 'the mirrored edit-conflict helper moved in board.js');
-    const mirror = new Function(`${source.slice(start, end)}; return { hasEditConflict };`)() as {
+    const mirror = new Function(
+      `${source.slice(start, end)}; return { hasEditConflict, scenarioBaseText };`,
+    )() as {
       hasEditConflict: typeof hasEditConflict;
+      scenarioBaseText: typeof scenarioBaseText;
     };
 
     for (const [base, current] of [
@@ -72,6 +110,18 @@ describe('edit conflicts', () => {
         mirror.hasEditConflict(base, current),
         hasEditConflict(base, current),
         `the mirror disagrees on ${JSON.stringify([base, current])}`,
+      );
+    }
+
+    for (const [name, steps] of [
+      ['Logs in', ['Given a user', 'When they sign in']],
+      ['No steps yet', []],
+      ['Trailing space ', ['Given a user']],
+    ] as Array<[string, string[]]>) {
+      assert.strictEqual(
+        mirror.scenarioBaseText(name, steps),
+        scenarioBaseText(name, steps),
+        `the mirror disagrees on ${JSON.stringify([name, steps])}`,
       );
     }
   });

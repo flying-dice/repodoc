@@ -91,6 +91,16 @@ suite('RepoDoc feature sets e2e', () => {
   const featureFile = (name: string): string =>
     fs.readFileSync(path.join(setDir, `${name}.feature`), 'utf8');
 
+  /**
+   * The scenario as it stands on disk, flattened the way the webview flattens
+   * what a block was opened over. A `setScenario` without a matching base is
+   * refused, so every save in these tests has to say what it saw.
+   */
+  const scenarioBase = (name: string, index: number): string => {
+    const scenario = api.store.getFeature(SET, name)?.scenarios[index];
+    return scenario === undefined ? '' : [scenario.name, ...scenario.steps].join('\n');
+  };
+
   /** Root nodes of the Boards tree, as VS Code would ask for them. */
   const rootNodes = (): BoardsNode[] => tree.getChildren();
 
@@ -580,6 +590,7 @@ suite('RepoDoc feature sets e2e', () => {
           index: 0,
           name: 'The first one, renamed',
           steps: ['When I edit it', 'Then only it changes', 'And nothing else does'],
+          base: scenarioBase('managed', 0),
         }),
         true,
       );
@@ -636,11 +647,58 @@ suite('RepoDoc feature sets e2e', () => {
 
     test('an invalid scenario message writes nothing', async () => {
       const before = featureFile('managed');
-      await bounce({ type: 'setScenario', cardId: 'managed', index: -1, name: 'X', steps: [] });
-      await bounce({ type: 'setScenario', cardId: 'managed', index: 1.5, name: 'X', steps: [] });
-      await bounce({ type: 'setScenario', cardId: 'managed', index: 0, name: '   ', steps: [] });
-      await bounce({ type: 'setScenario', cardId: 'managed', index: 0, name: 'X', steps: 'nope' });
-      await bounce({ type: 'setScenario', cardId: 'managed', index: 99, name: 'X', steps: [] });
+      const base = scenarioBase('managed', 0);
+      await bounce({
+        type: 'setScenario',
+        cardId: 'managed',
+        index: -1,
+        name: 'X',
+        steps: [],
+        base,
+      });
+      await bounce({
+        type: 'setScenario',
+        cardId: 'managed',
+        index: 1.5,
+        name: 'X',
+        steps: [],
+        base,
+      });
+      await bounce({
+        type: 'setScenario',
+        cardId: 'managed',
+        index: 0,
+        name: '   ',
+        steps: [],
+        base,
+      });
+      await bounce({
+        type: 'setScenario',
+        cardId: 'managed',
+        index: 0,
+        name: 'X',
+        steps: 'nope',
+        base,
+      });
+      await bounce({
+        type: 'setScenario',
+        cardId: 'managed',
+        index: 99,
+        name: 'X',
+        steps: [],
+        base,
+      });
+      // A base that no longer matches the file is refused like any other.
+      await bounce({
+        type: 'setScenario',
+        cardId: 'managed',
+        index: 0,
+        name: 'X',
+        steps: [],
+        base: 'Something nobody wrote',
+      });
+      // ...and so is a save that cannot say what it was opened over.
+      await bounce({ type: 'setScenario', cardId: 'managed', index: 0, name: 'X', steps: [] });
       await bounce({ type: 'addScenario', cardId: 'managed', name: '', steps: [] });
       await bounce({ type: 'removeScenario', cardId: 'managed', index: 99 });
       await bounce({ type: 'removeScenario', cardId: 'nope', index: 0 });

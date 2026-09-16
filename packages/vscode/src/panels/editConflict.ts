@@ -17,7 +17,20 @@
  */
 
 /** Which editor a conflict belongs to. */
-export type EditField = 'description' | 'title';
+export type EditField = 'description' | 'title' | 'scenario';
+
+/**
+ * A scenario's value as one comparable string: the name, then its steps, one
+ * per line. A scenario is two fields, but the conflict check is the same
+ * verbatim comparison the description and title use, so both sides flatten it
+ * the same way rather than growing a second kind of check.
+ *
+ * A scenario name is a single line by construction (the editor collapses
+ * whitespace), so the first line is always the name and the rest are steps.
+ */
+export function scenarioBaseText(name: string, steps: string[]): string {
+  return [name, ...steps].join('\n');
+}
 
 /**
  * Whether the stored value has moved away from what the editor was opened

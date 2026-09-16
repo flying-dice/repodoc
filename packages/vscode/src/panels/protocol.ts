@@ -153,6 +153,8 @@ export interface EditConflictMessage {
   field: EditField;
   /** The stored value the refused save collided with. */
   current: string;
+  /** Which scenario collided; absent for the description and title editors. */
+  index?: number;
 }
 
 export type HostToWebviewMessage =
@@ -278,6 +280,11 @@ export interface SetDescriptionMessage {
  * counts the feature's scenarios in file order, as the host received them in
  * `Card.scenarios` — `Rule:` and `Background:` blocks are not scenarios and
  * cannot be addressed. `steps` is the whole body, one entry per line.
+ *
+ * `base` is the scenario as it stood when the editor was opened, flattened by
+ * `scenarioBaseText`. The host refuses the write when the file no longer holds
+ * that value, exactly as it does for a description or a title — an absent base
+ * is refused too, so a stale webview cannot write through the check.
  */
 export interface SetScenarioMessage {
   type: 'setScenario';
@@ -285,6 +292,7 @@ export interface SetScenarioMessage {
   index: number;
   name: string;
   steps: string[];
+  base: string;
 }
 
 /** Append a scenario to a feature file. */

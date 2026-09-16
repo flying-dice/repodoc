@@ -11,7 +11,7 @@ import { openRepoFile } from '../repoFiles';
 import type { BoardSource } from './boardSource';
 import { renderMarkdownWithDiagrams } from './diagrams';
 import { renderMarkdownDiff } from './diffView';
-import { type EditField, editBase, hasEditConflict } from './editConflict';
+import { type EditField, editBase, hasEditConflict, scenarioBaseText } from './editConflict';
 import { collectGatePrompts, toBlockedGate } from './gateGuidance';
 import { localIdentity } from './identity';
 import { sanitizeMetaPatch } from './metaPatch';
@@ -470,6 +470,11 @@ export class BoardPanel {
         const name = scenarioName(m['name']);
         const steps = stepArray(m['steps']);
         if (typeof m['cardId'] === 'string' && index !== undefined && name && steps) {
+          // The block was opened over a scenario; refuse to write over anything
+          // else that has since landed in the file (see editConflict.ts).
+          if (this.scenarioBaseIsStale(m['cardId'], index, m['base'])) {
+            break;
+          }
           this.source.setScenario?.(m['cardId'], index, { name, steps });
         }
         break;
@@ -506,6 +511,34 @@ export class BoardPanel {
    * over at all. A refusal writes nothing and tells the webview what is stored
    * instead, so it can offer Reload / Keep mine rather than losing a side.
    */
+  /**
+   * The scenario half of {@link baseIsStale}. A scenario is addressed by index
+   * and carries two fields, so both sides are flattened by `scenarioBaseText`
+   * and compared verbatim like any other managed edit. An index that no longer
+   * names a scenario is itself a conflict: the file has moved under the editor.
+   */
+  private scenarioBaseIsStale(cardId: string, index: number, rawBase: unknown): boolean {
+    const base = editBase(rawBase);
+    if (base === undefined) {
+      console.warn('RepoDoc: refused a scenario save that carried no base value.');
+      return true;
+    }
+    const scenario = this.source.getBoard()?.cards[cardId]?.scenarios?.[index];
+    const current = scenario === undefined ? '' : scenarioBaseText(scenario.name, scenario.steps);
+    if (!hasEditConflict(base, current)) {
+      return false;
+    }
+    const message: EditConflictMessage = {
+      type: 'editConflict',
+      cardId,
+      field: 'scenario',
+      current,
+      index,
+    };
+    void this.panel.webview.postMessage(message);
+    return true;
+  }
+
   private baseIsStale(cardId: string, field: EditField, rawBase: unknown): boolean {
     const base = editBase(rawBase);
     if (base === undefined) {
