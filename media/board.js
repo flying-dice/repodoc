@@ -17,6 +17,7 @@
   var addText = ''; // uncontrolled composer text; never triggers a render
   var commentText = ''; // uncontrolled comment-composer text; never triggers a render
   var commentWho = null; // composer author override; null = use the configured name
+  var descDiffOn = false; // card modal: showing the HEAD diff of the description
 
   /* ---- Drag state ---- */
   var drag = {
@@ -577,6 +578,16 @@
         meta.push(chip);
       }
     });
+    var gitStatus = gitStatusOf(cardId);
+    if (gitStatus) {
+      meta.push(
+        h(
+          'span',
+          { class: 'meta-item card-git card-git-' + gitStatus, title: 'Uncommitted: ' + gitStatus },
+          gitStatus.charAt(0).toUpperCase(),
+        ),
+      );
+    }
     meta.push(h('div', { class: 'meta-spacer' }));
     meta.push(h('span', { class: 'meta-updated' }, humanizeTime(card.updatedAt)));
     if (card.agent) {
@@ -599,6 +610,7 @@
         dataset: { cardId: cardId },
         onClick: function () {
           state.openCardId = cardId;
+          descDiffOn = false;
           render();
         },
         onDragStart: function (e) {
@@ -866,9 +878,33 @@
     if (!card.desc) {
       return null;
     }
+    var diffHtml = descDiffOf(card.id);
     var html = state.data && state.data.descHtml ? state.data.descHtml[card.id] : null;
-    var body = contentBlock('section-desc', html, card.desc);
-    return h('div', { class: 'section' }, [h('div', { class: 'field-label' }, 'Description'), body]);
+    var showDiff = descDiffOn && !!diffHtml;
+    var body = showDiff
+      ? h('div', { class: 'section-desc content-md is-diff', html: diffHtml })
+      : contentBlock('section-desc', html, card.desc);
+    var label = [h('div', { class: 'field-label' }, 'Description')];
+    if (diffHtml) {
+      label.push(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'git-toggle' + (showDiff ? ' is-on' : ''),
+            onClick: function () {
+              descDiffOn = !descDiffOn;
+              render();
+            },
+          },
+          showDiff ? 'Hide changes' : 'HEAD \u2192 working tree',
+        ),
+      );
+    }
+    return h('div', { class: 'section' }, [
+      h('div', { class: 'section-head' }, label),
+      body,
+    ]);
   }
 
   function modalChecklist(card) {
@@ -1371,7 +1407,24 @@
 
   function closeModal() {
     state.openCardId = null;
+    descDiffOn = false;
     render();
+  }
+
+  /* ---- Git ---- */
+
+  // How this card's file differs from HEAD ('added' | 'modified' | ...), or
+  // null when it matches HEAD, git is off, or this is not a repository.
+  function gitStatusOf(cardId) {
+    var map = state.data && state.data.gitStatus;
+    return (map && map[cardId]) || null;
+  }
+
+  // Rendered HEAD -> working tree diff of a card's description; null when the
+  // description itself has not changed.
+  function descDiffOf(cardId) {
+    var map = state.data && state.data.descDiffHtml;
+    return (map && map[cardId]) || null;
   }
 
   /* ---- Blocked-move dialog ---- */

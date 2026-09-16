@@ -1,3 +1,4 @@
+import { GitFileStatus } from '../core/ports';
 import { BoardData, CustomFieldValue, RepoDocConfig } from '../core/types';
 
 /**
@@ -29,6 +30,17 @@ export interface DataMessage {
   readingWidth: string;
   /** The author name prefilled in the comment composer. */
   commentAuthor: string;
+  /**
+   * How each card's file differs from `HEAD`, keyed by card id. Empty outside
+   * a git repository or with `repodoc.git.enabled` off.
+   */
+  gitStatus: Record<string, GitFileStatus>;
+  /**
+   * Card descriptions rendered as a `HEAD → working tree` diff, keyed by card
+   * id. Only present for cards whose description actually changed, so the
+   * webview uses presence to decide whether to offer the toggle.
+   */
+  descDiffHtml: Record<string, string>;
 }
 
 

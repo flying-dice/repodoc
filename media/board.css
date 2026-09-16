@@ -1022,3 +1022,42 @@ input::placeholder {
 .content-md del {
   color: var(--vscode-descriptionForeground);
 }
+
+/* ---- Git ---- */
+
+/* Uncommitted-change marker on a card face: the SCM status letter, in the
+   theme's own decoration colours. */
+.card-git {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+}
+.card-git-added {
+  color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+.card-git-modified {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+.card-git-deleted {
+  color: var(--vscode-gitDecoration-deletedResourceForeground);
+}
+.card-git-renamed {
+  color: var(--vscode-gitDecoration-renamedResourceForeground);
+}
+
+/* Section heading row: the label, with the diff toggle pushed to the end. */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-head .field-label {
+  margin-bottom: 0;
+}
+.section-head .git-toggle {
+  margin-left: auto;
+}
+.section-head {
+  margin-bottom: 7px;
+}
