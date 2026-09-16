@@ -51,6 +51,12 @@ The `docs/` tree renders as a handbook. Numeric filename prefixes set the sideba
 
 ![Rendered documentation page](images/docs.png)
 
+## Uncommitted changes
+
+RepoDoc reads the repository it lives in. Docs, decisions and cards whose file differs from `HEAD` carry a change badge in the tree, in your theme's own colours. Open one and the top bar offers **HEAD → working tree**: the same rendered page, with added and removed blocks marked in place — prose stays prose, diagrams stay diagrams. Card descriptions get the same toggle in the card view.
+
+Outside a git repository, or with `repodoc.git.enabled` off, every surface renders exactly as it always did.
+
 ## Native to VS Code
 
 Navigation uses standard tree views: boards expand into columns and cards, and decisions and docs open in one click. Every surface follows your color theme.
@@ -75,6 +81,7 @@ Navigation uses standard tree views: boards expand into columns and cards, and d
 ## Settings
 
 - `repodoc.readingWidth` sets the width of reading views and the card view: narrow, wide, or full.
+- `repodoc.git.enabled` shows change badges and the `HEAD → working tree` diff. On by default; turn it off to render every surface as if the workspace were not a repository.
 - `repodoc.plantUmlServer` sets the PlantUML renderer. The default is the public plantuml.com server. To render privately, run `docker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty` and set the value to `http://localhost:8792`.
 
 ## License
