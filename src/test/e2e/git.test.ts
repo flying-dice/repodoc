@@ -34,6 +34,23 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Polls until `fn` holds, so assertions do not race the editor's own updates. */
+async function waitFor(fn: () => boolean, timeoutMs = 5000): Promise<boolean> {
+  const start = Date.now();
+  while (!fn()) {
+    if (Date.now() - start > timeoutMs) {
+      return false;
+    }
+    await delay(100);
+  }
+  return true;
+}
+
+/** Labels of every open tab, for asserting which panel is in diff mode. */
+function tabLabels(): string[] {
+  return vscode.window.tabGroups.all.flatMap((group) => group.tabs).map((tab) => tab.label);
+}
+
 /** Decoration for a workspace-relative path, as the trees would receive it. */
 function decorationFor(
   provider: vscode.FileDecorationProvider,
@@ -60,6 +77,10 @@ suite('RepoDoc e2e — git awareness', () => {
     git(root, 'config', 'user.name', 'RepoDoc Test');
     git(root, 'config', 'commit.gpgsign', 'false');
 
+    // Updating a workspace-scoped setting writes .vscode/settings.json into
+    // this folder; ignore it or it turns up as an untracked change in every
+    // status assertion below.
+    write(root, '.gitignore', '.vscode/\n');
     write(root, 'docs/01-handbook.md', '# Handbook\n\n- one\n- two\n');
     write(
       root,
@@ -77,8 +98,10 @@ suite('RepoDoc e2e — git awareness', () => {
   });
 
   teardown(async () => {
-    // Leave every test a clean tree and the setting on.
+    // Leave every test a clean tree and the setting on. `clean -fd` drops files
+    // a test added; ignored paths (.vscode/) are left alone.
     git(root, 'checkout', '--', '.');
+    git(root, 'clean', '-fd');
     await vscode.workspace
       .getConfiguration('repodoc')
       .update('git.enabled', undefined, vscode.ConfigurationTarget.Workspace);
@@ -107,7 +130,6 @@ suite('RepoDoc e2e — git awareness', () => {
     api.git.invalidate();
     assert.deepStrictEqual(api.git.status(), [{ path: 'docs/02-new.md', status: 'added' }]);
     assert.strictEqual(api.git.readAtHead('docs/02-new.md'), undefined);
-    fs.rmSync(path.join(root, 'docs/02-new.md'));
   });
 
   test('turning repodoc.git.enabled off reports the workspace as git-free', async () => {
@@ -194,15 +216,16 @@ suite('RepoDoc e2e — git awareness', () => {
     const toggled = await vscode.commands.executeCommand<boolean>('repodoc.toggleDiff');
     assert.strictEqual(toggled, true);
 
-    const titles = vscode.window.tabGroups.all
-      .flatMap((group) => group.tabs)
-      .map((tab) => tab.label);
-    assert.ok(
-      titles.some((t) => t.includes('First') && t.includes('HEAD')),
-      `the focused decision panel should be in diff mode, tabs were: ${titles.join(' | ')}`,
+    // The tab label follows panel.title asynchronously.
+    const flipped = await waitFor(() =>
+      tabLabels().some((t) => t.includes('First') && t.includes('HEAD')),
     );
     assert.ok(
-      !titles.some((t) => t.includes('Handbook') && t.includes('HEAD')),
+      flipped,
+      `the focused decision panel should be in diff mode, tabs were: ${tabLabels().join(' | ')}`,
+    );
+    assert.ok(
+      !tabLabels().some((t) => t.includes('Handbook') && t.includes('HEAD')),
       'the unfocused doc panel must be left alone',
     );
   });
