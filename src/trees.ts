@@ -3,6 +3,19 @@ import { RepoDocStore } from './core/store';
 import { BoardRef, DecisionRecord, DocNode } from './core/types';
 
 /**
+ * Absolute URI for a workspace-relative path. Tree items carry one so the git
+ * decoration provider can badge them; `undefined` with no folder open, which
+ * simply leaves the item undecorated.
+ */
+function workspaceUri(relPath: string | undefined): vscode.Uri | undefined {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder || !relPath) {
+    return undefined;
+  }
+  return vscode.Uri.joinPath(folder.uri, ...relPath.split('/'));
+}
+
+/**
  * Base class for tree providers that expose a `refresh()` which fires the
  * `onDidChangeTreeData` event. Subclasses implement `getTreeItem`/`getChildren`.
  */
@@ -43,6 +56,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
         vscode.TreeItemCollapsibleState.Expanded,
       );
       item.id = `board:${node.ref.id}`;
+      item.resourceUri = workspaceUri(`boards/${node.ref.id}`);
       item.description = String(node.ref.cardCount);
       item.iconPath = new vscode.ThemeIcon('project');
       item.contextValue = 'repodoc.board';
@@ -68,6 +82,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
     }
     const item = new vscode.TreeItem(node.title, vscode.TreeItemCollapsibleState.None);
     item.id = `card:${node.boardId}:${node.cardId}`;
+    item.resourceUri = workspaceUri(this.store.cardFilePath(node.boardId, node.cardId));
     item.tooltip = node.title;
     item.iconPath = new vscode.ThemeIcon('circle-filled', priorityColor(node.priority));
     item.contextValue = 'repodoc.card';
@@ -137,6 +152,7 @@ export class DecisionsTreeProvider extends RefreshableTreeProvider<DecisionRecor
   getTreeItem(record: DecisionRecord): vscode.TreeItem {
     const item = new vscode.TreeItem(record.title, vscode.TreeItemCollapsibleState.None);
     item.description = record.num;
+    item.resourceUri = workspaceUri(`decisions/${record.file}`);
     item.tooltip = record.file;
     item.contextValue = 'repodoc.decision';
     item.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(statusColor(record.status)));
@@ -177,12 +193,14 @@ export class DocsTreeProvider extends RefreshableTreeProvider<DocNode> {
   getTreeItem(node: DocNode): vscode.TreeItem {
     if (node.type === 'dir') {
       const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
+      item.resourceUri = workspaceUri(node.relPath);
       item.tooltip = node.relPath;
       item.contextValue = 'repodoc.docDir';
       item.iconPath = vscode.ThemeIcon.Folder;
       return item;
     }
     const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
+    item.resourceUri = workspaceUri(node.relPath);
     item.tooltip = node.relPath;
     item.contextValue = 'repodoc.docFile';
     item.iconPath = new vscode.ThemeIcon('markdown');

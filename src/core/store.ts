@@ -393,6 +393,16 @@ export class RepoDocStore {
     }
   }
 
+  /**
+   * Workspace-relative path of a card's markdown file, or `undefined` when the
+   * board or card is unknown. Callers outside the store need this to relate a
+   * card to its file on disk (git status, reveal-in-explorer).
+   */
+  cardFilePath(boardId: string, cardId: string): string | undefined {
+    const entry = this.readBoardCards(boardId).find((e) => e.slug === cardId);
+    return entry ? `boards/${boardId}/${entry.fileName}` : undefined;
+  }
+
   // ---- card file helpers ----
 
   private cardFileNames(boardId: string): string[] {
