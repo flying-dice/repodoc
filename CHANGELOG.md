@@ -1,6 +1,6 @@
 # Change Log
 
-## [0.9.0] — 2026-09-06
+## [0.9.0] — 2026-09-16
 
 - **Git awareness** across every surface. Docs, decisions, cards and features whose file differs from `HEAD` carry a change badge in the Boards, Decisions and Docs trees, using VS Code's own SCM decoration colours; a board, feature set or docs folder is badged when anything beneath it changed. Deletions are not badged — a deleted file leaves no row to mark — so badges are added, modified and renamed only. The Doc and Decision views, and the card view's description, offer a `HEAD → working tree` toggle that re-renders the page with added and removed blocks marked in place — block-level, so a reworded bullet reads as one removal and one addition rather than a wall of character noise. In the reading views the toggle is a `command:` link, so those views still ship no script of their own. A new `repodoc.toggleDiff` command does the same for whichever reading view is focused. A frontmatter-only edit badges the file and reports *metadata changed* rather than offering a diff of an identical body. Outside a repository, or with the new `repodoc.git.enabled` setting off, every surface renders exactly as before.
 - **Ids never collide.** `board create`, `feature set-create`, `card create` and `feature create` allocate a unique id case-insensitively (`team`, then `team-2`), so creating a board or feature set that already exists no longer overwrites its config, and `Login.feature` is safe from `login.feature` on macOS and Windows.
