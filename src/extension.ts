@@ -18,6 +18,8 @@ import { MarkdownPanel } from './panels/markdownPanel';
 export interface RepoDocApi {
   store: RepoDocStore;
   git: GitPort;
+  /** Exposed so e2e tests can ask for a decoration the way the trees do. */
+  decorations: GitDecorationProvider;
 }
 
 export function activate(context: vscode.ExtensionContext): RepoDocApi {
@@ -117,6 +119,9 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('repodoc')) {
+        // Turning repodoc.git.enabled off must clear the badges now, not at
+        // the next file change: the decoration provider caches its statuses.
+        refreshTrees();
         MarkdownPanel.refreshAll();
         BoardPanel.refreshAll();
       }
@@ -276,7 +281,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     }),
   );
 
-  return { store, git };
+  return { store, git, decorations };
 }
 
 export function deactivate(): void {}

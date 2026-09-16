@@ -251,6 +251,11 @@
   background: var(--diff-del-bg);
   outline: 1px solid var(--diff-del-edge);
 }
+/* Shown instead of the toggle when only frontmatter moved. */
+.git-note {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
 .git-timing {
   margin-left: 8px;
   opacity: .7;

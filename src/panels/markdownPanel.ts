@@ -4,6 +4,7 @@ import { renderMarkdownDiff } from './diffView';
 import { plantUmlServer } from './plantUml';
 import { isPresetWidth, resolveReadingWidth } from './readingWidth';
 import { hasMarkdownChanges } from '../core/diff';
+import { statusByPath } from '../core/gitStatus';
 import { parseFrontmatter } from '../core/frontmatter';
 import { GitPort } from '../core/ports';
 import { RepoDocStore } from '../core/store';
@@ -41,8 +42,14 @@ interface RenderedBody {
   hasMermaid: boolean;
   /** Present only when a diff actually rendered. */
   diff?: DiffSummary;
-  /** Whether this file has something to compare against `HEAD` at all. */
+  /** Whether this file's rendered body has something to compare against `HEAD`. */
   canDiffAgainstHead: boolean;
+  /**
+   * The file differs from `HEAD` but its body does not — only frontmatter
+   * moved. There is nothing for the diff view to show, so the top bar says so
+   * rather than offering a toggle that would render an identical page.
+   */
+  metadataOnly: boolean;
 }
 
 interface PanelState {
@@ -183,8 +190,22 @@ export class MarkdownPanel {
    * by e2e tests.
    */
   public static toggleDiff(): boolean {
-    const panel = MarkdownPanel.docPanel ?? MarkdownPanel.decisionPanel;
+    const panel = MarkdownPanel.focused();
     return panel ? panel.toggle() : false;
+  }
+
+  /**
+   * The panel the command should act on: the active one, else whichever is
+   * visible, else the only one open. Preferring Docs unconditionally would
+   * toggle the wrong view whenever both are open.
+   */
+  private static focused(): MarkdownPanel | undefined {
+    const open = [MarkdownPanel.docPanel, MarkdownPanel.decisionPanel].filter(
+      (panel): panel is MarkdownPanel => panel !== undefined,
+    );
+    return (
+      open.find((p) => p.panel.active) ?? open.find((p) => p.panel.visible) ?? open[0]
+    );
   }
 
   /**
@@ -277,6 +298,7 @@ export class MarkdownPanel {
   private renderBody(body: string): RenderedBody {
     const head = this.headBody();
     const canDiffAgainstHead = head !== undefined && hasMarkdownChanges(head, body);
+    const metadataOnly = !canDiffAgainstHead && this.fileChanged();
     if (this.state.mode === 'diff' && head !== undefined && canDiffAgainstHead) {
       // Timing is reported in the top bar, so it is measured here, at the call
       // site, rather than baked into the renderer.
@@ -288,11 +310,17 @@ export class MarkdownPanel {
         hasMermaid: result.hasMermaid,
         diff: { added: result.added, removed: result.removed, elapsedMs: Date.now() - startedAt },
         canDiffAgainstHead,
+        metadataOnly,
       };
     }
     const rendered = renderMarkdownWithDiagrams(body, { plantUmlServer: plantUmlServer() });
     this.showingDiff = false;
-    return { html: rendered.html, hasMermaid: rendered.hasMermaid, canDiffAgainstHead };
+    return {
+      html: rendered.html,
+      hasMermaid: rendered.hasMermaid,
+      canDiffAgainstHead,
+      metadataOnly,
+    };
   }
 
   /** Workspace-relative path of the file behind the panel, if it still exists. */
@@ -302,6 +330,15 @@ export class MarkdownPanel {
     }
     const decision = this.store.getDecision(this.state.target);
     return decision ? `decisions/${decision.file}` : undefined;
+  }
+
+  /** Whether git reports this file as differing from `HEAD` in any way at all. */
+  private fileChanged(): boolean {
+    const relPath = this.filePath();
+    if (relPath === undefined || !this.git.isRepo()) {
+      return false;
+    }
+    return statusByPath(this.git.status()).has(relPath);
   }
 
   /** Body of this file at `HEAD`, or `undefined` outside a repository. */
@@ -332,7 +369,7 @@ export class MarkdownPanel {
         <span class="crumb-sep">/</span>
         <span class="crumb-leaf">${escapeHtml(leaf)}</span>
       </div>
-${gitBar(rendered.canDiffAgainstHead, rendered.diff)}
+${gitBar(rendered)}
     </div>
     <div class="content">
       <div class="reading-column ${readingColumnAttrs().cls}"${readingColumnAttrs().style}>
@@ -368,13 +405,14 @@ ${gitBar(rendered.canDiffAgainstHead, rendered.diff)}
  * plus the legend and timing once a diff is on screen. Renders nothing at all
  * outside a repository or when the file matches `HEAD`.
  */
-function gitBar(
-  canDiffAgainstHead: boolean,
-  diff?: DiffSummary,
-): string {
-  if (!canDiffAgainstHead) {
-    return '';
+function gitBar(rendered: RenderedBody): string {
+  if (!rendered.canDiffAgainstHead) {
+    // Frontmatter moved but the prose did not: say so, offer nothing to click.
+    return rendered.metadataOnly
+      ? `      <div class="gitbar"><span class="git-note">metadata changed</span></div>`
+      : '';
   }
+  const diff = rendered.diff;
   const legend = diff
     ? `      <span class="git-legend">
         <span class="git-swatch git-swatch-add"></span>${diff.added} added

@@ -1026,7 +1026,8 @@ input::placeholder {
 /* ---- Git ---- */
 
 /* Uncommitted-change marker on a card face: the SCM status letter, in the
-   theme's own decoration colours. */
+   theme's own decoration colours. There is no deleted variant — a deleted card
+   file leaves no card to mark. */
 .card-git {
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1038,9 +1039,6 @@ input::placeholder {
 }
 .card-git-modified {
   color: var(--vscode-gitDecoration-modifiedResourceForeground);
-}
-.card-git-deleted {
-  color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
 .card-git-renamed {
   color: var(--vscode-gitDecoration-renamedResourceForeground);

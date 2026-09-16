@@ -2,7 +2,11 @@ import { execFileSync } from 'child_process';
 import * as path from 'path';
 import { GitFileStatus, GitPort, GitStatusEntry } from '../core/ports';
 
-/** Git calls are cheap but not free; nothing may hang the extension host. */
+/**
+ * Upper bound on any single git call. These are synchronous, so a slow call
+ * does block the extension host — the timeout and the caches below bound how
+ * long and how often, they do not make it asynchronous.
+ */
 const GIT_TIMEOUT_MS = 5000;
 
 /**
@@ -17,15 +21,26 @@ const GIT_TIMEOUT_MS = 5000;
  * called, so a tree render costs one `git status` rather than one per node.
  */
 export class NodeGitAdapter implements GitPort {
-  /** Repository-relative path of the workspace root; '' when they coincide. */
-  private readonly prefix: string | undefined;
+  /**
+   * Repository-relative path of the workspace root, '' when they coincide, and
+   * `null` when the workspace is not in a repository at all. Resolved lazily
+   * and dropped on {@link invalidate}, because a workspace can become a
+   * repository (`git init`) while the editor is open.
+   */
+  private prefixCache: string | null | undefined;
   private statusCache: GitStatusEntry[] | undefined;
   private readonly headCache = new Map<string, string | undefined>();
   /** `undefined` = not looked up yet; `null` = looked up, no commit. */
   private headShaCache: string | null | undefined;
 
-  constructor(private readonly root: string) {
-    this.prefix = this.resolvePrefix();
+  constructor(private readonly root: string) {}
+
+  /** Repository-relative path of the workspace root, or `undefined` if not a repo. */
+  private get prefix(): string | undefined {
+    if (this.prefixCache === undefined) {
+      this.prefixCache = this.resolvePrefix() ?? null;
+    }
+    return this.prefixCache ?? undefined;
   }
 
   isRepo(): boolean {
@@ -85,6 +100,7 @@ export class NodeGitAdapter implements GitPort {
   }
 
   invalidate(): void {
+    this.prefixCache = undefined;
     this.statusCache = undefined;
     this.headShaCache = undefined;
     this.headCache.clear();
@@ -121,7 +137,6 @@ export class NodeGitAdapter implements GitPort {
     return entries;
   }
 
-  /** Repository-relative path of the workspace root, or `undefined` if not a repo. */
   private resolvePrefix(): string | undefined {
     const top = this.git(['rev-parse', '--show-toplevel'])?.trim();
     if (!top) {
