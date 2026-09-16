@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { hasMarkdownChanges } from '../core/diff';
+import { statusByPath } from '../core/gitStatus';
+import { renderMarkdownDiff } from './diffView';
+import { GitFileStatus, GitPort } from '../core/ports';
 import { RepoDocStore } from '../core/store';
 import { resolveReadingWidth } from './readingWidth';
 import { renderMarkdownWithDiagrams } from './diagrams';
@@ -12,7 +16,7 @@ import {
   WebviewToHostMessage,
 } from './protocol';
 import { localIdentity } from './identity';
-import { CustomFieldValue } from '../core/types';
+import { BoardData, CustomFieldValue } from '../core/types';
 
 /**
  * A single kanban board rendered in a webview. One panel is kept per board id.
@@ -31,6 +35,7 @@ export class BoardPanel {
     private readonly panel: vscode.WebviewPanel,
     private readonly extensionUri: vscode.Uri,
     private readonly store: RepoDocStore,
+    private readonly git: GitPort,
     private readonly boardId: string,
   ) {
     this.panel.webview.html = this.getHtml(this.panel.webview);
@@ -47,6 +52,7 @@ export class BoardPanel {
   public static createOrShow(
     extensionUri: vscode.Uri,
     store: RepoDocStore,
+    git: GitPort,
     boardId: string,
   ): void {
     const existing = BoardPanel.panels.get(boardId);
@@ -70,7 +76,7 @@ export class BoardPanel {
       },
     );
 
-    BoardPanel.panels.set(boardId, new BoardPanel(panel, extensionUri, store, boardId));
+    BoardPanel.panels.set(boardId, new BoardPanel(panel, extensionUri, store, git, boardId));
   }
 
   /** Re-post data to every open panel and refresh panel titles. */
@@ -114,11 +120,12 @@ export class BoardPanel {
   public static revealCard(
     extensionUri: vscode.Uri,
     store: RepoDocStore,
+    git: GitPort,
     boardId: string,
     cardId: string,
   ): void {
     const existed = BoardPanel.panels.has(boardId);
-    BoardPanel.createOrShow(extensionUri, store, boardId);
+    BoardPanel.createOrShow(extensionUri, store, git, boardId);
     const panel = BoardPanel.panels.get(boardId);
     if (!panel) {
       return;
@@ -166,6 +173,9 @@ export class BoardPanel {
       }
     }
 
+    const gitStatus = this.cardGitStatus(board);
+    const descDiffHtml = this.cardDescriptionDiffs(board, gitStatus, server);
+
     const message: DataMessage = {
       type: 'data',
       boardId: this.boardId,
@@ -176,8 +186,59 @@ export class BoardPanel {
       commentHtml,
       readingWidth: resolveReadingWidth(),
       commentAuthor: resolveCommentAuthor(this.store.root),
+      gitStatus,
+      descDiffHtml,
     };
     void this.panel.webview.postMessage(message);
+  }
+
+  /**
+   * Which cards' files differ from `HEAD`, keyed by card id. Empty outside a
+   * repository.
+   */
+  private cardGitStatus(board: BoardData): Record<string, GitFileStatus> {
+    const result: Record<string, GitFileStatus> = {};
+    if (!this.git.isRepo()) {
+      return result;
+    }
+    const statuses = statusByPath(this.git.status());
+    for (const card of Object.values(board.cards)) {
+      const cardPath = this.store.cardFilePath(this.boardId, card.id);
+      if (cardPath === undefined) {
+        continue;
+      }
+      const status = statuses.get(cardPath);
+      if (status !== undefined) {
+        result[card.id] = status;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Rendered `HEAD → working tree` diffs of card descriptions, for the changed
+   * cards only. A card file changes for many reasons — a move, a comment, a
+   * field edit — so a diff is offered only where the description itself moved.
+   */
+  private cardDescriptionDiffs(
+    board: BoardData,
+    gitStatus: Record<string, GitFileStatus>,
+    plantUmlServerUrl: string,
+  ): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const cardId of Object.keys(gitStatus)) {
+      const headCard = this.store.cardAtHead(this.boardId, cardId, (relPath) =>
+        this.git.readAtHead(relPath),
+      );
+      const headDesc = headCard?.desc ?? '';
+      const desc = board.cards[cardId]?.desc ?? '';
+      if (hasMarkdownChanges(headDesc, desc)) {
+        result[cardId] = renderMarkdownDiff(headDesc, desc, {
+          plantUmlServer: plantUmlServerUrl,
+        }).html;
+      }
+    }
+    return result;
   }
 
   private onMessage(msg: unknown): void {

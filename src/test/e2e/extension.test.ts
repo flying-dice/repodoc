@@ -72,6 +72,20 @@ suite('RepoDoc e2e', () => {
     assert.ok(api && api.store, 'activate() should return the store api');
   });
 
+  test('git status is scoped to the workspace folder, not the whole repository', () => {
+    // The fixture workspace sits inside RepoDoc's own (gitignored) .vscode-test
+    // directory, so git IS available here — but nothing under the workspace
+    // folder is tracked or reportable, which is the point: the adapter must
+    // filter the repository's status down to this folder.
+    assert.strictEqual(api.git.isRepo(), true);
+    assert.deepStrictEqual(api.git.status(), []);
+  });
+
+  test('toggleDiff is a no-op with nothing to compare', async () => {
+    const toggled = await vscode.commands.executeCommand<boolean>('repodoc.toggleDiff');
+    assert.strictEqual(toggled, false);
+  });
+
   test('activation registers all RepoDoc commands', async () => {
     const commands = await vscode.commands.getCommands(true);
     for (const id of [
@@ -83,6 +97,7 @@ suite('RepoDoc e2e', () => {
       'repodoc.newBoard',
       'repodoc.newDecision',
       'repodoc.installAgentSkill',
+      'repodoc.toggleDiff',
     ]) {
       assert.ok(commands.includes(id), `missing command ${id}`);
     }

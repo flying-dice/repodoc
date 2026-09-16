@@ -218,3 +218,46 @@
 .adr-md del {
   color: var(--vscode-descriptionForeground);
 }
+
+/* ---- Git: HEAD → working tree diff ---- */
+/* The toggle button and the changed-block marking are shared with the board's
+   card view and live in base.css; only the top-bar strip is view-specific. */
+
+.gitbar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.git-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+.git-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.git-swatch-add {
+  background: var(--diff-add-bg);
+  outline: 1px solid var(--diff-add-edge);
+}
+.git-swatch-del {
+  background: var(--diff-del-bg);
+  outline: 1px solid var(--diff-del-edge);
+}
+/* Shown instead of the toggle when only frontmatter moved. */
+.git-note {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+.git-timing {
+  margin-left: 8px;
+  opacity: .7;
+  font-family: var(--font-mono);
+}

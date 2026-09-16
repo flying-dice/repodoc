@@ -1,5 +1,9 @@
 # Change Log
 
+## Unreleased
+
+- **Git awareness** across every surface. Docs, decisions and cards whose file differs from `HEAD` carry a change badge in the Boards, Decisions and Docs trees, using VS Code's own SCM decoration colours; a board or docs folder is badged when anything beneath it changed. Deletions are not badged — a deleted file leaves no row to mark — so badges are added, modified and renamed only. The Doc and Decision views, and the card view's description, offer a `HEAD → working tree` toggle that re-renders the page with added and removed blocks marked in place — block-level, so a reworded bullet reads as one removal and one addition rather than a wall of character noise. A new `repodoc.toggleDiff` command does the same for whichever reading view is focused. A frontmatter-only edit badges the file and reports *metadata changed* rather than offering a diff of an identical body. Outside a repository, or with the new `repodoc.git.enabled` setting off, every surface renders exactly as before.
+
 ## [0.8.0] — 2026-07-20
 
 - One renderer for every content block. Card comments now render full GitHub Flavored Markdown, Mermaid, and PlantUML — the same pipeline as card descriptions, decision records, and docs. File references like `src/core/store.ts:12` in descriptions and comments are one-click links that open the file at that line.

@@ -1,3 +1,4 @@
+import { GitFileStatus } from '../core/ports';
 import { BoardData, CustomFieldValue, RepoDocConfig } from '../core/types';
 
 /**
@@ -12,6 +13,15 @@ import { BoardData, CustomFieldValue, RepoDocConfig } from '../core/types';
  * below describe their intended shape, but callers must still validate fields
  * at runtime before acting on them.
  */
+
+/**
+ * Labels on the `HEAD → working tree` toggle. Both reading surfaces show this
+ * control — the Doc/Decision top bar (built in markdownPanel.ts) and the card
+ * modal (built in media/board.js) — so the wording lives here, once. The
+ * board.js copy is part of the manual mirror described above.
+ */
+export const DIFF_ON_LABEL = 'HEAD → working tree';
+export const DIFF_OFF_LABEL = 'Hide changes';
 
 /** Messages sent from the extension host down to the webview. */
 export interface DataMessage {
@@ -29,6 +39,17 @@ export interface DataMessage {
   readingWidth: string;
   /** The author name prefilled in the comment composer. */
   commentAuthor: string;
+  /**
+   * How each card's file differs from `HEAD`, keyed by card id. Empty outside
+   * a git repository or with `repodoc.git.enabled` off.
+   */
+  gitStatus: Record<string, GitFileStatus>;
+  /**
+   * Card descriptions rendered as a `HEAD → working tree` diff, keyed by card
+   * id. Only present for cards whose description actually changed, so the
+   * webview uses presence to decide whether to offer the toggle.
+   */
+  descDiffHtml: Record<string, string>;
 }
 
 

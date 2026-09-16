@@ -393,6 +393,39 @@ export class RepoDocStore {
     }
   }
 
+  /**
+   * Workspace-relative path of a card's markdown file, or `undefined` when the
+   * board or card is unknown. Callers outside the store need this to relate a
+   * card to its file on disk (git status, reveal-in-explorer).
+   */
+  cardFilePath(boardId: string, cardId: string): string | undefined {
+    const entry = this.readBoardCards(boardId).find((e) => e.slug === cardId);
+    return entry ? `boards/${boardId}/${entry.fileName}` : undefined;
+  }
+
+  /**
+   * The card as it was in an earlier revision, parsed from whatever `readAt`
+   * hands back for its file. Keeps the card file format — filename, slug,
+   * frontmatter, field coercion — inside the store: callers supply the bytes,
+   * not the knowledge of how to read them.
+   */
+  cardAtHead(
+    boardId: string,
+    cardId: string,
+    readAt: (relPath: string) => string | undefined,
+  ): Card | undefined {
+    const relPath = this.cardFilePath(boardId, cardId);
+    if (relPath === undefined) {
+      return undefined;
+    }
+    const content = readAt(relPath);
+    if (content === undefined) {
+      return undefined; // not in that revision — a new card
+    }
+    const fileName = relPath.slice(relPath.lastIndexOf('/') + 1);
+    return parseCard(fileName, content, this.readConfig(boardId).fields).card;
+  }
+
   // ---- card file helpers ----
 
   private cardFileNames(boardId: string): string[] {

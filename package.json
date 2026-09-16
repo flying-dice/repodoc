@@ -112,6 +112,11 @@
         "title": "RepoDoc Settings",
         "category": "RepoDoc",
         "icon": "$(gear)"
+      },
+      {
+        "command": "repodoc.toggleDiff",
+        "title": "Toggle Changes (HEAD → Working Tree)",
+        "category": "RepoDoc"
       }
     ],
     "menus": {
@@ -170,12 +175,17 @@
         "repodoc.plantUmlServer": {
           "type": "string",
           "default": "https://www.plantuml.com/plantuml",
-          "markdownDescription": "PlantUML server used to render ```plantuml fences in Docs and Decisions. The default is the public plantuml.com server \u2014 **diagram source is sent to it**. To keep diagrams private, run your own local renderer with Docker:\n\n```\ndocker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty\n```\n\nthen set this to `http://localhost:8792`. Leave empty to show PlantUML fences as plain code."
+          "markdownDescription": "PlantUML server used to render ```plantuml fences in Docs and Decisions. The default is the public plantuml.com server — **diagram source is sent to it**. To keep diagrams private, run your own local renderer with Docker:\n\n```\ndocker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty\n```\n\nthen set this to `http://localhost:8792`. Leave empty to show PlantUML fences as plain code."
         },
         "repodoc.commentAuthor": {
           "type": "string",
           "default": "",
           "description": "Name used for comments you add from the card view. When empty, your git user.name is used. Editing the name in the comment composer updates this setting."
+        },
+        "repodoc.git.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show git awareness across RepoDoc: change badges in the Boards, Decisions and Docs trees, and a `HEAD → working tree` diff in the Doc, Decision and card views. Turn off to render every surface as if the workspace were not a repository."
         }
       }
     }

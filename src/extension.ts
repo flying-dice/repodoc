@@ -1,8 +1,13 @@
 import * as vscode from 'vscode';
+import { GitPort } from './core/ports';
 import { RepoDocStore } from './core/store';
 import { AgentKind, SKILL_TARGETS, SkillManager } from './core/skillManager';
 import { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
 import { MemFileSystemAdapter } from './adapters/memFileSystem';
+import { NodeGitAdapter } from './adapters/nodeGit';
+import { NoGitAdapter } from './adapters/noGit';
+import { SettingGatedGitAdapter } from './panels/settingGatedGit';
+import { GitDecorationProvider } from './panels/gitDecorations';
 import { SystemClock } from './adapters/systemClock';
 import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
 import { BoardPanel } from './panels/boardPanel';
@@ -12,6 +17,9 @@ import { MarkdownPanel } from './panels/markdownPanel';
 /** Public surface returned by {@link activate}, used by e2e tests. */
 export interface RepoDocApi {
   store: RepoDocStore;
+  git: GitPort;
+  /** Exposed so e2e tests can ask for a decoration the way the trees do. */
+  decorations: GitDecorationProvider;
 }
 
 export function activate(context: vscode.ExtensionContext): RepoDocApi {
@@ -19,6 +27,9 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   const root = folders && folders.length > 0 ? folders[0].uri.fsPath : undefined;
   const fileSystem = root ? new NodeFileSystemAdapter(root) : new MemFileSystemAdapter();
   const store = new RepoDocStore(fileSystem, new SystemClock(), root);
+  // Without a folder there is nothing to inspect; the in-memory port reports
+  // "not a repository", which is exactly the git-unaware rendering.
+  const git = new SettingGatedGitAdapter(root ? new NodeGitAdapter(root) : new NoGitAdapter());
   const skillManager = new SkillManager(fileSystem);
 
   if (root) {
@@ -50,10 +61,18 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       }
       debounce = setTimeout(() => {
         debounce = undefined;
+        git.invalidate();
         store.notifyExternalChange();
       }, 150);
     };
-    for (const pattern of ['**/boards/**', '**/decisions/**', '**/docs/**']) {
+    // `.git/HEAD` and `.git/index` cover commits, checkouts and staging done
+    // outside the editor — none of which touch the content directories.
+    for (const pattern of [
+      '**/boards/**',
+      '**/decisions/**',
+      '**/docs/**',
+      '.git/{HEAD,index}',
+    ]) {
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(root, pattern),
       );
@@ -71,6 +90,8 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     });
   }
 
+  const decorations = new GitDecorationProvider(git, root);
+
   const boardsTree = new BoardsTreeProvider(store);
   const decisionsTree = new DecisionsTreeProvider(store);
   const docsTree = new DocsTreeProvider(store);
@@ -79,6 +100,8 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     vscode.window.registerTreeDataProvider('repodoc.boards', boardsTree),
     vscode.window.registerTreeDataProvider('repodoc.decisions', decisionsTree),
     vscode.window.registerTreeDataProvider('repodoc.docs', docsTree),
+    vscode.window.registerFileDecorationProvider(decorations),
+    decorations,
   );
 
   const updateInitializedContext = (): void => {
@@ -87,6 +110,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   updateInitializedContext();
 
   const refreshTrees = (): void => {
+    decorations.refresh();
     boardsTree.refresh();
     decisionsTree.refresh();
     docsTree.refresh();
@@ -95,6 +119,9 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('repodoc')) {
+        // Turning repodoc.git.enabled off must clear the badges now, not at
+        // the next file change: the decoration provider caches its statuses.
+        refreshTrees();
         MarkdownPanel.refreshAll();
         BoardPanel.refreshAll();
       }
@@ -122,8 +149,13 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     }),
 
     vscode.commands.registerCommand('repodoc.refresh', () => {
+      git.invalidate();
       refreshTrees();
     }),
+
+    // Flip the open Doc/Decision panel between reading and the HEAD diff.
+    // Returns false when nothing is open or the file matches HEAD.
+    vscode.commands.registerCommand('repodoc.toggleDiff', (): boolean => MarkdownPanel.toggleDiff()),
 
     vscode.commands.registerCommand('repodoc.openSettings', () => {
       void vscode.commands.executeCommand(
@@ -142,7 +174,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
               ? (arg as { ref: { id: string } }).ref.id
               : undefined);
       if (boardId) {
-        BoardPanel.createOrShow(context.extensionUri, store, boardId);
+        BoardPanel.createOrShow(context.extensionUri, store, git, boardId);
       }
     }),
 
@@ -176,18 +208,18 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       'repodoc.revealCard',
       (boardId: unknown, cardId: unknown): void => {
         if (typeof boardId === 'string' && typeof cardId === 'string') {
-          BoardPanel.revealCard(context.extensionUri, store, boardId, cardId);
+          BoardPanel.revealCard(context.extensionUri, store, git, boardId, cardId);
         }
       },
     ),
 
     vscode.commands.registerCommand('repodoc.openDecision', (id: string) => {
-      MarkdownPanel.showDecision(context.extensionUri, store, id);
+      MarkdownPanel.showDecision(context.extensionUri, store, git, id);
     }),
 
     vscode.commands.registerCommand('repodoc.openDoc', (relPath: unknown) => {
       if (typeof relPath === 'string' && relPath.length > 0) {
-        MarkdownPanel.showDoc(context.extensionUri, store, relPath);
+        MarkdownPanel.showDoc(context.extensionUri, store, git, relPath);
       }
     }),
 
@@ -200,7 +232,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         return;
       }
       const id = store.createBoard(name.trim());
-      BoardPanel.createOrShow(context.extensionUri, store, id);
+      BoardPanel.createOrShow(context.extensionUri, store, git, id);
     }),
 
     vscode.commands.registerCommand('repodoc.newDecision', async () => {
@@ -213,7 +245,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       }
       const id = store.createDecision(title.trim());
       if (id) {
-        MarkdownPanel.showDecision(context.extensionUri, store, id);
+        MarkdownPanel.showDecision(context.extensionUri, store, git, id);
       }
     }),
 
@@ -249,7 +281,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     }),
   );
 
-  return { store };
+  return { store, git, decorations };
 }
 
 export function deactivate(): void {}

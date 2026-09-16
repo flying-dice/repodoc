@@ -51,6 +51,19 @@ The `docs/` tree renders as a handbook. Numeric filename prefixes set the sideba
 
 ![Rendered documentation page](images/docs.png)
 
+## Uncommitted changes
+
+RepoDoc reads the repository it lives in. Docs, decisions and cards whose file differs from `HEAD` carry a change badge in the tree, in your theme's own colours; a folder is badged when anything beneath it changed. Open one and the top bar offers **HEAD → working tree**: the same rendered page, with added and removed blocks marked in place — prose stays prose, diagrams stay diagrams. Card descriptions get the same toggle in the card view.
+
+Outside a git repository, or with `repodoc.git.enabled` off, every surface renders exactly as it always did.
+
+What this does not do:
+
+- **Deletions are not shown.** Every RepoDoc tree is built from files it can read, so a deleted file leaves no row to badge. Badges are added, modified and renamed only.
+- **Frontmatter-only edits badge but do not diff.** The reading view shows frontmatter as a table, not prose, so a `status:` or `date:` change marks the file as modified and the top bar says *metadata changed* — there is no body difference to render.
+- **Renames are only detected once staged.** Moving a card between columns rewrites its file name; until that rename is in the index, git reports it as a delete plus an add.
+- **Git is read synchronously.** Results are cached until something changes, but the first read after a change happens on the extension host. On a very large repository that is a pause, not a hang.
+
 ## Native to VS Code
 
 Navigation uses standard tree views: boards expand into columns and cards, and decisions and docs open in one click. Every surface follows your color theme.
@@ -75,6 +88,7 @@ Navigation uses standard tree views: boards expand into columns and cards, and d
 ## Settings
 
 - `repodoc.readingWidth` sets the width of reading views and the card view: narrow, wide, or full.
+- `repodoc.git.enabled` shows change badges and the `HEAD → working tree` diff. On by default; turn it off to render every surface as if the workspace were not a repository.
 - `repodoc.plantUmlServer` sets the PlantUML renderer. The default is the public plantuml.com server. To render privately, run `docker run -d --name plantuml -p 8792:8080 plantuml/plantuml-server:jetty` and set the value to `http://localhost:8792`.
 
 ## License

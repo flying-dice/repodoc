@@ -141,3 +141,47 @@ suite('store.addColumn', () => {
     assert.ok(store.getBoard('b')!.columns.some((c) => c.id === 'in-review'));
   });
 });
+
+suite('store.cardFilePath and store.cardAtHead', () => {
+  const board = { 'boards/b/.config.json': configJson(['todo']) };
+
+  test('cardFilePath resolves a card id to its file', () => {
+    const { store } = makeStore(board);
+    store.addCard('b', 'todo', 'My Card');
+    assert.strictEqual(store.cardFilePath('b', 'my-card'), 'boards/b/01-my-card.md');
+  });
+
+  test('cardFilePath is undefined for an unknown board or card', () => {
+    const { store } = makeStore(board);
+    assert.strictEqual(store.cardFilePath('nope', 'my-card'), undefined);
+    assert.strictEqual(store.cardFilePath('b', 'nope'), undefined);
+  });
+
+  test('cardAtHead parses whatever the reader returns for that card file', () => {
+    const { store } = makeStore(board);
+    store.addCard('b', 'todo', 'My Card');
+    const card = store.cardAtHead('b', 'my-card', (relPath) => {
+      assert.strictEqual(relPath, 'boards/b/01-my-card.md');
+      return '---\ncolumn: todo\n---\n# My Card\n\nThe old description.\n';
+    });
+    assert.strictEqual(card?.title, 'My Card');
+    assert.strictEqual(card?.desc, 'The old description.');
+  });
+
+  test('cardAtHead is undefined when the card is not in that revision', () => {
+    const { store } = makeStore(board);
+    store.addCard('b', 'todo', 'My Card');
+    assert.strictEqual(
+      store.cardAtHead('b', 'my-card', () => undefined),
+      undefined,
+    );
+  });
+
+  test('cardAtHead is undefined for a card that does not exist now', () => {
+    const { store } = makeStore(board);
+    assert.strictEqual(
+      store.cardAtHead('b', 'ghost', () => '# Ghost\n'),
+      undefined,
+    );
+  });
+});
