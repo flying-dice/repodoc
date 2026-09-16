@@ -2,6 +2,32 @@ import type { BoardRef, DecisionRecord, DocNode, FeatureSetRef, RepoDocStore } f
 import * as vscode from 'vscode';
 
 /**
+ * Absolute URI for a workspace-relative path. Tree items carry one so the git
+ * decoration provider can badge them; `undefined` with no folder open, which
+ * simply leaves the item undecorated.
+ */
+function workspaceUri(relPath: string | undefined): vscode.Uri | undefined {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder || !relPath) {
+    return undefined;
+  }
+  return vscode.Uri.joinPath(folder.uri, ...relPath.split('/'));
+}
+
+/**
+ * Point a tree item at its file so the git decoration provider can badge it.
+ * A path that cannot be resolved simply leaves the item undecorated — under
+ * `exactOptionalPropertyTypes` the key must be left unset, not set to
+ * `undefined`.
+ */
+function badgeFile(item: vscode.TreeItem, relPath: string | undefined): void {
+  const uri = workspaceUri(relPath);
+  if (uri) {
+    item.resourceUri = uri;
+  }
+}
+
+/**
  * Base class for tree providers that expose a `refresh()` which fires the
  * `onDidChangeTreeData` event. Subclasses implement `getTreeItem`/`getChildren`.
  */
@@ -55,6 +81,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
     if (node.kind === 'board') {
       const item = new vscode.TreeItem(node.ref.name, vscode.TreeItemCollapsibleState.Expanded);
       item.id = `board:${node.ref.id}`;
+      badgeFile(item, `boards/${node.ref.id}`);
       item.description = String(node.ref.cardCount);
       item.iconPath = new vscode.ThemeIcon('project');
       item.contextValue = 'repodoc.board';
@@ -68,6 +95,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
     if (node.kind === 'featureSet') {
       const item = new vscode.TreeItem(node.ref.name, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `featureSet:${node.ref.id}`;
+      badgeFile(item, `features/${node.ref.id}`);
       item.description = String(node.ref.featureCount);
       item.iconPath = new vscode.ThemeIcon('beaker');
       item.contextValue = 'repodoc.featureSet';
@@ -96,6 +124,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
       // Keyed by position, not id: two files can map to the same id, and VS
       // Code drops the whole tree when two items share one id.
       item.id = `feature:${node.setId}:${node.columnId}:${node.index}`;
+      badgeFile(item, this.store.featureFilePath(node.setId, node.featureId));
       item.tooltip = node.title;
       item.iconPath = new vscode.ThemeIcon('file-code');
       item.contextValue = 'repodoc.feature';
@@ -122,6 +151,7 @@ export class BoardsTreeProvider extends RefreshableTreeProvider<BoardsNode> {
     const item = new vscode.TreeItem(node.title, vscode.TreeItemCollapsibleState.None);
     // Keyed by position, not id — see the feature node above.
     item.id = `card:${node.boardId}:${node.columnId}:${node.index}`;
+    badgeFile(item, this.store.cardFilePath(node.boardId, node.cardId));
     item.tooltip = node.title;
     item.iconPath = new vscode.ThemeIcon('circle-filled', priorityColor(node.priority));
     item.contextValue = 'repodoc.card';
@@ -226,6 +256,7 @@ export class DecisionsTreeProvider extends RefreshableTreeProvider<DecisionRecor
   getTreeItem(record: DecisionRecord): vscode.TreeItem {
     const item = new vscode.TreeItem(record.title, vscode.TreeItemCollapsibleState.None);
     item.description = record.num;
+    badgeFile(item, `decisions/${record.file}`);
     item.tooltip = record.file;
     item.contextValue = 'repodoc.decision';
     item.iconPath = new vscode.ThemeIcon(
@@ -269,12 +300,14 @@ export class DocsTreeProvider extends RefreshableTreeProvider<DocNode> {
   getTreeItem(node: DocNode): vscode.TreeItem {
     if (node.type === 'dir') {
       const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
+      badgeFile(item, node.relPath);
       item.tooltip = node.relPath;
       item.contextValue = 'repodoc.docDir';
       item.iconPath = vscode.ThemeIcon.Folder;
       return item;
     }
     const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
+    badgeFile(item, node.relPath);
     item.tooltip = node.relPath;
     item.contextValue = 'repodoc.docFile';
     item.iconPath = new vscode.ThemeIcon('markdown');

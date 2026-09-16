@@ -10,6 +10,8 @@
 
 export { MemFileSystemAdapter } from './adapters/memFileSystem';
 export { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
+export { NodeGitAdapter } from './adapters/nodeGit';
+export { NoGitAdapter } from './adapters/noGit';
 export { SystemClock } from './adapters/systemClock';
 export type { BoardConfig, ConfigColumn } from './boardConfig';
 export {
@@ -36,6 +38,16 @@ export {
 export type { CardEntry } from './cardParse';
 export { findChecklist, findComments, findGates, parseCard } from './cardParse';
 export { DECISION_STATUSES, DecisionStore } from './decisions';
+export type { BlockKind, DiffBlock, DiffOp, DiffRun, MarkdownBlock } from './diff';
+export {
+  blockKey,
+  diffMarkdown,
+  groupRuns,
+  hasChanges,
+  hasMarkdownChanges,
+  runSource,
+  splitBlocks,
+} from './diff';
 export { DocStore } from './docs';
 export type { Eol } from './eol';
 export { applyEol, detectEol, normalizeEol } from './eol';
@@ -72,6 +84,7 @@ export {
   evaluateTransition,
   gatePromptText,
 } from './gates';
+export { statusByPath } from './gitStatus';
 export { pad, slugFromFileName, slugify, titleCase, uniqueSlug } from './naming';
 export { computeCardOrder } from './ordering';
 export * from './ports';

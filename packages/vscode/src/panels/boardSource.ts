@@ -1,5 +1,6 @@
 import type {
   BoardData,
+  Card,
   CardMetaPatch,
   CustomFieldValue,
   GatedMoveResult,
@@ -52,6 +53,12 @@ export interface BoardSource {
    * `undefined` when it cannot be resolved (no workspace root, missing file).
    */
   cardFilePath?(cardId: string): string | undefined;
+  /**
+   * The card as it was in an earlier revision, parsed from the bytes `readAt`
+   * returns for its file. Absent on sources whose items are not cards, which
+   * is what suppresses the description diff for them.
+   */
+  cardAtHead?(cardId: string, readAt: (relPath: string) => string | undefined): Card | undefined;
   /** The pasteable reference for a card, see `formatRef` in @repodoc/core. */
   cardRef(cardId: string): string | undefined;
   addComment?(cardId: string, who: string, text: string): void;
@@ -129,6 +136,10 @@ export class CardBoardSource implements BoardSource {
 
   cardFilePath(cardId: string): string | undefined {
     return this.store.cardFilePath(this.id, cardId);
+  }
+
+  cardAtHead(cardId: string, readAt: (relPath: string) => string | undefined): Card | undefined {
+    return this.store.cardAtHead(this.id, cardId, readAt);
   }
 
   cardRef(cardId: string): string | undefined {

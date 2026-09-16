@@ -1,8 +1,16 @@
-import type { CustomFieldValue } from '@repodoc/core';
+import {
+  type BoardData,
+  type CustomFieldValue,
+  type GitFileStatus,
+  type GitPort,
+  hasMarkdownChanges,
+  statusByPath,
+} from '@repodoc/core';
 import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
 import type { BoardSource } from './boardSource';
 import { renderMarkdownWithDiagrams } from './diagrams';
+import { renderMarkdownDiff } from './diffView';
 import { type EditField, editBase, hasEditConflict } from './editConflict';
 import { collectGatePrompts, toBlockedGate } from './gateGuidance';
 import { localIdentity } from './identity';
@@ -41,6 +49,7 @@ export class BoardPanel {
     private readonly extensionUri: vscode.Uri,
     /** Workspace root — used only to resolve files and the comment author. */
     private readonly root: string | undefined,
+    private readonly git: GitPort,
     private readonly source: BoardSource,
   ) {
     this.panel.webview.html = this.getHtml(this.panel.webview);
@@ -57,6 +66,7 @@ export class BoardPanel {
   public static createOrShow(
     extensionUri: vscode.Uri,
     root: string | undefined,
+    git: GitPort,
     source: BoardSource,
   ): void {
     const key = panelKey(source.kind, source.id);
@@ -81,7 +91,7 @@ export class BoardPanel {
       },
     );
 
-    BoardPanel.panels.set(key, new BoardPanel(panel, extensionUri, root, source));
+    BoardPanel.panels.set(key, new BoardPanel(panel, extensionUri, root, git, source));
   }
 
   /** Re-post data to every open panel and refresh panel titles. */
@@ -147,13 +157,14 @@ export class BoardPanel {
   public static revealCard(
     extensionUri: vscode.Uri,
     root: string | undefined,
+    git: GitPort,
     source: BoardSource,
     cardId: string,
   ): void {
     const boardId = source.id;
     const key = panelKey(source.kind, boardId);
     const existed = BoardPanel.panels.has(key);
-    BoardPanel.createOrShow(extensionUri, root, source);
+    BoardPanel.createOrShow(extensionUri, root, git, source);
     const panel = BoardPanel.panels.get(key);
     if (!panel) {
       return;
@@ -175,6 +186,49 @@ export class BoardPanel {
         d.dispose();
       }
     }
+  }
+
+  /**
+   * Per-card git state for the webview: which card files differ from `HEAD`,
+   * and a rendered diff of the description for those whose description is what
+   * changed. Both are empty outside a repository.
+   *
+   * A card file changes for many reasons — a move, a comment, a field edit — so
+   * a diff is offered only where the description itself moved. Sources whose
+   * items are not cards expose no `cardAtHead`, and get status badges only.
+   */
+  private gitState(
+    board: BoardData,
+    cardFiles: Record<string, string>,
+    plantUmlServerUrl: string,
+  ): { gitStatus: Record<string, GitFileStatus>; descDiffHtml: Record<string, string> } {
+    const gitStatus: Record<string, GitFileStatus> = {};
+    const descDiffHtml: Record<string, string> = {};
+    if (!this.git.isRepo()) {
+      return { gitStatus, descDiffHtml };
+    }
+    const statuses = statusByPath(this.git.status());
+    for (const card of Object.values(board.cards)) {
+      const file = cardFiles[card.id];
+      if (file === undefined) {
+        continue;
+      }
+      const status = statuses.get(file);
+      if (status === undefined) {
+        continue; // unchanged since HEAD
+      }
+      gitStatus[card.id] = status;
+
+      const headCard = this.source.cardAtHead?.(card.id, (relPath) => this.git.readAtHead(relPath));
+      const headDesc = headCard?.desc ?? '';
+      const desc = card.desc ?? '';
+      if (this.source.cardAtHead && hasMarkdownChanges(headDesc, desc)) {
+        descDiffHtml[card.id] = renderMarkdownDiff(headDesc, desc, {
+          plantUmlServer: plantUmlServerUrl,
+        }).html;
+      }
+    }
+    return { gitStatus, descDiffHtml };
   }
 
   private postData(): void {
@@ -220,6 +274,8 @@ export class BoardPanel {
       }
     }
 
+    const { gitStatus, descDiffHtml } = this.gitState(board, cardFiles, server);
+
     const message: DataMessage = {
       type: 'data',
       boardId: this.source.id,
@@ -234,6 +290,8 @@ export class BoardPanel {
       cardFiles,
       gatePromptHtml,
       columnPromptHtml,
+      gitStatus,
+      descDiffHtml,
     };
     void this.panel.webview.postMessage(message);
   }

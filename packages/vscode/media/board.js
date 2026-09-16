@@ -25,6 +25,7 @@
     // because the file changed under the open editor. Nothing was written; the
     // editor shows Reload / Keep mine, exactly as a scenario block does.
     editConflict: null,
+    descDiffOn: false, // card modal: the description shows its HEAD diff
   };
 
   // Bottom of the target column — the CLI's default move index.
@@ -828,6 +829,16 @@
         meta.push(chip);
       }
     });
+    var gitStatus = gitStatusOf(cardId);
+    if (gitStatus) {
+      meta.push(
+        h(
+          'span',
+          { class: 'meta-item card-git card-git-' + gitStatus, title: 'Uncommitted: ' + gitStatus },
+          gitStatus.charAt(0).toUpperCase(),
+        ),
+      );
+    }
     meta.push(h('div', { class: 'meta-spacer' }));
     meta.push(h('span', { class: 'meta-updated' }, humanizeTime(card.updatedAt)));
     if (card.agent) {
@@ -1663,11 +1674,27 @@
     render();
   }
 
+  // How this card's file differs from HEAD ('added' | 'modified' | ...), or
+  // null when it matches HEAD, git is off, or this is not a repository.
+  function gitStatusOf(cardId) {
+    var map = state.data && state.data.gitStatus;
+    return (map && map[cardId]) || null;
+  }
+
+  // Rendered HEAD -> working tree diff of a card's description; null when the
+  // description itself has not changed.
+  function descDiffOf(cardId) {
+    var map = state.data && state.data.descDiffHtml;
+    return (map && map[cardId]) || null;
+  }
+
   // G-7: the Description section is always present when this surface can write
   // it, so a new card offers somewhere to say what it is about.
   function modalDescription(card) {
     var editable = can('description');
     var html = state.data?.descHtml ? state.data.descHtml[card.id] : null;
+    var diffHtml = descDiffOf(card.id);
+    var showDiff = state.descDiffOn && !!diffHtml && !state.editingDesc;
 
     if (editable && state.editingDesc) {
       var textarea = h('textarea', {
@@ -1753,22 +1780,43 @@
       clearEditConflict();
       render();
     };
-    if (editable) {
+    if (editable || diffHtml) {
       head.push(h('div', { class: 'section-head-spacer' }));
+    }
+    if (diffHtml) {
+      head.push(
+        h(
+          'button',
+          {
+            class: 'ghost-btn git-toggle' + (showDiff ? ' is-on' : ''),
+            title: 'Compare this description with its last committed version',
+            onClick: function () {
+              state.descDiffOn = !state.descDiffOn;
+              render();
+            },
+          },
+          // Mirrors DIFF_OFF_LABEL / DIFF_ON_LABEL in src/panels/protocol.ts.
+          showDiff ? 'Hide changes' : 'HEAD \u2192 working tree',
+        ),
+      );
+    }
+    if (editable) {
       head.push(
         h('button', { class: 'ghost-btn', onClick: startEditing }, card.desc ? 'Edit' : 'Add'),
       );
     }
-    var body = card.desc
-      ? contentBlock('section-desc', html, card.desc)
-      : h(
-          'div',
-          {
-            class: 'section-desc desc-placeholder',
-            onClick: startEditing,
-          },
-          'Add a description…',
-        );
+    var body = showDiff
+      ? h('div', { class: 'section-desc content-md', html: diffHtml })
+      : card.desc
+        ? contentBlock('section-desc', html, card.desc)
+        : h(
+            'div',
+            {
+              class: 'section-desc desc-placeholder',
+              onClick: startEditing,
+            },
+            'Add a description…',
+          );
     return h('div', { class: 'section' }, [h('div', { class: 'section-head' }, head), body]);
   }
 
@@ -3106,6 +3154,7 @@
     state.openCardId = null;
     state.editingTitle = false;
     state.editingDesc = false;
+    state.descDiffOn = false;
     state.addingCheck = false;
     clearEditConflict();
     // Unsaved scenario text is NOT dropped here: like a comment draft, it

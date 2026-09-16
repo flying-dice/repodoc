@@ -356,3 +356,35 @@ describe('store.addColumn', () => {
     assert.ok(store.getBoard('b')!.columns.some((c) => c.id === 'in-review'));
   });
 });
+
+describe('store.cardAtHead', () => {
+  const board = { 'boards/b/.config.json': configJson(['todo']) };
+
+  test('parses whatever the reader returns for that card file', () => {
+    const { store } = makeStore(board);
+    store.addCard('b', 'todo', 'My Card');
+    const card = store.cardAtHead('b', 'my-card', (relPath) => {
+      assert.strictEqual(relPath, 'boards/b/01-my-card.md');
+      return '---\ncolumn: todo\n---\n# My Card\n\nThe old description.\n';
+    });
+    assert.strictEqual(required(card, 'card at head').title, 'My Card');
+    assert.strictEqual(required(card, 'card at head').desc, 'The old description.');
+  });
+
+  test('is undefined when the card is not in that revision', () => {
+    const { store } = makeStore(board);
+    store.addCard('b', 'todo', 'My Card');
+    assert.strictEqual(
+      store.cardAtHead('b', 'my-card', () => undefined),
+      undefined,
+    );
+  });
+
+  test('is undefined for a card that does not exist now', () => {
+    const { store } = makeStore(board);
+    assert.strictEqual(
+      store.cardAtHead('b', 'ghost', () => '# Ghost\n'),
+      undefined,
+    );
+  });
+});

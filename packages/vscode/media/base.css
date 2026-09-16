@@ -17,6 +17,12 @@
     sans-serif
   );
   --font-mono: var(--vscode-editor-font-family);
+
+  /* Added / removed tint for diff surfaces, faint enough to read through. */
+  --diff-add-bg: var(--vscode-diffEditor-insertedTextBackground, rgba(70, 149, 74, 0.18));
+  --diff-del-bg: var(--vscode-diffEditor-removedTextBackground, rgba(197, 66, 58, 0.18));
+  --diff-add-edge: var(--vscode-gitDecoration-addedResourceForeground, #4e9a51);
+  --diff-del-edge: var(--vscode-gitDecoration-deletedResourceForeground, #c5423a);
 }
 
 * {
@@ -129,4 +135,61 @@ body {
 .filecrumb-link:hover {
   color: var(--vscode-textLink-foreground);
   text-decoration: underline;
+
+  /* ---- Git: shared diff chrome ----
+   The toggle reuses the host's own button vocabulary — `.topbar-action` in the
+   reading views, `.ghost-btn` in the card modal — so only the "on" state and
+   the changed-block marking are defined here, once, for both surfaces. */
+
+  .git-toggle.is-on {
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    border-color: transparent;
+  }
+
+  /* Changed blocks, marked in place inside the rendered document. The gutter bar
+   carries the signal so the tint stays faint enough to read through. */
+  .diff-run {
+    position: relative;
+    padding: 2px 10px 2px 14px;
+    margin: 2px 0 2px -14px;
+    border-radius: 3px;
+  }
+  .diff-run::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 3px;
+  }
+  .diff-add {
+    background: var(--diff-add-bg);
+  }
+  .diff-add::before {
+    background: var(--diff-add-edge);
+  }
+  .diff-del {
+    background: var(--diff-del-bg);
+    color: var(--vscode-descriptionForeground);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  .diff-del::before {
+    background: var(--diff-del-edge);
+  }
+  /* Struck-through code and diagrams are unreadable; only the prose is marked. */
+  .diff-del pre,
+  .diff-del code,
+  .diff-del img {
+    text-decoration: none;
+  }
+  /* A document rendered in pieces must not stack each piece's own margins. */
+  .diff-run > :first-child {
+    margin-top: 0;
+  }
+  .diff-run > :last-child {
+    margin-bottom: 0;
+  }
 }

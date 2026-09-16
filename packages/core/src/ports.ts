@@ -28,3 +28,32 @@ export interface ClockPort {
 }
 
 export type Disposable = { dispose(): void };
+
+/** How a file differs from `HEAD` in the working tree. */
+export type GitFileStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+
+export interface GitStatusEntry {
+  /** Workspace-relative path, forward slashes. */
+  path: string;
+  status: GitFileStatus;
+}
+
+/**
+ * Read-only view of the workspace's git state. Every implementation degrades
+ * silently: no git binary, no repository, or an unborn `HEAD` all report
+ * `isRepo() === false` and empty results, so callers render as if git were
+ * never there.
+ *
+ * Paths follow the same contract as FileSystemPort: workspace-relative,
+ * forward slashes, never absolute, no `..` segment.
+ */
+export interface GitPort {
+  /** True only when there is a repository with at least one commit to compare against. */
+  isRepo(): boolean;
+  /** File contents at `HEAD`, or `undefined` when the path is not in `HEAD`. */
+  readAtHead(relPath: string): string | undefined;
+  /** Every workspace file differing from `HEAD`, tracked or not. */
+  status(): GitStatusEntry[];
+  /** Drop cached state; the next call re-reads from git. */
+  invalidate(): void;
+}
