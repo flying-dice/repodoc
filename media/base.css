@@ -100,3 +100,76 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- Git: shared diff chrome ----
+   Used by the Doc/Decision reading views and by the board's card modal, so the
+   toggle and the changed-block marking are defined once here. */
+
+.git-toggle {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.git-toggle:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+.git-toggle.is-on {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: transparent;
+}
+.git-toggle:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Changed blocks, marked in place inside the rendered document. The gutter bar
+   carries the signal so the tint stays faint enough to read through. */
+.diff-run {
+  position: relative;
+  padding: 2px 10px 2px 14px;
+  margin: 2px 0 2px -14px;
+  border-radius: 3px;
+}
+.diff-run::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px;
+}
+.diff-add {
+  background: var(--vscode-diffEditor-insertedTextBackground, rgba(70, 149, 74, .18));
+}
+.diff-add::before {
+  background: var(--vscode-gitDecoration-addedResourceForeground, #4e9a51);
+}
+.diff-del {
+  background: var(--vscode-diffEditor-removedTextBackground, rgba(197, 66, 58, .18));
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.diff-del::before {
+  background: var(--vscode-gitDecoration-deletedResourceForeground, #c5423a);
+}
+/* Struck-through code and diagrams are unreadable; only the prose is marked. */
+.diff-del pre,
+.diff-del code,
+.diff-del img {
+  text-decoration: none;
+}
+/* A document rendered in pieces must not stack each piece's own margins. */
+.diff-run > :first-child {
+  margin-top: 0;
+}
+.diff-run > :last-child {
+  margin-bottom: 0;
+}

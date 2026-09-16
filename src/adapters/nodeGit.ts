@@ -65,6 +65,11 @@ export class NodeGitAdapter implements GitPort {
       '-z',
       '--untracked-files=all',
       '--find-renames',
+      // Scope to the workspace folder: in a monorepo the rest of the
+      // repository is none of this workspace's business, and not asking for it
+      // is cheaper than filtering it afterwards.
+      '--',
+      '.',
     ]);
     this.statusCache = raw === undefined ? [] : this.parseStatus(raw);
     return this.statusCache;
