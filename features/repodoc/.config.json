@@ -1,0 +1,17 @@
+{
+  "name": "RepoDoc Behaviour",
+  "columns": [
+    { "id": "proposed", "name": "Proposed", "color": "#7d828b",
+      "prompt": "Describe the behaviour in prose. Add scenarios before moving on." },
+    { "id": "specified", "name": "Specified", "color": "#4c8bf5",
+      "prompt": "Every scenario is written in Given/When/Then. Implement it next." },
+    { "id": "implemented", "name": "Implemented", "color": "#5cd68a",
+      "prompt": "The behaviour exists in the code. Point the scenarios at the tests that prove it." },
+    { "id": "verified", "name": "Verified", "color": "#3fb27f",
+      "prompt": "Automated tests cover every scenario and run green in `bun run test`." }
+  ],
+  "labels": {
+    "core": { "name": "core", "color": "#3fb27f" },
+    "cli": { "name": "cli", "color": "#4c8bf5" }
+  }
+}

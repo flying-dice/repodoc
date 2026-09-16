@@ -1,0 +1,125 @@
+/**
+ * Decision-record (ADR) storage. Reads/writes `decisions/NN-slug.md` through the
+ * FileSystemPort and keeps the parsing logic pure and vscode-free. The store
+ * delegates its decision methods here.
+ */
+
+import { applyEol, detectEol, normalizeEol } from './eol';
+import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
+import { markdownTitle, pad, slugify, stripNumPrefix } from './naming';
+import type { FileSystemPort } from './ports';
+import type { DecisionRecord } from './types';
+
+/**
+ * The decision statuses RepoDoc recognises, in workflow order. Owned by core so
+ * the CLI's `decision status` and the VS Code quick pick offer the same set.
+ */
+export const DECISION_STATUSES = ['Proposed', 'Accepted', 'Superseded'] as const;
+
+/** Parses one decision file's text into a record. Pure — no I/O. */
+export function parseDecisionText(fileName: string, content: string): DecisionRecord {
+  const id = fileName.replace(/\.md$/i, '');
+  const numMatch = /^(\d+)/.exec(fileName);
+  const num = numMatch?.[1] ?? '0000';
+
+  const { data, body } = parseFrontmatter(content);
+
+  let title = markdownTitle(body, stripNumPrefix(id));
+  title = title.replace(/^(?:Decision\s+\d+|ADR-?\d+)\s*[—–-]\s*/i, '').trim();
+
+  const rawStatus = data['status'];
+  const status = typeof rawStatus === 'string' && rawStatus.trim() ? rawStatus.trim() : 'Proposed';
+
+  const rawDate = data['date'];
+  const date = typeof rawDate === 'string' && rawDate.trim() ? rawDate.trim() : undefined;
+
+  const record: DecisionRecord = { id, num, file: fileName, title, status, body };
+  if (date !== undefined) {
+    record.date = date;
+  }
+  if (Object.keys(data).length > 0) {
+    record.frontmatter = data;
+  }
+  return record;
+}
+
+export class DecisionStore {
+  constructor(private readonly fs: FileSystemPort) {}
+
+  list(): DecisionRecord[] {
+    const records: DecisionRecord[] = [];
+    for (const entry of this.fs.listDir('decisions')) {
+      if (entry.kind !== 'file' || entry.name.startsWith('.') || !/\.md$/i.test(entry.name)) {
+        continue;
+      }
+      const content = this.fs.readFile(`decisions/${entry.name}`);
+      if (content === undefined) {
+        continue;
+      }
+      records.push(parseDecisionText(entry.name, content));
+    }
+    records.sort((a, b) => {
+      const an = parseInt(a.num, 10) || 0;
+      const bn = parseInt(b.num, 10) || 0;
+      if (an !== bn) {
+        return an - bn;
+      }
+      return a.file.localeCompare(b.file);
+    });
+    return records;
+  }
+
+  get(id: string): DecisionRecord | undefined {
+    return this.list().find((d) => d.id === id);
+  }
+
+  /** Writes a new decision skeleton and returns its id. Does not fire events. */
+  create(title: string, today: string): string {
+    const existing = this.list();
+    const maxNum = existing.reduce((max, d) => Math.max(max, parseInt(d.num, 10) || 0), 0);
+    const num = pad(maxNum + 1, 2);
+    const cleanTitle = title.trim() || 'Untitled decision';
+    const id = `${num}-${slugify(cleanTitle)}`;
+    const file = `${id}.md`;
+    const body =
+      `# Decision ${num} — ${cleanTitle}\n\n` +
+      `## Context\n\n` +
+      `_What is the issue that motivates this decision?_\n\n` +
+      `## Decision\n\n` +
+      `_What is the change that we're proposing or doing?_\n\n` +
+      `## Consequences\n\n` +
+      `_What becomes easier or harder because of this change?_\n`;
+    this.fs.writeFile(
+      `decisions/${file}`,
+      serializeFrontmatter({ status: 'Proposed', date: today }, body),
+    );
+    return id;
+  }
+
+  /**
+   * Rewrites a decision's `status:` frontmatter key, adding frontmatter when
+   * the file has none. The body is preserved byte-for-byte. Never writes an
+   * empty status. Returns whether the decision exists.
+   */
+  setStatus(id: string, status: string): boolean {
+    const clean = status.trim();
+    if (!clean) {
+      return false;
+    }
+    const rec = this.list().find((d) => d.id === id);
+    if (!rec) {
+      return false;
+    }
+    const path = `decisions/${rec.file}`;
+    const content = this.fs.readFile(path);
+    if (content === undefined) {
+      return false;
+    }
+    // LF for processing, the file's own endings on the way out.
+    const eol = detectEol(content);
+    const { data, body, raw } = parseFrontmatter(normalizeEol(content));
+    data['status'] = clean;
+    this.fs.writeFile(path, applyEol(serializeFrontmatter(data, body, raw), eol));
+    return true;
+  }
+}

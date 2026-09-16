@@ -4,6 +4,34 @@ Task boards, decision records, and documentation for VS Code, stored as plain fi
 
 ![RepoDoc boards, cards, decisions, and docs](images/repodoc.gif)
 
+## One core, two hosts
+
+RepoDoc is a VS Code extension **and** a command line over the same core. Both
+read and write the same files with the same rules, so a card moved by an agent
+from a terminal looks exactly like one dragged on the board.
+
+```
+VS Code ─┐
+         ├─▶ @repodoc/core ─▶ boards/  decisions/  docs/
+CLI ─────┘
+```
+
+### The CLI
+
+No install step. From any repository:
+
+```sh
+bunx github:flying-dice/repodoc board list
+bunx github:flying-dice/repodoc card create project-backlog "Add CSV export" --priority high
+bunx github:flying-dice/repodoc card move project-backlog add-csv-export doing
+bunx github:flying-dice/repodoc card comment project-backlog add-csv-export "Wired the endpoint in src/export/router.ts:22-49"
+bunx github:flying-dice/repodoc card gates project-backlog add-csv-export done
+```
+
+Every command takes `--json` for machine-readable output and `--who <name>` to
+sign comments and gate evidence. `card move` refuses a move whose workflow gates
+fail, exactly like the board does. See [the CLI reference](docs/03-reference/03-cli.md).
+
 ## Everything lives in the repository
 
 A card is a markdown file. A decision is a markdown file. A board is a folder with a JSON config. Project state is versioned with the code it describes, shows up in diffs and pull requests, and travels with every clone. There is no server and no account.
@@ -53,7 +81,7 @@ The `docs/` tree renders as a handbook. Numeric filename prefixes set the sideba
 
 ## Uncommitted changes
 
-RepoDoc reads the repository it lives in. Docs, decisions and cards whose file differs from `HEAD` carry a change badge in the tree, in your theme's own colours; a folder is badged when anything beneath it changed. Open one and the top bar offers **HEAD → working tree**: the same rendered page, with added and removed blocks marked in place — prose stays prose, diagrams stay diagrams. Card descriptions get the same toggle in the card view.
+RepoDoc reads the repository it lives in. Docs, decisions, cards and features whose file differs from `HEAD` carry a change badge in the tree, in your theme's own colours; a folder is badged when anything beneath it changed. Open one and the top bar offers **HEAD → working tree**: the same rendered page, with added and removed blocks marked in place — prose stays prose, diagrams stay diagrams. Card descriptions get the same toggle in the card view.
 
 Outside a git repository, or with `repodoc.git.enabled` off, every surface renders exactly as it always did.
 

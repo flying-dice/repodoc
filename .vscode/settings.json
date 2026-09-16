@@ -1,11 +1,12 @@
 {
   "files.exclude": {
-    "out": false,
-    "dist": false
+    "**/out": false,
+    "**/dist": false
   },
   "search.exclude": {
-    "out": true,
-    "dist": true
+    "**/out": true,
+    "**/dist": true,
+    "**/media/mermaid.min.js": true
   },
   "typescript.tsc.autoDetect": "off"
 }
