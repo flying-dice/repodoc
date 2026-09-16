@@ -1,5 +1,6 @@
 import * as assert from 'assert';
-import { differs, renderMarkdownDiff } from '../../panels/diffView';
+import { hasMarkdownChanges } from '../../core/diff';
+import { renderMarkdownDiff } from '../../panels/diffView';
 
 /**
  * Exercises the diff renderer end to end: markdown in, reading-view HTML out.
@@ -9,21 +10,21 @@ import { differs, renderMarkdownDiff } from '../../panels/diffView';
 
 const NO_DIAGRAMS = { plantUmlServer: '' };
 
-suite('diffView.differs', () => {
+suite('diff.hasMarkdownChanges', () => {
   test('identical documents do not differ', () => {
-    assert.strictEqual(differs('# A\n\nBody.\n', '# A\n\nBody.\n'), false);
+    assert.strictEqual(hasMarkdownChanges('# A\n\nBody.\n', '# A\n\nBody.\n'), false);
   });
 
   test('reflowing a paragraph is not a difference', () => {
-    assert.strictEqual(differs('one two three\n', 'one two\nthree\n'), false);
+    assert.strictEqual(hasMarkdownChanges('one two three\n', 'one two\nthree\n'), false);
   });
 
   test('a changed word is a difference', () => {
-    assert.strictEqual(differs('one two\n', 'one three\n'), true);
+    assert.strictEqual(hasMarkdownChanges('one two\n', 'one three\n'), true);
   });
 
   test('a new document differs from an empty baseline', () => {
-    assert.strictEqual(differs('', '# New\n'), true);
+    assert.strictEqual(hasMarkdownChanges('', '# New\n'), true);
   });
 });
 
@@ -66,11 +67,6 @@ suite('diffView.renderMarkdownDiff', () => {
     const after = '# T\n\n```mermaid\ngraph TD;\nA-->B;\n```\n';
     const result = renderMarkdownDiff('# T\n', after, NO_DIAGRAMS);
     assert.strictEqual(result.hasMermaid, true);
-  });
-
-  test('timing is reported and non-negative', () => {
-    const result = renderMarkdownDiff('# A\n', '# B\n', NO_DIAGRAMS);
-    assert.ok(result.elapsedMs >= 0);
   });
 
   test('an ordered list split by a change keeps its numbering', () => {

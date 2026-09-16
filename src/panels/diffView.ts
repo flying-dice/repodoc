@@ -1,4 +1,4 @@
-import { diffMarkdown, groupRuns, hasChanges, runSource } from '../core/diff';
+import { diffMarkdown, groupRuns, runSource } from '../core/diff';
 import { renderMarkdownWithDiagrams } from './diagrams';
 
 export interface DiffRenderResult {
@@ -7,8 +7,6 @@ export interface DiffRenderResult {
   /** Blocks added and removed, for the legend counts. */
   added: number;
   removed: number;
-  /** Wall-clock milliseconds spent diffing and rendering. */
-  elapsedMs: number;
 }
 
 /**
@@ -24,7 +22,6 @@ export function renderMarkdownDiff(
   after: string,
   options: { plantUmlServer?: string },
 ): DiffRenderResult {
-  const startedAt = Date.now();
   const blocks = diffMarkdown(before, after);
   let hasMermaid = false;
   let added = 0;
@@ -45,16 +42,5 @@ export function renderMarkdownDiff(
     return `<div class="diff-run diff-${run.op}" role="group" aria-label="${label}">${rendered.html}</div>`;
   });
 
-  return {
-    html: parts.join('\n'),
-    hasMermaid,
-    added,
-    removed,
-    elapsedMs: Date.now() - startedAt,
-  };
-}
-
-/** Whether the two sides differ at all — drives whether a toggle is offered. */
-export function differs(before: string, after: string): boolean {
-  return hasChanges(diffMarkdown(before, after));
+  return { html: parts.join('\n'), hasMermaid, added, removed };
 }

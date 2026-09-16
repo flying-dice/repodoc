@@ -1,4 +1,6 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
+import { statusByPath } from '../core/gitStatus';
 import { GitFileStatus, GitPort } from '../core/ports';
 
 /** Badge and theme colour per status, matching VS Code's own SCM decorations. */
@@ -20,16 +22,16 @@ export class GitDecorationProvider implements vscode.FileDecorationProvider {
   private readonly emitter = new vscode.EventEmitter<undefined>();
   readonly onDidChangeFileDecorations = this.emitter.event;
 
-  private index: Map<string, GitFileStatus> | undefined;
+  private statuses: Map<string, GitFileStatus> | undefined;
 
   constructor(
     private readonly git: GitPort,
     private readonly root: string | undefined,
   ) {}
 
-  /** Drop the cached index and ask VS Code to re-query every decoration. */
+  /** Drop the cached statuses and ask VS Code to re-query every decoration. */
   refresh(): void {
-    this.index = undefined;
+    this.statuses = undefined;
     this.emitter.fire(undefined);
   }
 
@@ -38,7 +40,7 @@ export class GitDecorationProvider implements vscode.FileDecorationProvider {
     if (relPath === undefined) {
       return undefined;
     }
-    const status = this.statusIndex().get(relPath);
+    const status = this.cachedStatuses().get(relPath);
     if (!status) {
       return undefined;
     }
@@ -55,11 +57,11 @@ export class GitDecorationProvider implements vscode.FileDecorationProvider {
     this.emitter.dispose();
   }
 
-  private statusIndex(): Map<string, GitFileStatus> {
-    if (!this.index) {
-      this.index = new Map(this.git.status().map((entry) => [entry.path, entry.status]));
+  private cachedStatuses(): Map<string, GitFileStatus> {
+    if (!this.statuses) {
+      this.statuses = statusByPath(this.git.status());
     }
-    return this.index;
+    return this.statuses;
   }
 
   /** Workspace-relative path with forward slashes, or `undefined` if outside. */
@@ -67,8 +69,10 @@ export class GitDecorationProvider implements vscode.FileDecorationProvider {
     if (this.root === undefined || uri.scheme !== 'file') {
       return undefined;
     }
-    const rel = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
-    // asRelativePath hands back the original path when it is outside the folder.
-    return rel.startsWith('/') || /^[a-zA-Z]:/.test(rel) ? undefined : rel;
+    const rel = path.relative(this.root, uri.fsPath);
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+      return undefined;
+    }
+    return rel.split(path.sep).join('/');
   }
 }

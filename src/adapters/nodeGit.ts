@@ -21,21 +21,30 @@ export class NodeGitAdapter implements GitPort {
   private readonly prefix: string | undefined;
   private statusCache: GitStatusEntry[] | undefined;
   private readonly headCache = new Map<string, string | undefined>();
+  /** `undefined` = not looked up yet; `null` = looked up, no commit. */
+  private headShaCache: string | null | undefined;
 
   constructor(private readonly root: string) {
     this.prefix = this.resolvePrefix();
   }
 
   isRepo(): boolean {
-    return this.prefix !== undefined && this.headSha() !== undefined;
+    return this.headSha() !== undefined;
   }
 
-  headSha(): string | undefined {
+  /**
+   * Commit sha at `HEAD`, or `undefined` outside a repository and on an unborn
+   * `HEAD`. Cached: `isRepo()` gates nearly every call into this adapter, so an
+   * uncached lookup here would spawn a `git` process per question asked.
+   */
+  private headSha(): string | undefined {
     if (this.prefix === undefined) {
       return undefined;
     }
-    // Fails on an unborn HEAD — a repository with no commits yet.
-    return this.git(['rev-parse', 'HEAD'])?.trim() || undefined;
+    if (this.headShaCache === undefined) {
+      this.headShaCache = this.git(['rev-parse', 'HEAD'])?.trim() || null;
+    }
+    return this.headShaCache ?? undefined;
   }
 
   readAtHead(relPath: string): string | undefined {
@@ -77,6 +86,7 @@ export class NodeGitAdapter implements GitPort {
 
   invalidate(): void {
     this.statusCache = undefined;
+    this.headShaCache = undefined;
     this.headCache.clear();
   }
 
@@ -95,9 +105,8 @@ export class NodeGitAdapter implements GitPort {
       const index = record[0];
       const worktree = record[1];
       const repoPath = record.slice(3);
-      let from: string | undefined;
       if (index === 'R' || index === 'C') {
-        from = fields[++i];
+        i++; // a rename record is followed by the path it came from
       }
       const status = classify(index, worktree);
       if (!status) {
@@ -107,12 +116,7 @@ export class NodeGitAdapter implements GitPort {
       if (workspacePath === undefined) {
         continue; // outside the workspace folder
       }
-      const fromWorkspace = from === undefined ? undefined : this.toWorkspacePath(from);
-      entries.push({
-        path: workspacePath,
-        status,
-        ...(fromWorkspace === undefined ? {} : { from: fromWorkspace }),
-      });
+      entries.push({ path: workspacePath, status });
     }
     return entries;
   }
@@ -127,18 +131,18 @@ export class NodeGitAdapter implements GitPort {
     if (rel.startsWith('..') || path.isAbsolute(rel)) {
       return undefined; // the workspace is not inside the repository
     }
-    return rel.split(path.sep).filter(Boolean).join('/');
+    return toPosix(rel);
   }
 
   private toRepoPath(relPath: string): string | undefined {
     if (path.isAbsolute(relPath) || this.prefix === undefined) {
       return undefined;
     }
-    const segments = relPath.split(/[\\/]/).filter(Boolean);
-    if (segments.includes('..')) {
+    const relative = toPosix(relPath);
+    if (relative.split('/').includes('..')) {
       return undefined;
     }
-    return [this.prefix, ...segments].filter(Boolean).join('/');
+    return [this.prefix, relative].filter(Boolean).join('/');
   }
 
   private toWorkspacePath(repoPath: string): string | undefined {
@@ -164,6 +168,11 @@ export class NodeGitAdapter implements GitPort {
       return undefined;
     }
   }
+}
+
+/** Path with forward slashes and no empty segments, as the ports contract requires. */
+function toPosix(relPath: string): string {
+  return relPath.split(/[\\/]/).filter(Boolean).join('/');
 }
 
 /**

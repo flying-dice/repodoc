@@ -1,17 +1,49 @@
 import * as vscode from 'vscode';
 import { renderMarkdownWithDiagrams } from './diagrams';
-import { differs, renderMarkdownDiff } from './diffView';
+import { renderMarkdownDiff } from './diffView';
 import { plantUmlServer } from './plantUml';
 import { isPresetWidth, resolveReadingWidth } from './readingWidth';
+import { hasMarkdownChanges } from '../core/diff';
 import { parseFrontmatter } from '../core/frontmatter';
 import { GitPort } from '../core/ports';
 import { RepoDocStore } from '../core/store';
+import { DIFF_OFF_LABEL, DIFF_ON_LABEL } from './protocol';
 import { buildWebviewHtml, escapeHtml } from './webviewHtml';
+
+/**
+ * The reading view's entire webview→host contract: one message, sent when the
+ * top-bar toggle is clicked.
+ *
+ * NOTE: `media/markdown.js` mirrors this MANUALLY — that webview is loaded as
+ * plain JS with no build step, so there is no shared compilation. Inbound
+ * messages are untrusted; the handler validates the discriminant before acting.
+ */
+export const TOGGLE_DIFF = 'toggleDiff';
+
+export interface ToggleDiffMessage {
+  type: typeof TOGGLE_DIFF;
+}
 
 type PanelKind = 'decision' | 'doc';
 
 /** Reading the current file, or comparing it against `HEAD`. */
 type ViewMode = 'read' | 'diff';
+
+/** Added/removed counts and render time, shown in the top bar's legend. */
+interface DiffSummary {
+  added: number;
+  removed: number;
+  elapsedMs: number;
+}
+
+interface RenderedBody {
+  html: string;
+  hasMermaid: boolean;
+  /** Present only when a diff actually rendered. */
+  diff?: DiffSummary;
+  /** Whether this file has something to compare against `HEAD` at all. */
+  canDiffAgainstHead: boolean;
+}
 
 interface PanelState {
   kind: PanelKind;
@@ -38,6 +70,8 @@ export class MarkdownPanel {
   private readonly store: RepoDocStore;
   private readonly git: GitPort;
   private state: PanelState;
+  /** Whether the last render actually produced a diff (not a fallback to reading). */
+  private showingDiff = false;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -57,10 +91,9 @@ export class MarkdownPanel {
       if (
         message &&
         typeof message === 'object' &&
-        (message as { type?: unknown }).type === 'toggleDiff'
+        (message as { type?: unknown }).type === TOGGLE_DIFF
       ) {
-        this.state = { ...this.state, mode: this.state.mode === 'diff' ? 'read' : 'diff' };
-        this.render();
+        this.toggle();
       }
     });
 
@@ -151,15 +184,26 @@ export class MarkdownPanel {
    */
   public static toggleDiff(): boolean {
     const panel = MarkdownPanel.docPanel ?? MarkdownPanel.decisionPanel;
-    if (!panel) {
-      return false;
+    return panel ? panel.toggle() : false;
+  }
+
+  /**
+   * Flip between reading and diff and re-render. Returns whether a diff is now
+   * on screen: asking for one with nothing to compare falls back to reading,
+   * which the render path already handles, so there is nothing to pre-check.
+   */
+  private toggle(): boolean {
+    // The working tree may have moved since the last render — never diff
+    // against a stale cache.
+    this.git.invalidate();
+    this.state = { ...this.state, mode: this.state.mode === 'diff' ? 'read' : 'diff' };
+    this.render();
+    if (!this.showingDiff) {
+      // The diff fell back to reading; leave the mode where the view actually
+      // is, or the next click would look like it did nothing.
+      this.state = { ...this.state, mode: 'read' };
     }
-    if (!panel.comparable()) {
-      return false;
-    }
-    panel.state = { ...panel.state, mode: panel.state.mode === 'diff' ? 'read' : 'diff' };
-    panel.render();
-    return true;
+    return this.showingDiff;
   }
 
   private static panelOptions(
@@ -192,9 +236,8 @@ export class MarkdownPanel {
     const fileCrumb = `decisions/${decision.file}`;
     const rendered = this.renderBody(decision.body);
     const bodyHtml = rendered.diff ? rendered.html : insertAfterHeading(rendered.html, meta);
-    this.panel.title = MarkdownPanel.truncate(
+    this.panel.title = MarkdownPanel.title(
       `ADR-${decision.num} — ${decision.title}`,
-      60,
       rendered.diff !== undefined,
     );
     this.panel.webview.html = this.wrap(
@@ -216,7 +259,7 @@ export class MarkdownPanel {
     const rendered = this.renderBody(doc.body);
     const bodyHtml =
       rendered.diff || !meta ? rendered.html : insertAfterHeading(rendered.html, meta);
-    this.panel.title = MarkdownPanel.truncate(doc.title, 60, rendered.diff !== undefined);
+    this.panel.title = MarkdownPanel.title(doc.title, rendered.diff !== undefined);
     this.panel.webview.html = this.wrap(
       'Docs',
       doc.title,
@@ -231,28 +274,25 @@ export class MarkdownPanel {
    * when a diff was asked for but there is no baseline to compare against —
    * outside a repository, or once the file matches `HEAD` again.
    */
-  private renderBody(body: string): {
-    html: string;
-    hasMermaid: boolean;
-    /** Present only when the diff actually rendered. */
-    diff?: { added: number; removed: number; elapsedMs: number };
-    comparable: boolean;
-  } {
+  private renderBody(body: string): RenderedBody {
     const head = this.headBody();
-    const comparable = head !== undefined && differs(head, body);
-    if (this.state.mode === 'diff' && head !== undefined && comparable) {
-      const result = renderMarkdownDiff(head, body, {
-        plantUmlServer: plantUmlServer(),
-      });
+    const canDiffAgainstHead = head !== undefined && hasMarkdownChanges(head, body);
+    if (this.state.mode === 'diff' && head !== undefined && canDiffAgainstHead) {
+      // Timing is reported in the top bar, so it is measured here, at the call
+      // site, rather than baked into the renderer.
+      const startedAt = Date.now();
+      const result = renderMarkdownDiff(head, body, { plantUmlServer: plantUmlServer() });
+      this.showingDiff = true;
       return {
         html: result.html,
         hasMermaid: result.hasMermaid,
-        diff: { added: result.added, removed: result.removed, elapsedMs: result.elapsedMs },
-        comparable,
+        diff: { added: result.added, removed: result.removed, elapsedMs: Date.now() - startedAt },
+        canDiffAgainstHead,
       };
     }
     const rendered = renderMarkdownWithDiagrams(body, { plantUmlServer: plantUmlServer() });
-    return { html: rendered.html, hasMermaid: rendered.hasMermaid, comparable };
+    this.showingDiff = false;
+    return { html: rendered.html, hasMermaid: rendered.hasMermaid, canDiffAgainstHead };
   }
 
   /** Workspace-relative path of the file behind the panel, if it still exists. */
@@ -278,30 +318,12 @@ export class MarkdownPanel {
     return head === undefined ? '' : parseFrontmatter(head).body;
   }
 
-  /** Body in the working tree, straight from the store. */
-  private workingBody(): string | undefined {
-    return this.state.kind === 'doc'
-      ? this.store.readDoc(this.state.target)?.body
-      : this.store.getDecision(this.state.target)?.body;
-  }
-
-  /** Whether this file has something to diff against `HEAD`. */
-  private comparable(): boolean {
-    const head = this.headBody();
-    const working = this.workingBody();
-    return head !== undefined && working !== undefined && differs(head, working);
-  }
-
   private wrap(
     section: string,
     leaf: string,
     fileCrumb: string,
     bodyHtml: string,
-    rendered: {
-      hasMermaid: boolean;
-      diff?: { added: number; removed: number; elapsedMs: number };
-      comparable: boolean;
-    },
+    rendered: RenderedBody,
   ): string {
     const body = `  <div class="page">
     <div class="topbar">
@@ -310,12 +332,12 @@ export class MarkdownPanel {
         <span class="crumb-sep">/</span>
         <span class="crumb-leaf">${escapeHtml(leaf)}</span>
       </div>
-${gitBar(rendered.comparable, rendered.diff)}
+${gitBar(rendered.canDiffAgainstHead, rendered.diff)}
     </div>
     <div class="content">
       <div class="reading-column ${readingColumnAttrs().cls}"${readingColumnAttrs().style}>
         <div class="filecrumb">${escapeHtml(fileCrumb)}</div>
-        <div class="adr-md${rendered.diff ? ' is-diff' : ''}">${bodyHtml}</div>
+        <div class="adr-md">${bodyHtml}</div>
       </div>
     </div>
   </div>`;
@@ -332,9 +354,10 @@ ${gitBar(rendered.comparable, rendered.diff)}
     });
   }
 
-  private static truncate(text: string, max: number, isDiff = false): string {
-    const suffix = isDiff ? ' (HEAD → working tree)' : '';
-    const room = max - suffix.length;
+  /** Panel tab title: the leaf name, shortened, with the mode spelled out. */
+  private static title(text: string, isDiff: boolean): string {
+    const suffix = isDiff ? ` (${DIFF_ON_LABEL})` : '';
+    const room = 60 - suffix.length;
     const head = text.length <= room ? text : `${text.slice(0, Math.max(0, room - 1)).trimEnd()}…`;
     return head + suffix;
   }
@@ -346,10 +369,10 @@ ${gitBar(rendered.comparable, rendered.diff)}
  * outside a repository or when the file matches `HEAD`.
  */
 function gitBar(
-  comparable: boolean,
-  diff?: { added: number; removed: number; elapsedMs: number },
+  canDiffAgainstHead: boolean,
+  diff?: DiffSummary,
 ): string {
-  if (!comparable) {
+  if (!canDiffAgainstHead) {
     return '';
   }
   const legend = diff
@@ -359,7 +382,7 @@ function gitBar(
         <span class="git-timing">${diff.elapsedMs} ms</span>
       </span>\n`
     : '';
-  const label = diff ? 'Hide changes' : 'HEAD → working tree';
+  const label = diff ? DIFF_OFF_LABEL : DIFF_ON_LABEL;
   return `      <div class="gitbar">
 ${legend}        <button type="button" id="diff-toggle" class="git-toggle${diff ? ' is-on' : ''}">${label}</button>
       </div>`;

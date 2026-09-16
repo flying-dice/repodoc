@@ -244,10 +244,12 @@
   display: inline-block;
 }
 .git-swatch-add {
-  background: var(--vscode-diffEditor-insertedTextBackground, rgba(70, 149, 74, .35));
+  background: var(--diff-add-bg);
+  outline: 1px solid var(--diff-add-edge);
 }
 .git-swatch-del {
-  background: var(--vscode-diffEditor-removedTextBackground, rgba(197, 66, 58, .35));
+  background: var(--diff-del-bg);
+  outline: 1px solid var(--diff-del-edge);
 }
 .git-timing {
   margin-left: 8px;

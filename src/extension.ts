@@ -5,8 +5,8 @@ import { AgentKind, SKILL_TARGETS, SkillManager } from './core/skillManager';
 import { NodeFileSystemAdapter } from './adapters/nodeFileSystem';
 import { MemFileSystemAdapter } from './adapters/memFileSystem';
 import { NodeGitAdapter } from './adapters/nodeGit';
-import { MemGitAdapter } from './adapters/memGit';
-import { GatedGit } from './panels/gitGate';
+import { NoGitAdapter } from './adapters/noGit';
+import { SettingGatedGitAdapter } from './panels/settingGatedGit';
 import { GitDecorationProvider } from './panels/gitDecorations';
 import { SystemClock } from './adapters/systemClock';
 import { BoardsTreeProvider, DecisionsTreeProvider, DocsTreeProvider } from './trees';
@@ -27,7 +27,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   const store = new RepoDocStore(fileSystem, new SystemClock(), root);
   // Without a folder there is nothing to inspect; the in-memory port reports
   // "not a repository", which is exactly the git-unaware rendering.
-  const git = new GatedGit(root ? new NodeGitAdapter(root) : new MemGitAdapter());
+  const git = new SettingGatedGitAdapter(root ? new NodeGitAdapter(root) : new NoGitAdapter());
   const skillManager = new SkillManager(fileSystem);
 
   if (root) {
@@ -150,10 +150,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
 
     // Flip the open Doc/Decision panel between reading and the HEAD diff.
     // Returns false when nothing is open or the file matches HEAD.
-    vscode.commands.registerCommand('repodoc.toggleDiff', (): boolean => {
-      git.invalidate();
-      return MarkdownPanel.toggleDiff();
-    }),
+    vscode.commands.registerCommand('repodoc.toggleDiff', (): boolean => MarkdownPanel.toggleDiff()),
 
     vscode.commands.registerCommand('repodoc.openSettings', () => {
       void vscode.commands.executeCommand(

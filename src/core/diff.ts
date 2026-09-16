@@ -10,11 +10,19 @@
  *
  * There is deliberately no word-level diff inside a changed block: a reworded
  * bullet reads as one removal followed by one addition.
+ *
+ * Ordered lists are split per item like any other list, which costs three
+ * coordinated touchpoints — {@link splitListItems} records each item's
+ * position, {@link blockKey} ignores the marker so renumbering is not a change,
+ * and {@link runSource} rewrites it when a list renders in pieces. That is paid
+ * on purpose: numbered requirement lists are exactly the documents people diff,
+ * and collapsing them to one block would report a whole list as changed because
+ * one item was reworded.
  */
 
 export type DiffOp = 'same' | 'add' | 'del';
 
-export type BlockKind = 'fence' | 'listItem' | 'block';
+export type BlockKind = 'fence' | 'listItem' | 'prose';
 
 export interface MarkdownBlock {
   /** Source markdown for this block, renderable on its own. */
@@ -84,7 +92,7 @@ export function splitBlocks(source: string): MarkdownBlock[] {
     if (LIST_MARKER.test(group[0])) {
       blocks.push(...splitListItems(group));
     } else {
-      blocks.push({ text: group.join('\n'), kind: 'block' });
+      blocks.push({ text: group.join('\n'), kind: 'prose' });
     }
   }
 
@@ -168,9 +176,19 @@ export function diffMarkdown(before: string, after: string): DiffBlock[] {
   return out;
 }
 
-/** True when the two documents are identical block-for-block. */
+/** True when any block in an already-computed diff was added or removed. */
 export function hasChanges(blocks: DiffBlock[]): boolean {
   return blocks.some((b) => b.op !== 'same');
+}
+
+/**
+ * Whether two documents differ at all. Answering yes/no needs no alignment, so
+ * this compares normalized block keys in one pass rather than paying for the
+ * LCS table {@link diffMarkdown} builds.
+ */
+export function hasMarkdownChanges(before: string, after: string): boolean {
+  const keys = (source: string): string => splitBlocks(source).map(blockKey).join('\n');
+  return keys(before) !== keys(after);
 }
 
 /** Collapse a diff into contiguous same-op runs for rendering. */

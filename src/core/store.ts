@@ -403,6 +403,29 @@ export class RepoDocStore {
     return entry ? `boards/${boardId}/${entry.fileName}` : undefined;
   }
 
+  /**
+   * The card as it was in an earlier revision, parsed from whatever `readAt`
+   * hands back for its file. Keeps the card file format — filename, slug,
+   * frontmatter, field coercion — inside the store: callers supply the bytes,
+   * not the knowledge of how to read them.
+   */
+  cardAtHead(
+    boardId: string,
+    cardId: string,
+    readAt: (relPath: string) => string | undefined,
+  ): Card | undefined {
+    const relPath = this.cardFilePath(boardId, cardId);
+    if (relPath === undefined) {
+      return undefined;
+    }
+    const content = readAt(relPath);
+    if (content === undefined) {
+      return undefined; // not in that revision — a new card
+    }
+    const fileName = relPath.slice(relPath.lastIndexOf('/') + 1);
+    return parseCard(fileName, content, this.readConfig(boardId).fields).card;
+  }
+
   // ---- card file helpers ----
 
   private cardFileNames(boardId: string): string[] {

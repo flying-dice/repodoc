@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { parseCard } from '../core/cardParse';
-import { differs, renderMarkdownDiff } from './diffView';
+import { hasMarkdownChanges } from '../core/diff';
+import { statusByPath } from '../core/gitStatus';
+import { renderMarkdownDiff } from './diffView';
 import { GitFileStatus, GitPort } from '../core/ports';
 import { RepoDocStore } from '../core/store';
 import { resolveReadingWidth } from './readingWidth';
@@ -15,7 +16,7 @@ import {
   WebviewToHostMessage,
 } from './protocol';
 import { localIdentity } from './identity';
-import { CustomFieldDef, CustomFieldValue } from '../core/types';
+import { BoardData, CustomFieldValue } from '../core/types';
 
 /**
  * A single kanban board rendered in a webview. One panel is kept per board id.
@@ -172,7 +173,8 @@ export class BoardPanel {
       }
     }
 
-    const { gitStatus, descDiffHtml } = this.gitView(board, config.fields, server);
+    const gitStatus = this.cardGitStatus(board);
+    const descDiffHtml = this.cardDescriptionDiffs(board, gitStatus, server);
 
     const message: DataMessage = {
       type: 'data',
@@ -191,47 +193,52 @@ export class BoardPanel {
   }
 
   /**
-   * Per-card git state for the webview: which card files differ from `HEAD`,
-   * and a rendered diff of the description for those whose description is what
-   * changed. Both are empty outside a repository.
+   * Which cards' files differ from `HEAD`, keyed by card id. Empty outside a
+   * repository.
    */
-  private gitView(
-    board: { cards: Record<string, { id: string; desc?: string }> },
-    fields: CustomFieldDef[],
-    plantUmlServerUrl: string,
-  ): { gitStatus: Record<string, GitFileStatus>; descDiffHtml: Record<string, string> } {
-    const gitStatus: Record<string, GitFileStatus> = {};
-    const descDiffHtml: Record<string, string> = {};
+  private cardGitStatus(board: BoardData): Record<string, GitFileStatus> {
+    const result: Record<string, GitFileStatus> = {};
     if (!this.git.isRepo()) {
-      return { gitStatus, descDiffHtml };
+      return result;
     }
-    const byPath = new Map(this.git.status().map((entry) => [entry.path, entry.status]));
+    const statuses = statusByPath(this.git.status());
     for (const card of Object.values(board.cards)) {
-      const path = this.store.cardFilePath(this.boardId, card.id);
-      if (path === undefined) {
+      const cardPath = this.store.cardFilePath(this.boardId, card.id);
+      if (cardPath === undefined) {
         continue;
       }
-      const status = byPath.get(path);
-      if (status === undefined) {
-        continue; // unchanged since HEAD
+      const status = statuses.get(cardPath);
+      if (status !== undefined) {
+        result[card.id] = status;
       }
-      gitStatus[card.id] = status;
-      const headContent = this.git.readAtHead(path);
-      const fileName = path.slice(path.lastIndexOf('/') + 1);
-      const headDesc =
-        headContent === undefined
-          ? ''
-          : (parseCard(fileName, headContent, fields).card.desc ?? '');
-      const desc = card.desc ?? '';
-      // A card file changes for many reasons (a move, a comment, a field); only
-      // offer the diff when the description itself moved.
-      if (differs(headDesc, desc)) {
-        descDiffHtml[card.id] = renderMarkdownDiff(headDesc, desc, {
+    }
+    return result;
+  }
+
+  /**
+   * Rendered `HEAD → working tree` diffs of card descriptions, for the changed
+   * cards only. A card file changes for many reasons — a move, a comment, a
+   * field edit — so a diff is offered only where the description itself moved.
+   */
+  private cardDescriptionDiffs(
+    board: BoardData,
+    gitStatus: Record<string, GitFileStatus>,
+    plantUmlServerUrl: string,
+  ): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const cardId of Object.keys(gitStatus)) {
+      const headCard = this.store.cardAtHead(this.boardId, cardId, (relPath) =>
+        this.git.readAtHead(relPath),
+      );
+      const headDesc = headCard?.desc ?? '';
+      const desc = board.cards[cardId]?.desc ?? '';
+      if (hasMarkdownChanges(headDesc, desc)) {
+        result[cardId] = renderMarkdownDiff(headDesc, desc, {
           plantUmlServer: plantUmlServerUrl,
         }).html;
       }
     }
-    return { gitStatus, descDiffHtml };
+    return result;
   }
 
   private onMessage(msg: unknown): void {

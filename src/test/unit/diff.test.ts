@@ -60,7 +60,7 @@ suite('diff.splitBlocks', () => {
     const blocks = splitBlocks(source);
     assert.deepStrictEqual(
       blocks.map((b) => b.kind),
-      ['block', 'fence', 'block'],
+      ['prose', 'fence', 'prose'],
     );
     assert.strictEqual(blocks[1].text, '```ts\nconst a = 1;\n\n- not a list\n```');
   });
@@ -82,7 +82,7 @@ suite('diff.splitBlocks', () => {
     const blocks = splitBlocks('para\n```\ncode\n```\n');
     assert.deepStrictEqual(
       blocks.map((b) => b.kind),
-      ['block', 'fence'],
+      ['prose', 'fence'],
     );
   });
 

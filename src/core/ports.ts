@@ -36,8 +36,6 @@ export interface GitStatusEntry {
   /** Workspace-relative path, forward slashes. */
   path: string;
   status: GitFileStatus;
-  /** For renames: the workspace-relative path the file moved from. */
-  from?: string;
 }
 
 /**
@@ -50,9 +48,8 @@ export interface GitStatusEntry {
  * forward slashes, never absolute, no `..` segment.
  */
 export interface GitPort {
+  /** True only when there is a repository with at least one commit to compare against. */
   isRepo(): boolean;
-  /** Commit sha at `HEAD`, or `undefined` outside a repo / before the first commit. */
-  headSha(): string | undefined;
   /** File contents at `HEAD`, or `undefined` when the path is not in `HEAD`. */
   readAtHead(relPath: string): string | undefined;
   /** Every workspace file differing from `HEAD`, tracked or not. */

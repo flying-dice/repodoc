@@ -65,7 +65,6 @@ suite('adapters.NodeGitAdapter', () => {
     if (adapter.isRepo()) {
       return; // tmpdir itself lives inside a repo on this machine — skip
     }
-    assert.strictEqual(adapter.headSha(), undefined);
     assert.deepStrictEqual(adapter.status(), []);
     assert.strictEqual(adapter.readAtHead('docs/a.md'), undefined);
   });
@@ -76,7 +75,7 @@ suite('adapters.NodeGitAdapter', () => {
     git(dir, 'init', '--initial-branch=main');
     const adapter = new NodeGitAdapter(dir);
     assert.strictEqual(adapter.isRepo(), false);
-    assert.strictEqual(adapter.headSha(), undefined);
+    assert.strictEqual(adapter.readAtHead('anything.md'), undefined);
   });
 
   test('reads a committed file back at HEAD', () => {
@@ -125,14 +124,13 @@ suite('adapters.NodeGitAdapter', () => {
     assert.deepStrictEqual(statusMap(new NodeGitAdapter(dir)), { 'docs/new.md': 'added' });
   });
 
-  test('a staged rename reads as renamed and remembers where it came from', () => {
+  test('a staged rename reads as renamed, at its new path', () => {
     const dir = makeRepo({ 'docs/a.md': '# A\nsome body text to make the rename obvious\n' });
     git(dir, 'mv', 'docs/a.md', 'docs/b.md');
     const entries = new NodeGitAdapter(dir).status();
-    assert.strictEqual(entries.length, 1);
-    assert.strictEqual(entries[0].status, 'renamed');
-    assert.strictEqual(entries[0].path, 'docs/b.md');
-    assert.strictEqual(entries[0].from, 'docs/a.md');
+    // The old path is consumed from the porcelain stream, not reported: only
+    // the file that is there now can be badged in a tree.
+    assert.deepStrictEqual(entries, [{ path: 'docs/b.md', status: 'renamed' }]);
   });
 
   test('a file added and deleted again is not reported', () => {

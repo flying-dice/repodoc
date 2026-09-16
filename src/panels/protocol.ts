@@ -14,6 +14,15 @@ import { BoardData, CustomFieldValue, RepoDocConfig } from '../core/types';
  * at runtime before acting on them.
  */
 
+/**
+ * Labels on the `HEAD → working tree` toggle. Both reading surfaces show this
+ * control — the Doc/Decision top bar (built in markdownPanel.ts) and the card
+ * modal (built in media/board.js) — so the wording lives here, once. The
+ * board.js copy is part of the manual mirror described above.
+ */
+export const DIFF_ON_LABEL = 'HEAD → working tree';
+export const DIFF_OFF_LABEL = 'Hide changes';
+
 /** Messages sent from the extension host down to the webview. */
 export interface DataMessage {
   type: 'data';

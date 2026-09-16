@@ -882,7 +882,7 @@
     var html = state.data && state.data.descHtml ? state.data.descHtml[card.id] : null;
     var showDiff = descDiffOn && !!diffHtml;
     var body = showDiff
-      ? h('div', { class: 'section-desc content-md is-diff', html: diffHtml })
+      ? h('div', { class: 'section-desc content-md', html: diffHtml })
       : contentBlock('section-desc', html, card.desc);
     var label = [h('div', { class: 'field-label' }, 'Description')];
     if (diffHtml) {
@@ -897,6 +897,7 @@
               render();
             },
           },
+          // Mirrors DIFF_OFF_LABEL / DIFF_ON_LABEL in src/panels/protocol.ts.
           showDiff ? 'Hide changes' : 'HEAD \u2192 working tree',
         ),
       );

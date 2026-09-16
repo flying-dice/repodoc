@@ -78,7 +78,6 @@ suite('RepoDoc e2e', () => {
     // folder is tracked or reportable, which is the point: the adapter must
     // filter the repository's status down to this folder.
     assert.strictEqual(api.git.isRepo(), true);
-    assert.ok(api.git.headSha(), 'HEAD should resolve inside the repository');
     assert.deepStrictEqual(api.git.status(), []);
   });
 

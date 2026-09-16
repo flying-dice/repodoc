@@ -1051,13 +1051,11 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 7px;
 }
 .section-head .field-label {
   margin-bottom: 0;
 }
 .section-head .git-toggle {
   margin-left: auto;
-}
-.section-head {
-  margin-bottom: 7px;
 }
