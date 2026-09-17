@@ -1,6 +1,6 @@
 {
   "name": "@flying-dice/repodoc",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "description": "Task boards, decision records, and documentation stored as plain files in your repository — a VS Code extension and a CLI over one core.",
   "license": "MIT",

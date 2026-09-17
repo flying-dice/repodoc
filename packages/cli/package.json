@@ -1,6 +1,6 @@
 {
   "name": "@repodoc/cli",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "description": "RepoDoc command line — work boards, cards, decisions and docs from a terminal or an agent.",
   "license": "MIT",

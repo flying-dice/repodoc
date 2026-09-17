@@ -1556,25 +1556,25 @@ input.check-box:disabled + label.check-text {
 .scenario-notice.error {
   color: var(--vscode-errorForeground);
   background: color-mix(in srgb, var(--vscode-errorForeground) 10%, transparent);
+}
 
-  /* ---- Git ---- */
+/* ---- Git ---- */
 
-  /* Uncommitted-change marker on a card face: the SCM status letter, in the
-   theme's own decoration colours. There is no deleted variant — a deleted card
-   file leaves no card to mark. */
-  .card-git {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 10px;
-    line-height: 1;
-  }
-  .card-git-added {
-    color: var(--vscode-gitDecoration-addedResourceForeground);
-  }
-  .card-git-modified {
-    color: var(--vscode-gitDecoration-modifiedResourceForeground);
-  }
-  .card-git-renamed {
-    color: var(--vscode-gitDecoration-renamedResourceForeground);
-  }
+/* Uncommitted-change marker on a card face: the SCM status letter, in the
+ theme's own decoration colours. There is no deleted variant — a deleted card
+ file leaves no card to mark. */
+.card-git {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+}
+.card-git-added {
+  color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+.card-git-modified {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+.card-git-renamed {
+  color: var(--vscode-gitDecoration-renamedResourceForeground);
 }
