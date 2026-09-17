@@ -1025,6 +1025,8 @@ function storeErrorMessage(error: StoreError): string {
       return `two card files share the slug "${error.slug}"; rename one before reordering`;
     case 'unreadable-card':
       return `could not read card ${error.cardId}`;
+    case 'renumber-failed':
+      return `card files in board ${error.boardId} could not be renumbered and were left as they were; the card moved column, so re-run the move once nothing else is holding those files open`;
   }
 }
 
