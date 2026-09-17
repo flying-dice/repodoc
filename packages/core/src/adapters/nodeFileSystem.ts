@@ -121,23 +121,51 @@ function contains(root: string, abs: string): boolean {
   return abs.startsWith(rootWithSep);
 }
 
+/** Bound on symlink chasing, so a cycle of links cannot spin forever. */
+const MAX_SYMLINK_DEPTH = 40;
+
 /**
- * `abs` with symlinks resolved. When `abs` does not exist, the nearest existing
- * ancestor is resolved and the remaining segments are appended — so a file
- * about to be created under `docs/escape -> /etc` is judged by where `escape`
- * actually points, not by the name it was given.
+ * `abs` with symlinks resolved.
+ *
+ * Three cases, and the order matters:
+ *
+ *  1. `abs` IS a symlink — resolved or dangling. `realpathSync` throws on a
+ *     dangling one, so the link is read and its target resolved instead.
+ *     Falling through to case 3 here was a hole: the walk-up rejoined the leaf
+ *     name onto an in-root parent and answered "inside", while `writeFileSync`
+ *     followed the link and created the file outside.
+ *  2. `abs` exists — `realpathSync` answers directly.
+ *  3. `abs` does not exist — a file about to be created. The nearest existing
+ *     ancestor is resolved and the remaining segments appended, so a new file
+ *     under `docs/escape -> /etc` is judged by where `escape` points.
  */
-function realPathOf(abs: string): string | undefined {
-  let current = abs;
-  for (;;) {
-    try {
-      return path.join(fs.realpathSync(current), path.relative(current, abs));
-    } catch {
-      const parent = path.dirname(current);
-      if (parent === current) {
-        return undefined; // walked to the filesystem root and found nothing
-      }
-      current = parent;
-    }
+function realPathOf(abs: string, depth = 0): string | undefined {
+  if (depth > MAX_SYMLINK_DEPTH) {
+    return undefined; // a cycle of links; nothing here can be trusted
   }
+
+  let link: string | undefined;
+  try {
+    if (fs.lstatSync(abs).isSymbolicLink()) {
+      link = fs.readlinkSync(abs);
+    }
+  } catch {
+    // Does not exist at all — case 3 below.
+  }
+  if (link !== undefined) {
+    return realPathOf(path.resolve(path.dirname(abs), link), depth + 1);
+  }
+
+  try {
+    return fs.realpathSync(abs);
+  } catch {
+    // Case 3: judge by the nearest ancestor that does exist.
+  }
+
+  const parent = path.dirname(abs);
+  if (parent === abs) {
+    return undefined; // walked to the filesystem root and found nothing
+  }
+  const parentReal = realPathOf(parent, depth + 1);
+  return parentReal === undefined ? undefined : path.join(parentReal, path.basename(abs));
 }

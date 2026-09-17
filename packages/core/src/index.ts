@@ -95,4 +95,5 @@ export type { AgentKind } from './skillManager';
 export { SKILL_TARGETS, SkillManager } from './skillManager';
 export type { CardMetaPatch } from './store';
 export { RepoDocStore } from './store';
+export { storeErrorMessage } from './storeErrors';
 export * from './types';

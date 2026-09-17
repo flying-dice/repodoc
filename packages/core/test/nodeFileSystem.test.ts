@@ -79,6 +79,55 @@ describe('NodeFileSystemAdapter — containment', () => {
     );
   });
 
+  test('given a DANGLING link out of the workspace, when written through, then nothing is created', () => {
+    const { root, outside } = makeWorkspace();
+    const target = path.join(outside, 'planted.md');
+    // The link exists, its target does not. `realpathSync` throws on it, which
+    // is what used to send the check down the not-yet-created path and answer
+    // "inside" — while the write followed the link and created the file.
+    fs.symlinkSync(target, path.join(root, 'docs', 'ghost.md'));
+    const adapter = new NodeFileSystemAdapter(root);
+
+    assert.throws(() => {
+      adapter.writeFile('docs/ghost.md', '# Planted\n');
+    });
+    assert.strictEqual(
+      fs.existsSync(target),
+      false,
+      'the write must not create the file the dangling link points at',
+    );
+    assert.strictEqual(adapter.readFile('docs/ghost.md'), undefined);
+    assert.strictEqual(adapter.exists('docs/ghost.md'), false);
+  });
+
+  test('given a dangling link that stays inside, when written through, then it works', () => {
+    const { root } = makeWorkspace();
+    fs.symlinkSync(path.join(root, 'docs', 'later.md'), path.join(root, 'docs', 'pending.md'));
+    const adapter = new NodeFileSystemAdapter(root);
+    adapter.writeFile('docs/pending.md', '# Later\n');
+    assert.strictEqual(
+      fs.readFileSync(path.join(root, 'docs', 'later.md'), 'utf8'),
+      '# Later\n',
+      'a dangling link is only a problem when its target is outside',
+    );
+  });
+
+  test('given a chain of links leaving the workspace, when read, then it is refused', () => {
+    const { root, outside } = makeWorkspace();
+    fs.symlinkSync(path.join(outside, 'secret.md'), path.join(root, 'docs', 'hop2.md'));
+    fs.symlinkSync(path.join(root, 'docs', 'hop2.md'), path.join(root, 'docs', 'hop1.md'));
+    const adapter = new NodeFileSystemAdapter(root);
+    assert.strictEqual(adapter.readFile('docs/hop1.md'), undefined);
+  });
+
+  test('given a cycle of links, when resolved, then it terminates and refuses', () => {
+    const { root } = makeWorkspace();
+    fs.symlinkSync(path.join(root, 'docs', 'b.md'), path.join(root, 'docs', 'a.md'));
+    fs.symlinkSync(path.join(root, 'docs', 'a.md'), path.join(root, 'docs', 'b.md'));
+    const adapter = new NodeFileSystemAdapter(root);
+    assert.strictEqual(adapter.readFile('docs/a.md'), undefined);
+  });
+
   test('given a symlinked file out of the workspace, when read, then it is refused', () => {
     const { root, outside } = makeWorkspace();
     fs.symlinkSync(path.join(outside, 'secret.md'), path.join(root, 'docs', 'leak.md'));
