@@ -1,5 +1,5 @@
+import * as path from 'node:path';
 import { type GitFileStatus, type GitPort, statusByPath } from '@repodoc/core';
-import * as path from 'path';
 import * as vscode from 'vscode';
 
 interface Decoration {

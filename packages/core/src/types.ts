@@ -242,7 +242,13 @@ export type StoreError =
   | { code: 'unknown-card'; cardId: string }
   | { code: 'unknown-column'; columnId: string }
   | { code: 'duplicate-slugs'; slug: string }
-  | { code: 'unreadable-card'; cardId: string };
+  | { code: 'unreadable-card'; cardId: string }
+  /**
+   * Card files could not be renumbered and were put back as they were. The
+   * card's column was already written, so the board is consistent but the file
+   * names no longer match the order — a later successful move fixes them.
+   */
+  | { code: 'renumber-failed'; boardId: string };
 
 export type MoveCardResult = { ok: true } | { ok: false; error: StoreError };
 

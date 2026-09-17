@@ -164,7 +164,7 @@ export class NodeGitAdapter implements GitPort {
     if (!this.prefix) {
       return repoPath;
     }
-    const prefix = this.prefix + '/';
+    const prefix = `${this.prefix}/`;
     return repoPath.startsWith(prefix) ? repoPath.slice(prefix.length) : undefined;
   }
 

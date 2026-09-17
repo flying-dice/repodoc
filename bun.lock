@@ -12,7 +12,7 @@
     },
     "packages/cli": {
       "name": "@repodoc/cli",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "bin": {
         "repodoc": "./src/bin.ts",
       },
@@ -23,7 +23,7 @@
     },
     "packages/core": {
       "name": "@repodoc/core",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "devDependencies": {
         "@types/bun": "^1.4.1",
         "typescript": "^7.0.2",
@@ -31,7 +31,7 @@
     },
     "packages/vscode": {
       "name": "repodoc",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "dependencies": {
         "@repodoc/core": "workspace:*",
         "marked": "^15.0.7",

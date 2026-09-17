@@ -5,6 +5,7 @@ import {
   type GitPort,
   hasMarkdownChanges,
   statusByPath,
+  storeErrorMessage,
 } from '@repodoc/core';
 import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
@@ -598,10 +599,13 @@ export class BoardPanel {
       return; // the store fired, which re-posts the board
     }
     if (!('blocked' in result)) {
-      // The move is impossible (duplicate slugs, an unknown column…): nothing
-      // was written, so re-post the data — the webview moved the card
-      // optimistically and would otherwise keep showing a move that never was.
+      // The move was refused (duplicate slugs, an unknown column…) or only
+      // half-completed (renumber-failed). Re-post either way — the webview
+      // moved the card optimistically and must be shown what the files say —
+      // and tell the user, or the board silently snapping back is the only
+      // signal they get.
       this.postData();
+      void vscode.window.showWarningMessage(`RepoDoc: ${storeErrorMessage(result.error)}`);
       return;
     }
     if (override) {

@@ -12,7 +12,7 @@ import {
   type Priority,
   SKILL_TARGETS,
   SkillManager,
-  type StoreError,
+  storeErrorMessage,
 } from '../../core/src/index';
 import {
   boolFlag,
@@ -1010,22 +1010,6 @@ function indent(text: string, prefix: string): string[] {
     .trim()
     .split('\n')
     .map((l) => `${prefix}${l}`);
-}
-
-/** The one-line message the CLI prints for a refused store mutation. */
-function storeErrorMessage(error: StoreError): string {
-  switch (error.code) {
-    case 'unknown-board':
-      return `unknown board ${error.boardId}`;
-    case 'unknown-card':
-      return `unknown card ${error.cardId}`;
-    case 'unknown-column':
-      return `unknown column ${error.columnId}`;
-    case 'duplicate-slugs':
-      return `two card files share the slug "${error.slug}"; rename one before reordering`;
-    case 'unreadable-card':
-      return `could not read card ${error.cardId}`;
-  }
 }
 
 /** Builds a {@link CardMetaPatch} from --title/--agent/--live/--status/--progress/--priority/--labels. */

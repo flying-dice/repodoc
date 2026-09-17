@@ -75,6 +75,8 @@ export class RepoDocStore {
   readonly root: string | undefined;
 
   private readonly listeners: Array<() => void> = [];
+  /** Counter behind the per-attempt renumber temp-file token. */
+  private renumbers = 0;
   private readonly decisions: DecisionStore;
   private readonly docs: DocStore;
   private readonly features: FeatureStore;
@@ -361,11 +363,16 @@ export class RepoDocStore {
     // Compute the new global card order, then renumber files to match.
     const newOrder = computeCardOrder(entries, cardId, toColumnId, index);
     const slugToFile = new Map(entries.map((e) => [e.slug, e.fileName]));
-    this.renumber(
+    const renumbered = this.renumber(
       boardId,
       newOrder.map((slug) => ({ slug, currentFile: slugToFile.get(slug) as string })),
     );
     this.fire();
+    if (!renumbered) {
+      // The column was written and the files were put back untouched: the card
+      // has moved, only the file names still read in the old order.
+      return { ok: false, error: { code: 'renumber-failed', boardId } };
+    }
     return { ok: true };
   }
 
@@ -838,7 +845,10 @@ export class RepoDocStore {
   }
 
   /** Renames every card file to a contiguous `NN-slug.md`, changed files only. */
-  private renumber(boardId: string, ordered: Array<{ slug: string; currentFile: string }>): void {
+  private renumber(
+    boardId: string,
+    ordered: Array<{ slug: string; currentFile: string }>,
+  ): boolean {
     const width = Math.max(2, String(ordered.length).length);
     const dir = `boards/${boardId}`;
     const ops: Array<{ from: string; to: string }> = [];
@@ -849,20 +859,64 @@ export class RepoDocStore {
       }
     });
     if (ops.length === 0) {
-      return;
+      return true;
     }
-    // Two-phase via temp names so number swaps never clobber a sibling.
+    // Two-phase via temp names so number swaps never clobber a sibling. The
+    // token makes the temps unique per attempt: a name reused across runs would
+    // let this attempt overwrite a file an earlier, interrupted one left behind.
+    const token = this.renumberToken();
     const staged = ops.map((op, i) => ({
       from: op.from,
-      tmp: `${dir}/.renumber-${i}.tmp`,
+      tmp: `${dir}/.renumber-${token}-${i}.tmp`,
       to: op.to,
     }));
-    for (const s of staged) {
-      this.fs.rename(s.from, s.tmp);
+
+    // Every rename is undone if any of them fails. Half a renumber leaves cards
+    // in `.tmp` files, where nothing lists them and the next attempt would
+    // rename another card over the top.
+    const staging: Array<{ from: string; tmp: string }> = [];
+    try {
+      for (const s of staged) {
+        this.fs.rename(s.from, s.tmp);
+        staging.push(s);
+      }
+    } catch {
+      this.undo(staging.map((s) => ({ from: s.tmp, to: s.from })));
+      return false;
     }
-    for (const s of staged) {
-      this.fs.rename(s.tmp, s.to);
+
+    const placed: Array<{ tmp: string; to: string }> = [];
+    try {
+      for (const s of staged) {
+        this.fs.rename(s.tmp, s.to);
+        placed.push(s);
+      }
+    } catch {
+      this.undo(placed.map((s) => ({ from: s.to, to: s.tmp })));
+      this.undo(staged.map((s) => ({ from: s.tmp, to: s.from })));
+      return false;
     }
+    return true;
+  }
+
+  /**
+   * Put files back, best effort, newest first. Already failing when this runs,
+   * so a rename that also fails is swallowed: there is nothing better to do
+   * with it, and throwing here would lose the original failure.
+   */
+  private undo(moves: Array<{ from: string; to: string }>): void {
+    for (const move of [...moves].reverse()) {
+      try {
+        this.fs.rename(move.from, move.to);
+      } catch {
+        // nothing left to try
+      }
+    }
+  }
+
+  /** Distinguishes one renumber attempt's temp files from any other's. */
+  private renumberToken(): string {
+    return `${this.clock.now().getTime().toString(36)}-${(this.renumbers++).toString(36)}`;
   }
 
   // ---- decisions ----
