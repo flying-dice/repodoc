@@ -2,9 +2,14 @@ import { h } from '../dom.js';
 import { AgentAvatar } from './agentAvatar.js';
 import { CARD_GIT_STATUSES, CardGitBadge } from './cardGitBadge.js';
 import { DiffLegend, DiffSwatch } from './diffSwatch.js';
+import { FieldChip } from './fieldChip.js';
+import { GateChip } from './gateChip.js';
 import { GhostButton } from './ghostButton.js';
+import { ICON, Icon } from './icon.js';
 import { LabelChip } from './labelChip.js';
 import { PriorityDot } from './priorityDot.js';
+import { relativeTime } from './relativeTime.js';
+import { ScenarioKeyword } from './scenarioKeyword.js';
 
 export default { title: 'Atoms' };
 
@@ -71,4 +76,68 @@ export const PriorityDots = {
         'low / none draw nothing',
       ),
     ]),
+};
+
+export const Icons = {
+  name: 'Icon',
+  render: () => row(Object.values(ICON).map((markup) => Icon(markup, 'icon'))),
+};
+
+export const GateChips = {
+  name: 'Gate chip',
+  render: () =>
+    row([
+      GateChip({ gates: [{ label: 'Tests green', satisfied: true }] }),
+      GateChip({
+        gates: [
+          { label: 'Tests green', satisfied: true },
+          { label: 'Peer reviewed', satisfied: false },
+        ],
+      }),
+    ]),
+};
+
+export const FieldChips = {
+  name: 'Field chip',
+  render: () =>
+    row([
+      FieldChip({ label: 'Severity', value: 'high' }),
+      FieldChip({ label: 'Tags', value: ['ui', 'css'] }),
+      FieldChip({ label: 'Blocked', value: true, type: 'boolean' }),
+      // A false boolean and an empty value both render nothing at all.
+      h(
+        'span',
+        { style: 'color:var(--vscode-descriptionForeground);font-size:11px;' },
+        'false / empty draw nothing',
+      ),
+    ]),
+};
+
+export const ScenarioKeywords = {
+  name: 'Scenario keyword',
+  render: () =>
+    row([
+      ScenarioKeyword({ keyword: 'Scenario' }),
+      ScenarioKeyword({ keyword: 'Scenario Outline' }),
+      ScenarioKeyword({}),
+    ]),
+};
+
+export const RelativeTimes = {
+  name: 'Relative time',
+  render: () => {
+    const now = Date.parse('2026-09-17T12:00:00Z');
+    const samples = [
+      ['2026-09-17T11:59:30Z', 'seconds'],
+      ['2026-09-17T11:30:00Z', 'minutes'],
+      ['2026-09-17T06:00:00Z', 'hours'],
+      ['2026-09-15T12:00:00Z', 'days'],
+      ['2026-08-20T12:00:00Z', 'weeks'],
+    ];
+    return row(
+      samples.map(([iso, note]) =>
+        h('span', { class: 'meta-updated', title: String(note) }, relativeTime(String(iso), now)),
+      ),
+    );
+  },
 };
