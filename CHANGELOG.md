@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.9.2] — 2026-09-17
+
+- **Fixed: the diff view showed no changes.** The `HEAD → working tree` toggle reported its counts and timing in the top bar, and the document rendered both the old and the new text — with no marking on either. A merge had left the whole git block nested inside another rule, in `base.css` inside `.filecrumb-link:hover` and in `board.css` inside `.scenario-notice.error`, so `.diff-add`, `.diff-del` and the card-face change badges only applied inside those rules and never matched. Nested CSS is valid, so nothing flagged it. The rules are back at the top level, and a test now reads each stylesheet and asserts they stay there.
+
 ## [0.9.1] — 2026-09-17
 
 - **Renumbering card files is all-or-nothing.** Moving a card renames every file on the board through temporary names so a number swap cannot clobber a sibling. Neither phase had an error path: a rename that failed partway — a file locked by another process, a permission change, a full disk — left cards sitting in `.renumber-*.tmp`, where nothing lists them. They were gone from the board, the tree and the CLI with no error shown, and the next move renamed another card over the top of them. Every rename is now undone if any of them fails, the files are left exactly as they were, and the move reports `renumber-failed` instead of returning success. Temp names are unique per attempt, so one attempt can no longer overwrite a file an earlier interrupted one left behind.
