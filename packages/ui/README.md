@@ -1,0 +1,55 @@
+# @repodoc/ui
+
+The webview's components, and the Storybook that renders every one of them.
+
+## Why this exists
+
+Nothing in this repository rendered a view and looked at it. In 0.9.0 and 0.9.1
+a merge nested the whole git CSS block inside another rule, so `.diff-add` and
+`.diff-del` never matched: the diff view reported "2 added, 2 removed" and
+marked nothing. Types, Biome, the bundle, 812 unit tests and two green CI runs
+all passed.
+
+Stories here import the **real** shipped stylesheets — `../vscode/media/base.css`
+and friends, not copies — so a rule that stops matching is visible in a story
+instead of in a bug report.
+
+## Layout
+
+- `src/atoms` — one thing each: avatar, chips, badges, swatches, buttons
+- `src/molecules` — small compositions: section heads, notices
+- `src/organisms` — whole surfaces: the card face, a diff document
+- `src/theme/vscode-theme.css` — a stand-in for the `--vscode-*` variables VS
+  Code injects. Every colour resolves from these; without them a story renders
+  unstyled and proves nothing. Light and dark, switchable in the toolbar.
+
+## Running it
+
+```
+bun run storybook         # dev server on :6006
+bun run build-storybook   # static site in packages/ui/storybook-static
+```
+
+## Deploying to Cloudflare Pages
+
+Point a Pages project at this repository:
+
+| Setting | Value |
+| --- | --- |
+| Build command | `bun install && bun run build-storybook` |
+| Build output directory | `packages/ui/storybook-static` |
+| Root directory | *(repository root)* |
+
+Telemetry is disabled in `.storybook/main.js`, so the build makes no outbound
+calls of its own.
+
+## The drift this carries
+
+`media/board.js` still has its own copy of every function extracted here — the
+shipped webview has no build step and cannot import a module, and moving it onto
+these components is a later pass of #21.
+
+Two hand-maintained copies drift. `test/mirror.test.ts` lifts the original out
+of `board.js` and holds it to the component, so drift fails CI rather than being
+discovered in a screenshot. **Anything extracted here needs a mirror test, or
+the copy it came from is free to wander.**
