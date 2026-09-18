@@ -20,6 +20,8 @@
  * one item was reworded.
  */
 
+import { parseFrontmatter } from './frontmatter';
+
 export type DiffOp = 'same' | 'add' | 'del';
 
 export type BlockKind = 'fence' | 'listItem' | 'prose';
@@ -47,6 +49,8 @@ export interface DiffRun {
 }
 
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
+/** Stands for a markdown hard break while prose whitespace is collapsed. */
+const HARD_BREAK = '\u0000';
 const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])\s+/;
 const ORDERED_MARKER = /^(\s*)(\d+)([.)]\s+)/;
 
@@ -140,13 +144,39 @@ function closesFence(line: string, marker: string): boolean {
 }
 
 /**
- * Identity used for matching blocks across the two sides. Whitespace runs
- * collapse, and an ordered-list marker's number is dropped so that a list
- * renumbering does not read as every item having changed.
+ * Identity used for matching blocks across the two sides.
+ *
+ * Reflowing a paragraph is not an edit, so whitespace *within a line of prose*
+ * collapses. Everything else is kept, because whitespace elsewhere is content:
+ *
+ *  - **Fenced blocks** are compared byte for byte. Indentation is the control
+ *    flow in Python and the structure in YAML, and two spaces inside a string
+ *    literal are part of the string.
+ *  - **Leading indentation** decides what owns a line — which list item a
+ *    continuation belongs to, and whether four spaces make it a code block.
+ *  - **Two trailing spaces** are a markdown hard break, not decoration.
+ *  - **Line count** is kept, so a break inserted between two lines of prose is
+ *    a change even though rewrapping one line is not.
+ *
+ * An ordered-list marker's number is dropped so that a list renumbering does
+ * not read as every item having changed.
  */
 export function blockKey(block: MarkdownBlock): string {
-  const text = block.ordinal === undefined ? block.text : block.text.replace(ORDERED_MARKER, '$1');
-  return `${block.kind}:${text.replace(/\s+/g, ' ').trim()}`;
+  const source =
+    block.ordinal === undefined ? block.text : block.text.replace(ORDERED_MARKER, '$1');
+  if (block.kind === 'fence') {
+    return `fence:${source}`;
+  }
+  // Leading indentation of the block decides what it is — four spaces make a
+  // code block, and a continuation belongs to the item it sits under.
+  const indent = /^[ \t]*/.exec(source)?.[0] ?? '';
+  const withBreaks = source
+    .split('\n')
+    // Two or more trailing spaces are a hard break. Marked before the join, or
+    // the collapse below would eat them like any other run.
+    .map((line) => line.replace(/[ \t]{2,}$/, HARD_BREAK).replace(/[ \t]$/, ''))
+    .join(' ');
+  return `${block.kind}:${indent}${withBreaks.replace(/[ \t]+/g, ' ').trim()}`;
 }
 
 /**
@@ -267,4 +297,34 @@ function lcs(a: string[], b: string[]): Array<[number, number]> {
     }
   }
   return pairs;
+}
+
+/**
+ * Whether two revisions of a file differ in their frontmatter.
+ *
+ * The reading views report *metadata changed* when git says a file moved but
+ * the rendered body did not. Inferring that from a body non-match alone is
+ * fragile: any false negative in block matching turns a real prose edit into a
+ * confident lie about frontmatter. So the claim is checked directly — the note
+ * is shown only when the frontmatter actually differs.
+ *
+ * Both sides are the whole file, frontmatter included.
+ */
+export function frontmatterChanged(before: string, after: string): boolean {
+  return frontmatterDataChanged(parseFrontmatter(before).data, parseFrontmatter(after).data);
+}
+
+/**
+ * The same comparison for callers that already hold the parsed records — the
+ * reading views do, so they need not re-read the file to ask.
+ *
+ * Key order is not a change; a value is.
+ */
+export function frontmatterDataChanged(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  const key = (data: Record<string, unknown>): string =>
+    JSON.stringify(Object.entries(data).sort(([a], [b]) => a.localeCompare(b)));
+  return key(before) !== key(after);
 }
