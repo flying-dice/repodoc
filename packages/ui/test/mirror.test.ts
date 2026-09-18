@@ -13,21 +13,57 @@ import { describe, expect, test } from 'bun:test';
 import * as assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
 import { agentAvatarValue } from '../src/atoms/agentAvatar.js';
+
+if (!globalThis.document) {
+  GlobalRegistrator.register();
+}
+
 import { ICON } from '../src/atoms/icon.js';
 import { tintStyle } from '../src/atoms/labelChip.js';
 import { relativeTime } from '../src/atoms/relativeTime.js';
+import { h } from '../src/dom.js';
 
 const BOARD_JS = path.join(import.meta.dir, '..', '..', 'vscode', 'media', 'board.js');
 const source = readFileSync(BOARD_JS, 'utf8');
 
-/** Lift one `function name(...) { ... }` out of board.js and evaluate it. */
+/** Lift a `start ... end` span out of board.js verbatim. */
+function liftBlock(start: string, end: string): string {
+  const from = source.indexOf(start);
+  assert.ok(from > 0, `board.js no longer contains ${start.trim()}`);
+  const to = source.indexOf(end, from);
+  assert.ok(to > from, `could not find the end of ${start.trim()} in board.js`);
+  return source.slice(from, to + end.length);
+}
+
+/**
+ * Lift one `function name(...) { ... }` out of board.js.
+ *
+ * Braces are matched rather than scanning for the next `\n  }`: that shortcut
+ * silently truncates the moment a helper grows a nested block, and a partial
+ * function would still evaluate — leaving a mirror test that quietly checks
+ * half of one.
+ */
 function liftFunction(name: string): string {
   const start = source.indexOf(`  function ${name}(`);
   assert.ok(start > 0, `board.js no longer declares ${name}`);
-  const end = source.indexOf('\n  }\n', start);
-  assert.ok(end > start, `could not find the end of ${name} in board.js`);
-  return source.slice(start, end + 4);
+  const open = source.indexOf('{', start);
+  assert.ok(open > start, `could not find the body of ${name}`);
+
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    const c = source[i];
+    if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        return source.slice(start, i + 1);
+      }
+    }
+  }
+  throw new Error(`unbalanced braces reading ${name} from board.js`);
 }
 
 describe('components mirror board.js', () => {
@@ -75,6 +111,40 @@ describe('components mirror board.js', () => {
     )() as Record<string, string>;
 
     expect(mirror).toEqual(ICON);
+  });
+
+  /**
+   * `h` is the one piece every component runs through, so a difference here is
+   * a difference everywhere. The two copies are deliberately not byte-identical
+   * — board.js is held to ES5 — so this compares the DOM they build.
+   */
+  test('h builds the same DOM in both copies', () => {
+    const mirror = new Function(
+      `${liftBlock('  var EVT = {', '\n  };\n')}
+       ${liftFunction('appendChildren')}
+       ${liftFunction('h')}
+       return h;`,
+    )() as typeof h;
+
+    const cases: Array<[string, Record<string, unknown>, unknown]> = [
+      ['div', { class: 'card' }, 'text'],
+      ['span', { class: 'a b', title: 'tip' }, null],
+      ['div', { dataset: { cardId: 'x' }, draggable: true }, ['one', 'two']],
+      ['div', { html: '<b>bold</b>' }, null],
+      ['input', { type: 'checkbox', id: 'c' }, null],
+      // A null prop is skipped entirely rather than written as "null".
+      ['div', { class: 'x', title: null }, null],
+      // false children are dropped; 0 is not.
+      ['div', {}, [false, 0, 'kept']],
+    ];
+
+    for (const [tag, props, children] of cases) {
+      assert.strictEqual(
+        mirror(tag, props, children).outerHTML,
+        h(tag, props, children).outerHTML,
+        `the copies disagree on ${tag} ${JSON.stringify(props)}`,
+      );
+    }
   });
 
   test('the card change badge still has no deleted variant in either copy', () => {

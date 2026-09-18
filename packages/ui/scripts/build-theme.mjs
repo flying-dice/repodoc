@@ -44,10 +44,20 @@ const REGISTRY = [
 ];
 const EXTENSIONS = ['extensions/git/package.json'];
 
+/**
+ * Fail closed. A source that does not arrive means a theme missing whatever it
+ * defined, and the only trace would be a smaller number in the tally — a flaky
+ * response could otherwise commit a half-built theme that looks fine.
+ */
 async function fetchText(rel) {
-  const res = await fetch(`${BASE}/${rel}`);
+  let res;
+  try {
+    res = await fetch(`${BASE}/${rel}`);
+  } catch (cause) {
+    throw new Error(`could not reach ${rel}`, { cause });
+  }
   if (!res.ok) {
-    return undefined;
+    throw new Error(`${rel} returned ${res.status}; refusing to write a partial theme`);
   }
   return res.text();
 }
@@ -213,8 +223,7 @@ const cssVar = (id) => `--vscode-${id.replace(/\./g, '-')}`;
 
 async function main() {
   const registry = {};
-  const sources = (await Promise.all(REGISTRY.map(fetchText))).filter(Boolean);
-  parseRegistry(sources, registry);
+  parseRegistry(await Promise.all(REGISTRY.map(fetchText)), registry);
 
   const contributed = { dark: {}, light: {} };
   for (const file of EXTENSIONS) {
@@ -275,7 +284,10 @@ async function main() {
   writeFileSync(out, `${header + blocks.join('\n\n')}\n`, 'utf8');
   // Formatted here, not left for the next `verify` to notice: a generator whose
   // output fails lint makes every regeneration a dirty tree.
-  spawnSync('bunx', ['biome', 'format', '--write', out], { stdio: 'inherit' });
+  const formatted = spawnSync('bunx', ['biome', 'format', '--write', out], { stdio: 'inherit' });
+  if (formatted.status !== 0) {
+    throw new Error(`biome could not format ${out}; the written theme would fail lint`);
+  }
   for (const [theme, r] of Object.entries(report)) {
     console.log(
       `${theme}: ${r.resolved} variables written, ${r.dropped} left to the stylesheet fallbacks`,

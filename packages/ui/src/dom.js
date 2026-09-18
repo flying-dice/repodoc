@@ -6,8 +6,11 @@
  * a Storybook-shaped imitation of it.
  *
  * MIRROR: `media/board.js` still carries its own copy — the shipped webview has
- * no build step and cannot import a module. `mirror.test.ts` lifts that copy out
- * and holds it to this one, so the two cannot drift silently.
+ * no build step and cannot import a module. This is not byte-identical to it:
+ * that copy is held to ES5 and writes `Object.prototype.hasOwnProperty.call`,
+ * while this one uses `Object.hasOwn`. What must match is the DOM the two
+ * produce, so `mirror.test.ts` renders the same props through both copies and
+ * compares the result rather than the source.
  */
 
 /** @type {Record<string, string>} */

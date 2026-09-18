@@ -65,8 +65,12 @@ Two hand-maintained copies drift. Three tests hold them together:
   stylesheet or in `board.js`. While bootstrapping this package I invented about
   twenty class names; each one type-checked, passed its tests, built, and
   rendered unstyled. Nothing was checking.
-- `test/stylesheets.test.ts` — the git rules must sit at the top level of their
-  stylesheet. A merge once nested them inside another rule and shipped twice.
+The nested-CSS guard that goes with them lives next to the stylesheets it
+reads, at `packages/vscode/test/unit/stylesheets.test.ts`.
 
-**Anything extracted here needs a mirror test, or the copy it came from is free
-to wander.**
+**Anything extracted here with logic of its own needs a mirror test.** Today
+that means `agentAvatar`, `tintStyle`, `relativeTime`, the icon set and the
+absent deleted badge. Components that are markup only — the organisms — are held
+to `board.js` by `markup.test.ts` and by review, not by a lift test; a component
+whose behaviour is only "arrange these elements" has nothing a lift test could
+compare.

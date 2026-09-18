@@ -7,9 +7,7 @@
  * every meaningful one.
  */
 
-import { GlobalRegistrator } from '@happy-dom/global-registrator';
-
-GlobalRegistrator.register();
+import './dom-setup.js';
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
@@ -307,18 +305,94 @@ describe('organisms', () => {
     assert.strictEqual((bar.querySelector('#search-input') as HTMLInputElement).value, 'diff');
   });
 
-  test('given unsatisfied gates and no reason, when the dialog renders, then move is unavailable', () => {
+  test('given unsatisfied gates, when the dialog renders, then Move is disabled', () => {
     const dialog = BlockedDialog({
       cardTitle: 'A card',
       toColumn: 'Done',
       gates: [{ id: 'peer-reviewed', label: 'Peer reviewed', satisfied: false }],
+    });
+    const move = dialog.querySelector('.btn-primary');
+    assert.strictEqual(move?.textContent, 'Move');
+    assert.ok(move?.hasAttribute('disabled'), 'doing the work is the intended route out');
+    assert.strictEqual(move?.getAttribute('title'), 'Satisfy every gate above first');
+  });
+
+  test('given every gate satisfied, when the dialog renders, then Move is available', () => {
+    const dialog = BlockedDialog({
+      cardTitle: 'A card',
+      toColumn: 'Done',
+      gates: [{ id: 'tests', label: 'Tests green', satisfied: true }],
+    });
+    assert.strictEqual(dialog.querySelector('.btn-primary')?.hasAttribute('disabled'), false);
+  });
+
+  test('given no override yet, when the dialog renders, then the offer is Override…', () => {
+    const dialog = BlockedDialog({
+      cardTitle: 'A card',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false }],
+    });
+    const buttons = [...dialog.querySelectorAll('.blocked-actions button')].map(
+      (b) => b.textContent,
+    );
+    assert.deepStrictEqual(
+      buttons,
+      ['Cancel', 'Override…', 'Move'],
+      'Override… opens the reason box; it does not move anything',
+    );
+    assert.strictEqual(dialog.querySelector('.override-box'), null);
+  });
+
+  test('given the cancel control, when the dialog renders, then it is the text variant', () => {
+    const dialog = BlockedDialog({
+      cardTitle: 'A card',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false }],
+    });
+    assert.ok(
+      dialog.querySelector('.btn-cancel-text'),
+      'Cancel is the quiet text control, not a secondary button',
+    );
+  });
+
+  test('given overriding with no reason, when the dialog renders, then Override & move is disabled', () => {
+    const dialog = BlockedDialog({
+      cardTitle: 'A card',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false }],
       overriding: true,
       reason: '   ',
     });
+    const button = dialog.querySelector('#override-move-btn');
+    assert.strictEqual(button?.textContent, 'Override & move');
     assert.ok(
-      dialog.querySelector('.btn-primary')?.hasAttribute('disabled'),
+      button?.hasAttribute('disabled'),
       'the CLI refuses an override without a reason; the board must not be weaker',
     );
+  });
+
+  test('given a reason typed in, when it is entered, then Override & move unlocks live', () => {
+    const dialog = BlockedDialog({
+      cardTitle: 'A card',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false }],
+      overriding: true,
+    });
+    const input = /** @type {HTMLInputElement} */ (dialog.querySelector('#override-reason'));
+    const button = dialog.querySelector('#override-move-btn');
+    assert.ok(button?.hasAttribute('disabled'));
+
+    (input as HTMLInputElement).value = 'shipping the hotfix';
+    input?.dispatchEvent(new Event('input'));
+    assert.strictEqual(
+      button?.hasAttribute('disabled'),
+      false,
+      'the button unlocks as you type, not on the next render',
+    );
+
+    (input as HTMLInputElement).value = '   ';
+    input?.dispatchEvent(new Event('input'));
+    assert.ok(button?.hasAttribute('disabled'), 'and locks again when the reason is emptied');
   });
 
   test('given an override, when the dialog renders, then the reason field is labelled required', () => {
@@ -328,11 +402,42 @@ describe('organisms', () => {
       gates: [{ id: 'g', label: 'g', satisfied: false }],
       overriding: true,
     });
-    assert.ok(dialog.querySelector('.override-box'));
     assert.strictEqual(
       dialog.querySelector('.override-box .field-label')?.textContent,
       'Reason (required)',
     );
+  });
+
+  test('given the dialog, when it renders, then it is a modal in a dismissable overlay', () => {
+    const overlay = BlockedDialog({
+      cardTitle: 'A card',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false }],
+    });
+    assert.ok(overlay.className.includes('modal-overlay'));
+    const panel = overlay.querySelector('.blocked-modal');
+    assert.strictEqual(panel?.getAttribute('role'), 'dialog');
+    assert.strictEqual(panel?.getAttribute('aria-modal'), 'true');
+    assert.strictEqual(panel?.getAttribute('tabindex'), '-1');
+    assert.ok(panel?.querySelector('.modal-close'), 'a modal needs its own way out');
+  });
+
+  test('given a gate carrying instructions, when the dialog renders, then it is widened', () => {
+    const narrow = BlockedDialog({
+      cardTitle: 'A',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false }],
+    });
+    const wide = BlockedDialog({
+      cardTitle: 'A',
+      toColumn: 'Done',
+      gates: [{ id: 'g', label: 'g', satisfied: false, promptHtml: '<p>do it</p>' }],
+    });
+    assert.strictEqual(
+      narrow.querySelector('.blocked-modal')?.className.includes('blocked-wide'),
+      false,
+    );
+    assert.ok(wide.querySelector('.blocked-modal')?.className.includes('blocked-wide'));
   });
 
   test('given one gate, when the dialog renders, then the lead is not pluralised', () => {
@@ -345,17 +450,6 @@ describe('organisms', () => {
       one.querySelector('.blocked-lead')?.textContent,
       '1 gate must be satisfied first',
     );
-  });
-
-  test('given a reason, when the dialog renders, then move becomes available', () => {
-    const dialog = BlockedDialog({
-      cardTitle: 'A card',
-      toColumn: 'Done',
-      gates: [{ id: 'peer-reviewed', label: 'Peer reviewed', satisfied: false }],
-      overriding: true,
-      reason: 'shipping the hotfix',
-    });
-    assert.strictEqual(dialog.querySelector('.btn-primary')?.hasAttribute('disabled'), false);
   });
 
   test('given a diff, when a document renders, then only changed runs are marked', () => {

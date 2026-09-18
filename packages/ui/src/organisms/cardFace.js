@@ -1,3 +1,4 @@
+import { ICON, Icon } from '../atoms/icon.js';
 import { LabelChip } from '../atoms/labelChip.js';
 import { PriorityDot } from '../atoms/priorityDot.js';
 import { h } from '../dom.js';
@@ -34,6 +35,7 @@ import { LiveBlock } from '../molecules/liveBlock.js';
  *   gates?: Array<{ label: string, satisfied: boolean }> | undefined,
  *   fields?: Array<{ label: string, value: unknown, type?: string | undefined }> | undefined,
  *   updated?: string | undefined,
+ *   onCopyRef?: ((e: Event) => void) | undefined,
  * }} CardFaceProps
  */
 
@@ -50,6 +52,7 @@ export function CardFace({
   gates,
   fields = [],
   updated,
+  onCopyRef,
 }) {
   const children = [];
 
@@ -70,8 +73,22 @@ export function CardFace({
     ]),
   );
 
+  // The id is what every CLI command and chat message references — always
+  // visible, with a one-click copy of the full ref beside it.
   children.push(
-    h('div', { class: 'card-idrow' }, [h('code', { class: 'card-id', title: 'Card id' }, card.id)]),
+    h('div', { class: 'card-idrow' }, [
+      h('code', { class: 'card-id', title: 'Card id' }, card.id),
+      h(
+        'button',
+        {
+          class: 'card-copy',
+          title: 'Copy ref',
+          'aria-label': `Copy ref for ${card.id}`,
+          onClick: onCopyRef,
+        },
+        Icon(ICON.copy, 'icon'),
+      ),
+    ]),
   );
 
   if (card.live) {
