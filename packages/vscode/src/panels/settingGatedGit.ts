@@ -30,6 +30,18 @@ export class SettingGatedGitAdapter implements GitPort {
     return this.isRepo() ? this.inner.status() : [];
   }
 
+  headSha(): string | undefined {
+    return this.isRepo() ? this.inner.headSha() : undefined;
+  }
+
+  /**
+   * Not gated by the setting. The host sets its watchers up once; if the
+   * setting is later turned on, the events have to already be arriving.
+   */
+  metadataPaths(): string[] {
+    return this.inner.metadataPaths();
+  }
+
   invalidate(): void {
     this.inner.invalidate();
   }

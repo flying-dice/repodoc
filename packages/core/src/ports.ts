@@ -69,8 +69,16 @@ export interface GitPort {
    * say what it compared against rather than implying the file is new.
    */
   baselinePathOf(relPath: string): string;
+  /** Commit sha at `HEAD`, or `undefined` outside a repository / before the first commit. */
+  headSha(): string | undefined;
   /** Every workspace file differing from `HEAD`, tracked or not. */
   status(): GitStatusEntry[];
+  /**
+   * Absolute paths whose change means the baseline moved — git's `HEAD`, index
+   * and refs, in both the private and common metadata directories. Empty
+   * outside a repository. Hosts watch these rather than guessing at `.git`.
+   */
+  metadataPaths(): string[];
   /** Drop cached state; the next call re-reads from git. */
   invalidate(): void;
 }

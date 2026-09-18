@@ -18,6 +18,14 @@ export class NoGitAdapter implements GitPort {
     return relPath;
   }
 
+  headSha(): string | undefined {
+    return undefined;
+  }
+
+  metadataPaths(): string[] {
+    return [];
+  }
+
   status(): GitStatusEntry[] {
     return [];
   }

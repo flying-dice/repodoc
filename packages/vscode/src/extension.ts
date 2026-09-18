@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import {
   type AgentKind,
   DECISION_STATUSES,
@@ -72,22 +73,31 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
         store.notifyExternalChange();
       }, 150);
     };
-    // `.git/HEAD` and `.git/index` cover commits, checkouts and staging done
-    // outside the editor — none of which touch the content directories.
-    for (const pattern of [
-      '**/boards/**',
-      '**/decisions/**',
-      '**/docs/**',
-      '**/features/**',
-      '.git/{HEAD,index}',
-    ]) {
-      const watcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(root, pattern),
-      );
+    const watch = (pattern: vscode.RelativePattern): void => {
+      const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       watcher.onDidChange(scheduleChange);
       watcher.onDidCreate(scheduleChange);
       watcher.onDidDelete(scheduleChange);
       context.subscriptions.push(watcher);
+    };
+
+    for (const pattern of ['**/boards/**', '**/decisions/**', '**/docs/**', '**/features/**']) {
+      watch(new vscode.RelativePattern(root, pattern));
+    }
+
+    // Commits, checkouts, staging and resets happen outside the editor and
+    // touch none of the content directories. Where that shows up on disk is
+    // git's business, not ours: a subfolder workspace has no `.git` beside it,
+    // a linked worktree keeps its refs in a shared directory elsewhere, and a
+    // soft reset moves a branch ref while leaving HEAD and the index alone.
+    // So the adapter is asked, rather than `.git/**` assumed.
+    for (const metadataPath of git.metadataPaths()) {
+      watch(
+        new vscode.RelativePattern(
+          vscode.Uri.file(path.dirname(metadataPath)),
+          `${path.basename(metadataPath)}${metadataPath.endsWith('refs') ? '/**' : ''}`,
+        ),
+      );
     }
     context.subscriptions.push({
       dispose: () => {
@@ -159,6 +169,10 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     vscode.commands.registerCommand('repodoc.refresh', () => {
       git.invalidate();
       refreshTrees();
+      // Refresh means refresh. A reading view or board left showing a stale
+      // baseline is the thing a human hit refresh to get rid of.
+      MarkdownPanel.refreshAll();
+      BoardPanel.refreshAll();
     }),
 
     // Flip the open Doc/Decision panel between reading and the HEAD diff.
