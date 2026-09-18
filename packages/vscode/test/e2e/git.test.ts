@@ -337,16 +337,19 @@ suite('RepoDoc e2e — git events reach the extension', () => {
 });
 
 /**
- * A folder that becomes a repository after the window opened.
+ * The repository a workspace belongs to can change after the window opened.
  *
- * Metadata watchers were registered once, during activation. Outside a
- * repository `metadataPaths()` is empty, so none were installed — and nothing
- * ever installed them afterwards. A repository created later had its content
- * watched and its baseline never.
+ * Metadata watchers were registered once, during activation, and never revised.
+ * So whichever repository was resolved then kept being watched — and a
+ * repository created later had its content watched and its baseline never.
+ *
+ * The fixture workspace lives inside RepoDoc's own checkout, so it always
+ * resolves to *some* repository; what changes here is *which*. That is the same
+ * reconciliation: the watched set has to follow.
  *
  * This suite runs last and leaves the fixture as it found it.
  */
-suite('RepoDoc e2e — a repository created after activation', () => {
+suite('RepoDoc e2e — the repository changes after activation', () => {
   let api: RepoDocApi;
   let root: string;
 
@@ -368,12 +371,18 @@ suite('RepoDoc e2e — a repository created after activation', () => {
     api = await ext.activate();
   });
 
-  test('given a repository appears, when a commit lands, then the baseline follows it', async () => {
-    // The suites above leave a repository here; start from none.
+  test('given a new repository appears, then the watched metadata follows it', async () => {
+    // Fall back to the outer checkout, so the adapter is pointed somewhere else
+    // entirely before the new repository is created.
     fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
     api.git.invalidate();
-    assert.strictEqual(api.git.isRepo(), false, 'premise: not a repository yet');
-    assert.deepStrictEqual(api.git.metadataPaths(), [], 'premise: nothing to watch yet');
+    const outerPaths = api.git.metadataPaths();
+    assert.ok(outerPaths.length > 0, 'premise: resolves to the surrounding checkout');
+    assert.strictEqual(
+      outerPaths.some((p) => p.startsWith(root)),
+      false,
+      'premise: the watched metadata is outside the workspace folder',
+    );
 
     git(root, 'init', '--initial-branch=main');
     git(root, 'config', 'user.email', 'test@example.invalid');
@@ -385,21 +394,22 @@ suite('RepoDoc e2e — a repository created after activation', () => {
     git(root, 'commit', '-m', 'created after activation');
 
     // A content write is what the extension can already see; it must use that
-    // to notice the repository and start watching the metadata.
+    // to re-resolve the repository and start watching the new metadata.
     write(root, 'docs/late.md', '# Late\n\n- one\n- two\n');
-    const discovered = await eventually(() => api.git.isRepo());
-    assert.ok(discovered, 'the repository must be discovered without a reload');
+
+    const moved = await eventually(() => api.git.metadataPaths().some((p) => p.startsWith(root)));
+    assert.ok(
+      moved,
+      'the watched set must be reconciled, not fixed at whatever activation resolved',
+    );
 
     const before = api.git.headSha();
-    assert.ok(before, 'premise: HEAD resolves');
+    assert.ok(before, 'premise: HEAD resolves in the new repository');
 
-    // Now a metadata-only change: nothing under the content directories moves.
+    // A metadata-only change: nothing under the content directories moves.
     git(root, 'commit', '--allow-empty', '-m', 'metadata only');
 
     const followed = await eventually(() => api.git.headSha() !== before);
-    assert.ok(
-      followed,
-      'a repository created after activation must still get its metadata watched',
-    );
+    assert.ok(followed, 'the new repository must have its metadata watched');
   });
 });
