@@ -21,6 +21,7 @@
  * the build itself never reaches out.
  */
 
+import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 
@@ -272,6 +273,9 @@ async function main() {
 
   const out = path.join(import.meta.dirname, '..', 'src', 'theme', 'vscode-theme.css');
   writeFileSync(out, `${header + blocks.join('\n\n')}\n`, 'utf8');
+  // Formatted here, not left for the next `verify` to notice: a generator whose
+  // output fails lint makes every regeneration a dirty tree.
+  spawnSync('bunx', ['biome', 'format', '--write', out], { stdio: 'inherit' });
   for (const [theme, r] of Object.entries(report)) {
     console.log(
       `${theme}: ${r.resolved} variables written, ${r.dropped} left to the stylesheet fallbacks`,
