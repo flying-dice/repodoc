@@ -49,6 +49,17 @@ export interface DiffRun {
 }
 
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
+/**
+ * The most LCS table cells this will allocate, and so the most work one diff
+ * will do. Four million cells is a 16 MB `Int32Array` — large enough that no
+ * document anyone reads comes near it, small enough that the extension host
+ * never disappears into a 400 MB allocation.
+ *
+ * Exported so the fallback can be tested from both sides of it rather than by
+ * trying to exhaust the host.
+ */
+export const DIFF_BUDGET_CELLS = 4_000_000;
+
 /** Stands for a markdown hard break while prose whitespace is collapsed. */
 const HARD_BREAK = '\u0000';
 const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])\s+/;
@@ -255,6 +266,24 @@ export function blockKey(block: MarkdownBlock): string {
 export function diffMarkdown(before: string, after: string): DiffBlock[] {
   const oldBlocks = splitBlocks(before);
   const newBlocks = splitBlocks(after);
+
+  // Past the budget, align nothing: report the old document as removed and the
+  // new one as added. It is a worse diff, and it is honest — the alternative is
+  // a 400 MB table on the extension host. What it must never do is claim
+  // nothing changed, so the two sides are still compared for equality first.
+  if ((oldBlocks.length + 1) * (newBlocks.length + 1) > DIFF_BUDGET_CELLS) {
+    const identical =
+      oldBlocks.length === newBlocks.length &&
+      oldBlocks.every((block, i) => blockKey(block) === blockKey(newBlocks[i] as MarkdownBlock));
+    if (identical) {
+      return oldBlocks.map((block) => ({ op: 'same' as const, block }));
+    }
+    return [
+      ...oldBlocks.map((block) => ({ op: 'del' as const, block })),
+      ...newBlocks.map((block) => ({ op: 'add' as const, block })),
+    ];
+  }
+
   const common = lcs(oldBlocks.map(blockKey), newBlocks.map(blockKey));
 
   const out: DiffBlock[] = [];
