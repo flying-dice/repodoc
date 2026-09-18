@@ -99,7 +99,7 @@ describe('components wear the shipped markup', () => {
       assert.deepStrictEqual(
         [...new Set(invented)],
         [],
-        `${name} emits ${invented.map((c) => c.replaceAll(HOLE, '${…}')).join(', ')}, which neither the stylesheets nor board.js know — a story of it would render unstyled and prove nothing`,
+        `${name} emits ${invented.map((c) => c.replaceAll(HOLE, '<expr>')).join(', ')}, which neither the stylesheets nor board.js know — a story of it would render unstyled and prove nothing`,
       );
     });
   }
