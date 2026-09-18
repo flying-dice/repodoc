@@ -62,8 +62,19 @@ export class NodeGitAdapter implements GitPort {
     return this.headShaCache ?? undefined;
   }
 
+  /**
+   * The path `HEAD` holds this file under. A staged rename moved it, and
+   * `HEAD` still knows only the old name.
+   */
+  baselinePathOf(relPath: string): string {
+    const renamed = this.status().find(
+      (entry) => entry.path === relPath && entry.originalPath !== undefined,
+    );
+    return renamed?.originalPath ?? relPath;
+  }
+
   readAtHead(relPath: string): string | undefined {
-    const repoPath = this.toRepoPath(relPath);
+    const repoPath = this.toRepoPath(this.baselinePathOf(relPath));
     if (repoPath === undefined) {
       return undefined;
     }
@@ -121,8 +132,10 @@ export class NodeGitAdapter implements GitPort {
       const index = record[0] ?? '';
       const worktree = record[1] ?? '';
       const repoPath = record.slice(3);
+      let originalRepoPath: string | undefined;
       if (index === 'R' || index === 'C') {
-        i++; // a rename record is followed by the path it came from
+        // A rename record is followed by the path it came from.
+        originalRepoPath = fields[++i];
       }
       const status = classify(index, worktree);
       if (!status) {
@@ -132,7 +145,13 @@ export class NodeGitAdapter implements GitPort {
       if (workspacePath === undefined) {
         continue; // outside the workspace folder
       }
-      entries.push({ path: workspacePath, status });
+      const originalPath =
+        originalRepoPath === undefined ? undefined : this.toWorkspacePath(originalRepoPath);
+      entries.push({
+        path: workspacePath,
+        status,
+        ...(originalPath === undefined ? {} : { originalPath }),
+      });
     }
     return entries;
   }

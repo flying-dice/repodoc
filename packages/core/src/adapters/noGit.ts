@@ -14,6 +14,10 @@ export class NoGitAdapter implements GitPort {
     return undefined;
   }
 
+  baselinePathOf(relPath: string): string {
+    return relPath;
+  }
+
   status(): GitStatusEntry[] {
     return [];
   }

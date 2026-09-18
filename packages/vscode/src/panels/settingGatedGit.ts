@@ -22,6 +22,10 @@ export class SettingGatedGitAdapter implements GitPort {
     return this.isRepo() ? this.inner.readAtHead(relPath) : undefined;
   }
 
+  baselinePathOf(relPath: string): string {
+    return this.isRepo() ? this.inner.baselinePathOf(relPath) : relPath;
+  }
+
   status(): GitStatusEntry[] {
     return this.isRepo() ? this.inner.status() : [];
   }
