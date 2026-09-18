@@ -335,3 +335,71 @@ suite('RepoDoc e2e — git events reach the extension', () => {
     );
   });
 });
+
+/**
+ * A folder that becomes a repository after the window opened.
+ *
+ * Metadata watchers were registered once, during activation. Outside a
+ * repository `metadataPaths()` is empty, so none were installed — and nothing
+ * ever installed them afterwards. A repository created later had its content
+ * watched and its baseline never.
+ *
+ * This suite runs last and leaves the fixture as it found it.
+ */
+suite('RepoDoc e2e — a repository created after activation', () => {
+  let api: RepoDocApi;
+  let root: string;
+
+  async function eventually(fn: () => boolean, timeoutMs = 15000): Promise<boolean> {
+    const start = Date.now();
+    while (!fn()) {
+      if (Date.now() - start > timeoutMs) {
+        return false;
+      }
+      await delay(200);
+    }
+    return true;
+  }
+
+  suiteSetup(async () => {
+    root = workspaceRoot();
+    const ext = vscode.extensions.getExtension<RepoDocApi>(EXTENSION_ID);
+    assert.ok(ext);
+    api = await ext.activate();
+  });
+
+  test('given a repository appears, when a commit lands, then the baseline follows it', async () => {
+    // The suites above leave a repository here; start from none.
+    fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
+    api.git.invalidate();
+    assert.strictEqual(api.git.isRepo(), false, 'premise: not a repository yet');
+    assert.deepStrictEqual(api.git.metadataPaths(), [], 'premise: nothing to watch yet');
+
+    git(root, 'init', '--initial-branch=main');
+    git(root, 'config', 'user.email', 'test@example.invalid');
+    git(root, 'config', 'user.name', 'RepoDoc Test');
+    git(root, 'config', 'commit.gpgsign', 'false');
+    write(root, '.gitignore', '.vscode/\n');
+    write(root, 'docs/late.md', '# Late\n\n- one\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-m', 'created after activation');
+
+    // A content write is what the extension can already see; it must use that
+    // to notice the repository and start watching the metadata.
+    write(root, 'docs/late.md', '# Late\n\n- one\n- two\n');
+    const discovered = await eventually(() => api.git.isRepo());
+    assert.ok(discovered, 'the repository must be discovered without a reload');
+
+    const before = api.git.headSha();
+    assert.ok(before, 'premise: HEAD resolves');
+
+    // Now a metadata-only change: nothing under the content directories moves.
+    git(root, 'commit', '--allow-empty', '-m', 'metadata only');
+
+    const followed = await eventually(() => api.git.headSha() !== before);
+    assert.ok(
+      followed,
+      'a repository created after activation must still get its metadata watched',
+    );
+  });
+});

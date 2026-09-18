@@ -64,8 +64,10 @@ export const DIFF_BUDGET_CELLS = 4_000_000;
 const HARD_BREAK = '\u0000';
 const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])\s+/;
 const ORDERED_MARKER = /^(\s*)(\d+)([.)]\s+)/;
-/** `[label]: destination "optional title"` at the head of a line. */
-const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:\s*\S/;
+/** `[label]:` at the head of a line; the destination may follow or be on the next. */
+const DEFINITION_LABEL = /^ {0,3}\[[^\]]+\]:(.*)$/;
+/** A continuation line holding only a title. */
+const DEFINITION_TITLE = /^\s+("[^"]*"|'[^']*'|\([^)]*\))\s*$/;
 
 /**
  * Split markdown into renderable blocks. Blank lines are separators and are
@@ -145,40 +147,57 @@ function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
   const baseIndent = (opening[1] ?? '').length;
   const ordered = ORDERED_MARKER.test(at(from));
   const start = ordered ? Number(ORDERED_MARKER.exec(at(from))?.[2] ?? 1) : 0;
+  // `1.` and `1)` are two different lists to a markdown parser. Sharing one
+  // ordinal sequence across them renumbers a list nobody edited.
+  const delimiter = markerDelimiter(at(from));
+
+  /** Whether `line` opens an item of *this* list rather than some other one. */
+  const startsThisItem = (line: string): boolean => {
+    const marker = LIST_MARKER.exec(line);
+    if (marker === null || (marker[1] ?? '').length > baseIndent) {
+      return false;
+    }
+    return ORDERED_MARKER.test(line) === ordered && markerDelimiter(line) === delimiter;
+  };
 
   /** Indented past the marker, so it belongs to the item above. */
-  const isContinuation = (line: string): boolean =>
+  const isIndentedContinuation = (line: string): boolean =>
     line.trim() !== '' && (/^[ \t]*/.exec(line)?.[0].length ?? 0) > baseIndent;
+
+  /**
+   * A *lazy* continuation: an unindented line directly under an item's text,
+   * which markdown folds into that item. Ending the item at the newline instead
+   * lifts the text out of its `<li>` and into a paragraph of its own.
+   */
+  const isLazyContinuation = (line: string): boolean =>
+    line.trim() !== '' &&
+    !startsThisItem(line) &&
+    LIST_MARKER.exec(line) === null &&
+    !FENCE_OPEN.test(line) &&
+    !/^ {0,3}(#{1,6}\s|>|\s*$)/.test(line);
 
   let i = from;
   let position = 0;
   while (i < lines.length) {
-    const marker = LIST_MARKER.exec(at(i));
-    const startsItem = marker !== null && (marker[1] ?? '').length <= baseIndent;
-    if (!startsItem) {
-      break;
-    }
-    // A list of one kind does not continue into another.
-    if (ORDERED_MARKER.test(at(i)) !== ordered) {
+    if (!startsThisItem(at(i))) {
       break;
     }
 
     const itemFrom = i;
     i++;
-    // Everything indented under the marker, blank lines included while more
-    // indented content follows.
     for (;;) {
-      if (i < lines.length && isContinuation(at(i))) {
+      if (i < lines.length && (isIndentedContinuation(at(i)) || isLazyContinuation(at(i)))) {
         i++;
         continue;
       }
       if (i < lines.length && at(i).trim() === '') {
         // A blank line only ends the item when nothing indented follows it.
+        // Lazy continuation does not survive a blank line — that is a new block.
         let lookahead = i;
         while (lookahead < lines.length && at(lookahead).trim() === '') {
           lookahead++;
         }
-        if (lookahead < lines.length && isContinuation(at(lookahead))) {
+        if (lookahead < lines.length && isIndentedContinuation(at(lookahead))) {
           i = lookahead;
           continue;
         }
@@ -196,25 +215,26 @@ function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
 
     // Skip the blank lines that separate a loose list's items.
     while (i < lines.length && at(i).trim() === '') {
-      const next = (() => {
-        let k = i;
-        while (k < lines.length && at(k).trim() === '') {
-          k++;
-        }
-        return k;
-      })();
-      const following = LIST_MARKER.exec(at(next));
-      const continues =
-        following !== null &&
-        (following[1] ?? '').length <= baseIndent &&
-        ORDERED_MARKER.test(at(next)) === ordered;
-      if (!continues) {
+      let next = i;
+      while (next < lines.length && at(next).trim() === '') {
+        next++;
+      }
+      if (next >= lines.length || !startsThisItem(at(next))) {
         break;
       }
       i = next;
     }
   }
   return i;
+}
+
+/** `.` or `)` for an ordered marker; the bullet character otherwise. */
+function markerDelimiter(line: string): string {
+  const ordered = /^\s*\d+([.)])/.exec(line);
+  if (ordered?.[1]) {
+    return ordered[1];
+  }
+  return /^\s*([-*+])/.exec(line)?.[1] ?? '';
 }
 
 function closesFence(line: string, marker: string): boolean {
@@ -244,19 +264,80 @@ function closesFence(line: string, marker: string): boolean {
 export function blockKey(block: MarkdownBlock): string {
   const source =
     block.ordinal === undefined ? block.text : block.text.replace(ORDERED_MARKER, '$1');
-  if (block.kind === 'fence') {
-    return `fence:${source}`;
+  const lines = source.split('\n');
+  const baseIndent = indentWidth(lines[0] ?? '');
+  // A block that opens four columns in is an indented code block in its
+  // entirety — its first line sits at the base indent, not past it, so the
+  // per-line rule below would miss exactly that line.
+  const wholeBlockIsCode = block.kind === 'fence' || baseIndent >= 4;
+
+  let inFence = false;
+  let fenceMarker = '';
+  const normalized = lines.map((line) => {
+    const fence = FENCE_OPEN.exec(line)?.[1];
+    if (fence !== undefined) {
+      if (!inFence) {
+        inFence = true;
+        fenceMarker = fence;
+        return line; // the opening fence is code too — its info string matters
+      }
+      if (closesFence(line, fenceMarker)) {
+        inFence = false;
+      }
+      return line;
+    }
+    // Code is compared byte for byte wherever it sits: inside a fence at any
+    // nesting, or indented four past the block's own indent, which is how an
+    // indented code block is written both standalone and inside a list item.
+    if (wholeBlockIsCode || inFence || indentWidth(line) >= baseIndent + 4) {
+      return line;
+    }
+    // Prose: reflowing is not an edit, so whitespace within a line collapses.
+    // Leading indentation and a two-space hard break are kept — the first says
+    // what owns the line, the second is a `<br>`.
+    const indent = /^[ \t]*/.exec(line)?.[0] ?? '';
+    return (
+      indent +
+      line
+        .replace(/[ \t]{2,}$/, HARD_BREAK)
+        .replace(/[ \t]$/, '')
+        .trim()
+        .replace(/[ \t]+/g, ' ')
+    );
+  });
+
+  // Prose lines join with a space — a soft wrap is not content. Code lines keep
+  // their newline, because the line break is the program.
+  let key = '';
+  inFence = false;
+  fenceMarker = '';
+  for (let i = 0; i < normalized.length; i++) {
+    const raw = lines[i] ?? '';
+    const fence = FENCE_OPEN.exec(raw)?.[1];
+    const isCode =
+      wholeBlockIsCode || inFence || fence !== undefined || indentWidth(raw) >= baseIndent + 4;
+    if (fence !== undefined) {
+      if (!inFence) {
+        inFence = true;
+        fenceMarker = fence;
+      } else if (closesFence(raw, fenceMarker)) {
+        inFence = false;
+      }
+    }
+    if (i > 0) {
+      key += isCode || /\n$/.test(key) ? '\n' : ' ';
+    }
+    key += normalized[i] ?? '';
+    if (isCode) {
+      key += '\n';
+    }
   }
-  // Leading indentation of the block decides what it is — four spaces make a
-  // code block, and a continuation belongs to the item it sits under.
-  const indent = /^[ \t]*/.exec(source)?.[0] ?? '';
-  const withBreaks = source
-    .split('\n')
-    // Two or more trailing spaces are a hard break. Marked before the join, or
-    // the collapse below would eat them like any other run.
-    .map((line) => line.replace(/[ \t]{2,}$/, HARD_BREAK).replace(/[ \t]$/, ''))
-    .join(' ');
-  return `${block.kind}:${indent}${withBreaks.replace(/[ \t]+/g, ' ').trim()}`;
+  return `${block.kind}:${key.replace(/[ \t]+\n/g, '\n').replace(/\s+$/, '')}`;
+}
+
+/** Width of a line's leading whitespace, tabs counted as one. */
+function indentWidth(line: string): number {
+  return (/^[ \t]*/.exec(line)?.[0] ?? '').length;
 }
 
 /**
@@ -442,10 +523,29 @@ export function frontmatterDataChanged(
  * Definitions inside fenced blocks are ignored; they are code, not links.
  */
 export function referenceDefinitions(source: string): string[] {
+  return scanDefinitions(source).definitions;
+}
+
+/**
+ * Scan a fragment for reference definitions, returning them and whether
+ * anything else was found.
+ *
+ * A definition may span lines: the destination can sit on the line after
+ * `[label]:`, and a title after that. Matching only `[label]: <destination>` on
+ * one line misses documents the renderer resolves perfectly well, which showed
+ * up as a link rendering as literal text inside a diff.
+ *
+ * Definitions inside fenced blocks are ignored; they are code, not links.
+ */
+function scanDefinitions(source: string): { definitions: string[]; otherContent: boolean } {
+  const lines = source.replace(/\r\n?/g, '\n').split('\n');
   const definitions: string[] = [];
+  let otherContent = false;
   let inFence = false;
   let marker = '';
-  for (const line of source.replace(/\r\n?/g, '\n').split('\n')) {
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
     const fence = FENCE_OPEN.exec(line)?.[1];
     if (fence !== undefined) {
       if (!inFence) {
@@ -454,16 +554,36 @@ export function referenceDefinitions(source: string): string[] {
       } else if (closesFence(line, marker)) {
         inFence = false;
       }
+      otherContent = true;
       continue;
     }
     if (inFence) {
+      otherContent = true;
       continue;
     }
-    if (REFERENCE_DEFINITION.test(line)) {
-      definitions.push(line.trim());
+    if (line.trim() === '') {
+      continue;
     }
+
+    const label = DEFINITION_LABEL.exec(line);
+    if (label === null) {
+      otherContent = true;
+      continue;
+    }
+
+    const parts = [line.trim()];
+    let hasDestination = (label[1] ?? '').trim() !== '';
+    // The destination, then optionally a title, may each be on their own line.
+    while (!hasDestination && i + 1 < lines.length && (lines[i + 1] ?? '').trim() !== '') {
+      parts.push((lines[++i] ?? '').trim());
+      hasDestination = true;
+    }
+    if (i + 1 < lines.length && DEFINITION_TITLE.test(lines[i + 1] ?? '')) {
+      parts.push((lines[++i] ?? '').trim());
+    }
+    definitions.push(parts.join('\n  '));
   }
-  return definitions;
+  return { definitions, otherContent };
 }
 
 /**
@@ -475,9 +595,6 @@ export function referenceDefinitions(source: string): string[] {
  * use this to render such a run explicitly instead.
  */
 export function isReferenceDefinitionsOnly(source: string): boolean {
-  const lines = source
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .filter((line) => line.trim() !== '');
-  return lines.length > 0 && lines.every((line) => REFERENCE_DEFINITION.test(line));
+  const { definitions, otherContent } = scanDefinitions(source);
+  return definitions.length > 0 && !otherContent;
 }

@@ -38,6 +38,12 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
   // Without a folder there is nothing to inspect; the no-git port reports
   // "not a repository", which is exactly the git-unaware rendering.
   const git = new SettingGatedGitAdapter(root ? new NodeGitAdapter(root) : new NoGitAdapter());
+  /**
+   * Re-derives which git metadata paths are watched. Assigned once a workspace
+   * folder is open; a no-op otherwise, so callers need not care which it is.
+   */
+  let reconcileMetadataWatchers: () => void = () => {};
+
   const skillManager = new SkillManager(fileSystem);
 
   if (root) {
@@ -70,19 +76,21 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
       debounce = setTimeout(() => {
         debounce = undefined;
         git.invalidate();
+        // A repository may have appeared since the last event.
+        reconcileMetadataWatchers();
         store.notifyExternalChange();
       }, 150);
     };
-    const watch = (pattern: vscode.RelativePattern): void => {
+    const watch = (pattern: vscode.RelativePattern): vscode.FileSystemWatcher => {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       watcher.onDidChange(scheduleChange);
       watcher.onDidCreate(scheduleChange);
       watcher.onDidDelete(scheduleChange);
-      context.subscriptions.push(watcher);
+      return watcher;
     };
 
     for (const pattern of ['**/boards/**', '**/decisions/**', '**/docs/**', '**/features/**']) {
-      watch(new vscode.RelativePattern(root, pattern));
+      context.subscriptions.push(watch(new vscode.RelativePattern(root, pattern)));
     }
 
     // Commits, checkouts, staging and resets happen outside the editor and
@@ -90,15 +98,45 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
     // git's business, not ours: a subfolder workspace has no `.git` beside it,
     // a linked worktree keeps its refs in a shared directory elsewhere, and a
     // soft reset moves a branch ref while leaving HEAD and the index alone.
-    // So the adapter is asked, rather than `.git/**` assumed.
-    for (const metadataPath of git.metadataPaths()) {
-      watch(
-        new vscode.RelativePattern(
-          vscode.Uri.file(path.dirname(metadataPath)),
-          `${path.basename(metadataPath)}${metadataPath.endsWith('refs') ? '/**' : ''}`,
-        ),
-      );
-    }
+    //
+    // Nor is the answer fixed. A folder may not be a repository when the window
+    // opens and become one a minute later, so this is reconciled rather than
+    // registered once: watching the activation-time answer forever means a
+    // repository created afterwards is never watched at all.
+    const metadataWatchers = new Map<string, vscode.FileSystemWatcher>();
+    reconcileMetadataWatchers = (): void => {
+      const wanted = new Set(git.metadataPaths());
+      for (const [path_, watcher] of metadataWatchers) {
+        if (!wanted.has(path_)) {
+          watcher.dispose();
+          metadataWatchers.delete(path_);
+        }
+      }
+      for (const metadataPath of wanted) {
+        if (metadataWatchers.has(metadataPath)) {
+          continue;
+        }
+        metadataWatchers.set(
+          metadataPath,
+          watch(
+            new vscode.RelativePattern(
+              vscode.Uri.file(path.dirname(metadataPath)),
+              `${path.basename(metadataPath)}${metadataPath.endsWith('refs') ? '/**' : ''}`,
+            ),
+          ),
+        );
+      }
+    };
+    reconcileMetadataWatchers();
+    context.subscriptions.push({
+      dispose: () => {
+        for (const watcher of metadataWatchers.values()) {
+          watcher.dispose();
+        }
+        metadataWatchers.clear();
+      },
+    });
+
     context.subscriptions.push({
       dispose: () => {
         if (debounce) {
@@ -168,6 +206,7 @@ export function activate(context: vscode.ExtensionContext): RepoDocApi {
 
     vscode.commands.registerCommand('repodoc.refresh', () => {
       git.invalidate();
+      reconcileMetadataWatchers();
       refreshTrees();
       // Refresh means refresh. A reading view or board left showing a stale
       // baseline is the thing a human hit refresh to get rid of.
