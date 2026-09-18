@@ -332,12 +332,29 @@ export function blockKey(block: MarkdownBlock): string {
       key += '\n';
     }
   }
-  return `${block.kind}:${key.replace(/[ \t]+\n/g, '\n').replace(/\s+$/, '')}`;
+  // No tidying pass here. Stripping whitespace before newlines would reach
+  // inside the code that was just preserved line by line — trailing spaces in a
+  // multiline string literal are part of its value. Prose lines are already
+  // trimmed individually, so there is nothing left to tidy.
+  return `${block.kind}:${key}`;
 }
 
-/** Width of a line's leading whitespace, tabs counted as one. */
+/**
+ * A line's indentation in **columns**, not characters.
+ *
+ * Markdown counts a tab as advancing to the next four-column stop, so a single
+ * tab opens a code block on its own. Counting characters made tab-indented code
+ * look like a one-column paragraph, and its string literals were normalised as
+ * prose.
+ */
+const TAB_STOP = 4;
 function indentWidth(line: string): number {
-  return (/^[ \t]*/.exec(line)?.[0] ?? '').length;
+  const indent = /^[ \t]*/.exec(line)?.[0] ?? '';
+  let columns = 0;
+  for (const char of indent) {
+    columns = char === '\t' ? columns + (TAB_STOP - (columns % TAB_STOP)) : columns + 1;
+  }
+  return columns;
 }
 
 /**

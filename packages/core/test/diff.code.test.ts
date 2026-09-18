@@ -70,3 +70,52 @@ describe('diff — code content, wherever it lives', () => {
     assert.strictEqual(hasMarkdownChanges(before, after), false);
   });
 });
+
+describe('diff — code bytes survive key assembly', () => {
+  test('given tab-indented code with a changed literal, then it is a change', () => {
+    // A tab is an indentation column, not one character. Counting characters
+    // made a tab-indented code block look like prose and normalised its string.
+    const before = '\tconst s = "a b";\n';
+    const after = '\tconst s = "a  b";\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given tab-indented code reindented, then it is a change', () => {
+    const before = '\tdef f():\n\t\treturn 1\n';
+    const after = '\tdef f():\n\t\t\treturn 1\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given a mixed tab and space indent, then code is still recognised', () => {
+    const before = '  \tconst s = "a b";\n';
+    const after = '  \tconst s = "a  b";\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given trailing spaces inside a fenced string, then they are preserved', () => {
+    // Inside a multiline string literal the trailing spaces are the value.
+    // Key assembly used to strip whitespace before every newline, which threw
+    // them away after the code had been correctly preserved line by line.
+    const before = '```python\ns = """alpha \nbeta"""\n```\n';
+    const after = '```python\ns = """alpha  \nbeta"""\n```\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given trailing spaces inside indented code, then they are preserved', () => {
+    const before = '    s = """alpha \n    beta"""\n';
+    const after = '    s = """alpha  \n    beta"""\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given trailing spaces in a nested fence, then they are preserved', () => {
+    const before = '- code\n\n  ```py\n  s = """a \n  b"""\n  ```\n';
+    const after = '- code\n\n  ```py\n  s = """a  \n  b"""\n  ```\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given prose with trailing spaces removed, then it is still a hard-break change', () => {
+    assert.strictEqual(hasMarkdownChanges('one  \ntwo\n', 'one\ntwo\n'), true);
+  });
+});
