@@ -1,4 +1,10 @@
-import { diffMarkdown, groupRuns, runSource } from '@repodoc/core';
+import {
+  diffMarkdown,
+  groupRuns,
+  isReferenceDefinitionsOnly,
+  referenceDefinitions,
+  runSource,
+} from '@repodoc/core';
 import { renderMarkdownWithDiagrams } from './diagrams';
 
 export interface DiffRenderResult {
@@ -16,6 +22,12 @@ export interface DiffRenderResult {
  *
  * Each run of same-op blocks is rendered in one pass rather than block by
  * block, so lists and their numbering survive the split.
+ *
+ * Every run is also given the reference definitions from the side of the
+ * document it belongs to — removed runs the old ones, everything else the new.
+ * A run is parsed alone, so without them `[manual][guide]` renders as literal
+ * text the moment its definition lands in a different run. Definitions appended
+ * this way produce no output of their own; they only resolve what is above.
  */
 export function renderMarkdownDiff(
   before: string,
@@ -23,6 +35,8 @@ export function renderMarkdownDiff(
   options: { plantUmlServer?: string },
 ): DiffRenderResult {
   const blocks = diffMarkdown(before, after);
+  const oldDefinitions = referenceDefinitions(before);
+  const newDefinitions = referenceDefinitions(after);
   let hasMermaid = false;
   let added = 0;
   let removed = 0;
@@ -33,7 +47,15 @@ export function renderMarkdownDiff(
     } else if (run.op === 'del') {
       removed += run.blocks.length;
     }
-    const rendered = renderMarkdownWithDiagrams(runSource(run), options);
+    const body = runSource(run);
+    // A run of nothing but definitions renders to nothing: they configure the
+    // parser, they are not prose. Shown as code so that changing only a link's
+    // destination is something a reader can actually see.
+    const visible =
+      run.op !== 'same' && isReferenceDefinitionsOnly(body) ? '```\n' + body + '\n```' : body;
+    const definitions = run.op === 'del' ? oldDefinitions : newDefinitions;
+    const source = definitions.length ? `${visible}\n\n${definitions.join('\n')}` : visible;
+    const rendered = renderMarkdownWithDiagrams(source, options);
     hasMermaid = hasMermaid || rendered.hasMermaid;
     if (run.op === 'same') {
       return rendered.html;

@@ -53,6 +53,8 @@ const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const HARD_BREAK = '\u0000';
 const LIST_MARKER = /^(\s*)([-*+]|\d+[.)])\s+/;
 const ORDERED_MARKER = /^(\s*)(\d+)([.)]\s+)/;
+/** `[label]: destination "optional title"` at the head of a line. */
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:\s*\S/;
 
 /**
  * Split markdown into renderable blocks. Blank lines are separators and are
@@ -66,75 +68,142 @@ export function splitBlocks(source: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   let i = 0;
 
+  /** Consume a fence from `i`, returning its text; `i` lands after the close. */
+  const takeFence = (): string => {
+    const marker = FENCE_OPEN.exec(at(i))?.[1] ?? '```';
+    const from = i;
+    i++;
+    while (i < lines.length && !closesFence(at(i), marker)) {
+      i++;
+    }
+    if (i < lines.length) {
+      i++; // consume the closing fence
+    }
+    // An unterminated fence swallows the rest of the file, trailing blank
+    // lines included; they are not part of the code.
+    return lines.slice(from, i).join('\n').replace(/\n+$/, '');
+  };
+
   while (i < lines.length) {
     if (at(i).trim() === '') {
       i++;
       continue;
     }
 
-    const marker = FENCE_OPEN.exec(at(i))?.[1];
-    if (marker !== undefined) {
-      const start = i;
-      i++;
-      while (i < lines.length && !closesFence(at(i), marker)) {
-        i++;
-      }
-      if (i < lines.length) {
-        i++; // consume the closing fence
-      }
-      // An unterminated fence swallows the rest of the file, trailing blank
-      // lines included; they are not part of the code.
-      const text = lines.slice(start, i).join('\n').replace(/\n+$/, '');
-      blocks.push({ text, kind: 'fence' });
+    if (FENCE_OPEN.test(at(i))) {
+      blocks.push({ text: takeFence(), kind: 'fence' });
       continue;
     }
 
-    // A group runs to the next blank line or fence.
-    const start = i;
+    const opening = LIST_MARKER.exec(at(i));
+    if (opening) {
+      i = takeList(lines, i, blocks);
+      continue;
+    }
+
+    // A prose group runs to the next blank line or fence.
+    const from = i;
     while (i < lines.length && at(i).trim() !== '' && !FENCE_OPEN.test(at(i))) {
       i++;
     }
-    const group = lines.slice(start, i);
-    if (LIST_MARKER.test(group[0] ?? '')) {
-      blocks.push(...splitListItems(group));
-    } else {
-      blocks.push({ text: group.join('\n'), kind: 'prose' });
-    }
+    blocks.push({ text: lines.slice(from, i).join('\n'), kind: 'prose' });
   }
 
   return blocks;
 }
 
 /**
- * Split a list group into one block per item. Continuation lines and nested
- * items (indented past the top-level marker) stay with the item they belong to.
+ * Consume one whole list starting at `from`, pushing a block per item.
+ *
+ * A list is not "the lines until the next blank one". An item owns everything
+ * indented under it — further paragraphs, nested lists, fenced blocks — and a
+ * blank line between items makes the list *loose*, not finished. Treating each
+ * blank-line group as its own list is what made numbering restart and detached
+ * fenced blocks from the item that owned them.
+ *
+ * Numbering is the author's: the first marker sets the start, and each item
+ * after it counts on from there. A list written `5. 6. 7.` keeps those numbers
+ * when it renders in pieces, and one written lazily as `1. 1. 1.` still counts
+ * up rather than rendering three number ones.
+ *
+ * Returns the index of the first line after the list.
  */
-function splitListItems(group: string[]): MarkdownBlock[] {
-  // Callers only reach here when the first line matched LIST_MARKER.
-  const baseIndent = LIST_MARKER.exec(group[0] ?? '')?.[1]?.length ?? 0;
-  const items: string[][] = [];
-  for (const line of group) {
-    const indent = LIST_MARKER.exec(line)?.[1];
-    const startsItem = indent !== undefined && indent.length <= baseIndent;
-    const current = items[items.length - 1];
-    if (startsItem || current === undefined) {
-      items.push([line]);
-    } else {
-      current.push(line);
+function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
+  const at = (index: number): string => lines[index] ?? '';
+  const opening = LIST_MARKER.exec(at(from)) as RegExpExecArray;
+  const baseIndent = (opening[1] ?? '').length;
+  const ordered = ORDERED_MARKER.test(at(from));
+  const start = ordered ? Number(ORDERED_MARKER.exec(at(from))?.[2] ?? 1) : 0;
+
+  /** Indented past the marker, so it belongs to the item above. */
+  const isContinuation = (line: string): boolean =>
+    line.trim() !== '' && (/^[ \t]*/.exec(line)?.[0].length ?? 0) > baseIndent;
+
+  let i = from;
+  let position = 0;
+  while (i < lines.length) {
+    const marker = LIST_MARKER.exec(at(i));
+    const startsItem = marker !== null && (marker[1] ?? '').length <= baseIndent;
+    if (!startsItem) {
+      break;
+    }
+    // A list of one kind does not continue into another.
+    if (ORDERED_MARKER.test(at(i)) !== ordered) {
+      break;
+    }
+
+    const itemFrom = i;
+    i++;
+    // Everything indented under the marker, blank lines included while more
+    // indented content follows.
+    for (;;) {
+      if (i < lines.length && isContinuation(at(i))) {
+        i++;
+        continue;
+      }
+      if (i < lines.length && at(i).trim() === '') {
+        // A blank line only ends the item when nothing indented follows it.
+        let lookahead = i;
+        while (lookahead < lines.length && at(lookahead).trim() === '') {
+          lookahead++;
+        }
+        if (lookahead < lines.length && isContinuation(at(lookahead))) {
+          i = lookahead;
+          continue;
+        }
+      }
+      break;
+    }
+
+    const text = lines.slice(itemFrom, i).join('\n').replace(/\n+$/, '');
+    out.push({
+      text,
+      kind: 'listItem',
+      ...(ordered ? { ordinal: start + position } : {}),
+    });
+    position++;
+
+    // Skip the blank lines that separate a loose list's items.
+    while (i < lines.length && at(i).trim() === '') {
+      const next = (() => {
+        let k = i;
+        while (k < lines.length && at(k).trim() === '') {
+          k++;
+        }
+        return k;
+      })();
+      const following = LIST_MARKER.exec(at(next));
+      const continues =
+        following !== null &&
+        (following[1] ?? '').length <= baseIndent &&
+        ORDERED_MARKER.test(at(next)) === ordered;
+      if (!continues) {
+        break;
+      }
+      i = next;
     }
   }
-  let ordinal = 0;
-  return items.map((item) => {
-    const ordered = ORDERED_MARKER.test(item[0] ?? '');
-    if (ordered) {
-      ordinal++;
-    }
-    return {
-      text: item.join('\n'),
-      kind: 'listItem' as const,
-      ...(ordered ? { ordinal } : {}),
-    };
-  });
+  return i;
 }
 
 function closesFence(line: string, marker: string): boolean {
@@ -255,7 +324,10 @@ export function runSource(run: DiffRun): string {
   const parts = run.blocks.map((block) =>
     block.ordinal === undefined
       ? block.text
-      : block.text.replace(
+      : // The ordinal is the number this item has in its own list — the start
+        // the author wrote plus its position — so a run beginning mid-list
+        // renders `<ol start="7">` rather than restarting at one.
+        block.text.replace(
           ORDERED_MARKER,
           (_m, indent, _n, tail) => `${indent}${block.ordinal}${tail}`,
         ),
@@ -327,4 +399,56 @@ export function frontmatterDataChanged(
   const key = (data: Record<string, unknown>): string =>
     JSON.stringify(Object.entries(data).sort(([a], [b]) => a.localeCompare(b)));
   return key(before) !== key(after);
+}
+
+/**
+ * Every `[label]: destination` definition in a document, as source lines.
+ *
+ * A reference link is resolved by the parser against definitions anywhere in
+ * the same document. Rendering a diff run on its own therefore loses them: the
+ * prose is in one run and its definitions in another, and `[manual][guide]`
+ * falls back to literal text. Callers append these to each run so a run is
+ * parsed with the context its side of the document had.
+ *
+ * Definitions inside fenced blocks are ignored; they are code, not links.
+ */
+export function referenceDefinitions(source: string): string[] {
+  const definitions: string[] = [];
+  let inFence = false;
+  let marker = '';
+  for (const line of source.replace(/\r\n?/g, '\n').split('\n')) {
+    const fence = FENCE_OPEN.exec(line)?.[1];
+    if (fence !== undefined) {
+      if (!inFence) {
+        inFence = true;
+        marker = fence;
+      } else if (closesFence(line, marker)) {
+        inFence = false;
+      }
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
+    if (REFERENCE_DEFINITION.test(line)) {
+      definitions.push(line.trim());
+    }
+  }
+  return definitions;
+}
+
+/**
+ * Whether a fragment is nothing but reference definitions.
+ *
+ * Definitions render to no output at all — they configure the parser rather
+ * than producing prose. So a run that is only definitions is invisible, and an
+ * edit that changes only a link's destination shows the reader nothing. Callers
+ * use this to render such a run explicitly instead.
+ */
+export function isReferenceDefinitionsOnly(source: string): boolean {
+  const lines = source
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .filter((line) => line.trim() !== '');
+  return lines.length > 0 && lines.every((line) => REFERENCE_DEFINITION.test(line));
 }

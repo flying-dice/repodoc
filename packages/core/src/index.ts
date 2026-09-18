@@ -47,6 +47,8 @@ export {
   groupRuns,
   hasChanges,
   hasMarkdownChanges,
+  isReferenceDefinitionsOnly,
+  referenceDefinitions,
   runSource,
   splitBlocks,
 } from './diff';
