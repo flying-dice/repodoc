@@ -42,9 +42,13 @@ export type { BlockKind, DiffBlock, DiffOp, DiffRun, MarkdownBlock } from './dif
 export {
   blockKey,
   diffMarkdown,
+  frontmatterChanged,
+  frontmatterDataChanged,
   groupRuns,
   hasChanges,
   hasMarkdownChanges,
+  isReferenceDefinitionsOnly,
+  referenceDefinitions,
   runSource,
   splitBlocks,
 } from './diff';

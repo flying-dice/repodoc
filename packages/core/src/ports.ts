@@ -36,6 +36,14 @@ export interface GitStatusEntry {
   /** Workspace-relative path, forward slashes. */
   path: string;
   status: GitFileStatus;
+  /**
+   * For a staged rename, where the file was before it moved.
+   *
+   * This is not bookkeeping: `HEAD` still holds the content under the old path,
+   * so a baseline lookup that asks for the new one finds nothing and the file
+   * reads as newly added.
+   */
+  originalPath?: string;
 }
 
 /**
@@ -50,10 +58,27 @@ export interface GitStatusEntry {
 export interface GitPort {
   /** True only when there is a repository with at least one commit to compare against. */
   isRepo(): boolean;
-  /** File contents at `HEAD`, or `undefined` when the path is not in `HEAD`. */
+  /**
+   * File contents at `HEAD`, or `undefined` when the path is not in `HEAD`.
+   * A staged rename resolves through its original path.
+   */
   readAtHead(relPath: string): string | undefined;
+  /**
+   * The path `readAtHead` would consult for `relPath` — the pre-rename name
+   * when the file moved, otherwise `relPath` itself. Exposed so a caller can
+   * say what it compared against rather than implying the file is new.
+   */
+  baselinePathOf(relPath: string): string;
+  /** Commit sha at `HEAD`, or `undefined` outside a repository / before the first commit. */
+  headSha(): string | undefined;
   /** Every workspace file differing from `HEAD`, tracked or not. */
   status(): GitStatusEntry[];
+  /**
+   * Absolute paths whose change means the baseline moved — git's `HEAD`, index
+   * and refs, in both the private and common metadata directories. Empty
+   * outside a repository. Hosts watch these rather than guessing at `.git`.
+   */
+  metadataPaths(): string[];
   /** Drop cached state; the next call re-reads from git. */
   invalidate(): void;
 }

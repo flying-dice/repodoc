@@ -125,13 +125,16 @@ describe('adapters.NodeGitAdapter', () => {
     assert.deepStrictEqual(statusMap(new NodeGitAdapter(dir)), { 'docs/new.md': 'added' });
   });
 
-  test('a staged rename reads as renamed, at its new path', () => {
+  test('a staged rename reads as renamed, at its new path, and keeps the old one', () => {
     const dir = makeRepo({ 'docs/a.md': '# A\nsome body text to make the rename obvious\n' });
     git(dir, 'mv', 'docs/a.md', 'docs/b.md');
     const entries = new NodeGitAdapter(dir).status();
-    // The old path is consumed from the porcelain stream, not reported: only
-    // the file that is there now can be badged in a tree.
-    assert.deepStrictEqual(entries, [{ path: 'docs/b.md', status: 'renamed' }]);
+    // Only the file that is there now can be badged in a tree — but HEAD holds
+    // its content under the old name, so the old path is kept, not discarded.
+    // This assertion previously locked in discarding it. See #24.
+    assert.deepStrictEqual(entries, [
+      { path: 'docs/b.md', status: 'renamed', originalPath: 'docs/a.md' },
+    ]);
   });
 
   test('a file added and deleted again is not reported', () => {
