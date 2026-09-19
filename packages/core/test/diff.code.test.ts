@@ -167,3 +167,41 @@ describe('diff — list nesting measured in columns', () => {
     assert.strictEqual(items.length, 1);
   });
 });
+
+describe('diff — indented code is not a document fence', () => {
+  test('given indented code starting with fence ticks, then it is not a fence', () => {
+    // Broadening FENCE_OPEN to any indent made `    ```…` open a document fence.
+    // Closing still required 0–3 spaces, so the false fence swallowed later blocks.
+    const source = '    code before\n    ```not-a-fence\n    code after\n';
+    const blocks = splitBlocks(source);
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0]?.kind, 'prose');
+    assert.ok(blocks[0]?.text.includes('```not-a-fence'));
+  });
+
+  test('given a destination-only ref edit beside indented fence ticks, then only the def changes', () => {
+    const before =
+      'See [doc][ref].\n\n    code before\n    ```not-a-fence\n    code after\n\n[ref]: https://example.invalid/old\n';
+    const after =
+      'See [doc][ref].\n\n    code before\n    ```not-a-fence\n    code after\n\n[ref]: https://example.invalid/new\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+    const changed = diffMarkdown(before, after).filter((b) => b.op !== 'same');
+    assert.strictEqual(changed.length, 2);
+    assert.ok(changed.every((b) => b.block.text.includes('[ref]:')));
+    assert.ok(changed.every((b) => !b.block.text.includes('```not-a-fence')));
+  });
+
+  test('given unchanged indented code with fence ticks, then nothing is marked changed', () => {
+    const source = '    line1\n    ```not-a-fence\n    line3\n';
+    assert.strictEqual(hasMarkdownChanges(source, source), false);
+    assert.deepStrictEqual(counts(source, source), { added: 0, removed: 0 });
+    assert.strictEqual(splitBlocks(source).length, 1);
+  });
+
+  test('given a real fence at three columns, then it still opens', () => {
+    const blocks = splitBlocks('   ```\ncode\n```\n');
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0]?.kind, 'fence');
+  });
+});

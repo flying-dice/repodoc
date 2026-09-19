@@ -49,14 +49,13 @@ export interface DiffRun {
 }
 
 /**
- * A fence opener, allowing tab indentation.
- *
- * Markdown permits up to three columns before a fence, and a tab is an
- * indentation column like any other. Matching only spaces meant a tab-indented
- * fence never opened, so its body was collapsed as prose. Depth is checked in
- * columns by {@link isFenceOpen}, which this pattern feeds.
+ * Opening or closing fence ticks, allowing tab or space characters in the
+ * indent. Depth is gated by {@link fenceMarkerAt}: CommonMark only opens a
+ * fence within three columns of the container's left margin. Matching any
+ * indent treated backticks inside top-level indented code as a document fence,
+ * which then swallowed later blocks and reference definitions.
  */
-const FENCE_OPEN = /^[ \t]*(`{3,}|~{3,})/;
+const FENCE_MARKER = /^[ \t]*(`{3,}|~{3,})/;
 /**
  * The most LCS table cells this will allocate, and so the most work one diff
  * will do. Four million cells is a 16 MB `Int32Array` — large enough that no
@@ -91,7 +90,7 @@ export function splitBlocks(source: string): MarkdownBlock[] {
 
   /** Consume a fence from `i`, returning its text; `i` lands after the close. */
   const takeFence = (): string => {
-    const marker = FENCE_OPEN.exec(at(i))?.[1] ?? '```';
+    const marker = fenceMarkerAt(at(i)) ?? '```';
     const from = i;
     i++;
     while (i < lines.length && !closesFence(at(i), marker)) {
@@ -111,7 +110,7 @@ export function splitBlocks(source: string): MarkdownBlock[] {
       continue;
     }
 
-    if (FENCE_OPEN.test(at(i))) {
+    if (fenceMarkerAt(at(i)) !== undefined) {
       blocks.push({ text: takeFence(), kind: 'fence' });
       continue;
     }
@@ -124,7 +123,7 @@ export function splitBlocks(source: string): MarkdownBlock[] {
 
     // A prose group runs to the next blank line or fence.
     const from = i;
-    while (i < lines.length && at(i).trim() !== '' && !FENCE_OPEN.test(at(i))) {
+    while (i < lines.length && at(i).trim() !== '' && fenceMarkerAt(at(i)) === undefined) {
       i++;
     }
     blocks.push({ text: lines.slice(from, i).join('\n'), kind: 'prose' });
@@ -184,7 +183,7 @@ function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
     line.trim() !== '' &&
     !startsThisItem(line) &&
     LIST_MARKER.exec(line) === null &&
-    !FENCE_OPEN.test(line) &&
+    fenceMarkerAt(line) === undefined &&
     !/^ {0,3}(#{1,6}\s|>|\s*$)/.test(line);
 
   let i = from;
@@ -248,9 +247,28 @@ function markerDelimiter(line: string): string {
   return /^\s*([-*+])/.exec(line)?.[1] ?? '';
 }
 
-function closesFence(line: string, marker: string): boolean {
-  const close = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
-  const fence = close?.[1];
+/**
+ * The fence marker on `line` if its indent is at most `maxIndent` columns;
+ * otherwise `undefined`.
+ *
+ * Document-level callers leave `maxIndent` at 3. Inside a list item,
+ * `blockKey` passes the item's base indent plus 3 so a tab-indented fence
+ * under a space-indented item still opens and its body stays byte-for-byte.
+ */
+function fenceMarkerAt(line: string, maxIndent = 3): string | undefined {
+  const match = FENCE_MARKER.exec(line);
+  if (match === null || indentWidth(line) > maxIndent) {
+    return undefined;
+  }
+  return match[1];
+}
+
+function closesFence(line: string, marker: string, maxIndent = 3): boolean {
+  // A closer carries no info string — only the marker and trailing space.
+  if (!/^[ \t]*(`{3,}|~{3,})\s*$/.test(line)) {
+    return false;
+  }
+  const fence = fenceMarkerAt(line, maxIndent);
   return fence !== undefined && fence[0] === marker[0] && fence.length >= marker.length;
 }
 
@@ -282,17 +300,20 @@ export function blockKey(block: MarkdownBlock): string {
   // per-line rule below would miss exactly that line.
   const wholeBlockIsCode = block.kind === 'fence' || baseIndent >= 4;
 
+  // Fences nested in this block may sit past column 3 — up to three past the
+  // block's own indent — so a tab under a space-indented list item still opens.
+  const maxFenceIndent = baseIndent + 3;
   let inFence = false;
   let fenceMarker = '';
   const normalized = lines.map((line) => {
-    const fence = FENCE_OPEN.exec(line)?.[1];
+    const fence = fenceMarkerAt(line, maxFenceIndent);
     if (fence !== undefined) {
       if (!inFence) {
         inFence = true;
         fenceMarker = fence;
         return line; // the opening fence is code too — its info string matters
       }
-      if (closesFence(line, fenceMarker)) {
+      if (closesFence(line, fenceMarker, maxFenceIndent)) {
         inFence = false;
       }
       return line;
@@ -324,14 +345,14 @@ export function blockKey(block: MarkdownBlock): string {
   fenceMarker = '';
   for (let i = 0; i < normalized.length; i++) {
     const raw = lines[i] ?? '';
-    const fence = FENCE_OPEN.exec(raw)?.[1];
+    const fence = fenceMarkerAt(raw, maxFenceIndent);
     const isCode =
       wholeBlockIsCode || inFence || fence !== undefined || indentWidth(raw) >= baseIndent + 4;
     if (fence !== undefined) {
       if (!inFence) {
         inFence = true;
         fenceMarker = fence;
-      } else if (closesFence(raw, fenceMarker)) {
+      } else if (closesFence(raw, fenceMarker, maxFenceIndent)) {
         inFence = false;
       }
     }
@@ -574,7 +595,7 @@ function scanDefinitions(source: string): { definitions: string[]; otherContent:
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
-    const fence = FENCE_OPEN.exec(line)?.[1];
+    const fence = fenceMarkerAt(line);
     if (fence !== undefined) {
       if (!inFence) {
         inFence = true;
