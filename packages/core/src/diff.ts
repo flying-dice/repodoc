@@ -294,15 +294,25 @@ export function blockKey(block: MarkdownBlock): string {
   const source =
     block.ordinal === undefined ? block.text : block.text.replace(ORDERED_MARKER, '$1');
   const lines = source.split('\n');
-  const baseIndent = indentWidth(lines[0] ?? '');
-  // A block that opens four columns in is an indented code block in its
-  // entirety — its first line sits at the base indent, not past it, so the
-  // per-line rule below would miss exactly that line.
-  const wholeBlockIsCode = block.kind === 'fence' || baseIndent >= 4;
+  // Everything below is measured from the block's **content margin**, not from
+  // the indentation of the line that opens it. A list marker shifts the margin:
+  // in `- example` the item's content begins at column two, so a fence at four
+  // is a nested fence and a body line at two is inside it. Measuring from the
+  // marker's own indent rejected both.
+  //
+  // The margin comes from `block.text`, not `source`: an ordered marker has
+  // already been stripped out of `source` to keep renumbering from reading as a
+  // change, which would leave the marker's width unaccounted for.
+  const contentMargin = contentMarginOf(block);
+  // A block whose content begins four columns in is an indented code block in
+  // its entirety — its first line sits *at* the margin, not past it, so the
+  // per-line rule below would miss exactly that line. List items are excluded:
+  // a deeply nested item is still a list item, not code.
+  const wholeBlockIsCode =
+    block.kind === 'fence' || (block.kind !== 'listItem' && contentMargin >= 4);
 
-  // Fences nested in this block may sit past column 3 — up to three past the
-  // block's own indent — so a tab under a space-indented list item still opens.
-  const maxFenceIndent = baseIndent + 3;
+  // CommonMark opens a fence within three columns of its container's margin.
+  const maxFenceIndent = contentMargin + 3;
   let inFence = false;
   let fenceMarker = '';
   const normalized = lines.map((line) => {
@@ -321,7 +331,7 @@ export function blockKey(block: MarkdownBlock): string {
     // Code is compared byte for byte wherever it sits: inside a fence at any
     // nesting, or indented four past the block's own indent, which is how an
     // indented code block is written both standalone and inside a list item.
-    if (wholeBlockIsCode || inFence || indentWidth(line) >= baseIndent + 4) {
+    if (wholeBlockIsCode || inFence || indentWidth(line) >= contentMargin + 4) {
       return line;
     }
     // Prose: reflowing is not an edit, so whitespace within a line collapses.
@@ -347,7 +357,7 @@ export function blockKey(block: MarkdownBlock): string {
     const raw = lines[i] ?? '';
     const fence = fenceMarkerAt(raw, maxFenceIndent);
     const isCode =
-      wholeBlockIsCode || inFence || fence !== undefined || indentWidth(raw) >= baseIndent + 4;
+      wholeBlockIsCode || inFence || fence !== undefined || indentWidth(raw) >= contentMargin + 4;
     if (fence !== undefined) {
       if (!inFence) {
         inFence = true;
@@ -372,6 +382,30 @@ export function blockKey(block: MarkdownBlock): string {
 }
 
 /**
+ * The column a block's content starts at.
+ *
+ * For a list item that is past its marker and the spaces after it — `- x` has a
+ * margin of two — because everything the item owns is measured from there. For
+ * anything else it is simply the line's own indentation.
+ *
+ * Read from `block.text` rather than the key's working copy: an ordered marker
+ * is stripped from that copy so renumbering does not read as a change, which
+ * would leave the marker's width unaccounted for here.
+ */
+function contentMarginOf(block: MarkdownBlock): number {
+  const first = block.text.split('\n')[0] ?? '';
+  if (block.kind === 'listItem') {
+    const marker = LIST_MARKER.exec(first);
+    if (marker?.[0] !== undefined) {
+      // The whole marker, not its leading whitespace: `- ` has no indent but
+      // occupies two columns, and that is where the item's content begins.
+      return columnsOf(marker[0]);
+    }
+  }
+  return indentWidth(first);
+}
+
+/**
  * A line's indentation in **columns**, not characters.
  *
  * Markdown counts a tab as advancing to the next four-column stop, so a single
@@ -381,9 +415,13 @@ export function blockKey(block: MarkdownBlock): string {
  */
 const TAB_STOP = 4;
 function indentWidth(line: string): number {
-  const indent = /^[ \t]*/.exec(line)?.[0] ?? '';
+  return columnsOf(/^[ \t]*/.exec(line)?.[0] ?? '');
+}
+
+/** Columns a run of text occupies, with tabs advancing to the next tab stop. */
+function columnsOf(text: string): number {
   let columns = 0;
-  for (const char of indent) {
+  for (const char of text) {
     columns = char === '\t' ? columns + (TAB_STOP - (columns % TAB_STOP)) : columns + 1;
   }
   return columns;
