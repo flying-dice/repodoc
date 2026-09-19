@@ -48,7 +48,15 @@ export interface DiffRun {
   blocks: MarkdownBlock[];
 }
 
-const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
+/**
+ * A fence opener, allowing tab indentation.
+ *
+ * Markdown permits up to three columns before a fence, and a tab is an
+ * indentation column like any other. Matching only spaces meant a tab-indented
+ * fence never opened, so its body was collapsed as prose. Depth is checked in
+ * columns by {@link isFenceOpen}, which this pattern feeds.
+ */
+const FENCE_OPEN = /^[ \t]*(`{3,}|~{3,})/;
 /**
  * The most LCS table cells this will allocate, and so the most work one diff
  * will do. Four million cells is a 16 MB `Int32Array` — large enough that no
@@ -144,7 +152,10 @@ export function splitBlocks(source: string): MarkdownBlock[] {
 function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
   const at = (index: number): string => lines[index] ?? '';
   const opening = LIST_MARKER.exec(at(from)) as RegExpExecArray;
-  const baseIndent = (opening[1] ?? '').length;
+  // Columns, not characters — the same rule `blockKey` uses. Measuring
+  // characters here made a tab-nested child under a space-indented parent look
+  // like a sibling, so the two halves of this file disagreed about nesting.
+  const baseIndent = indentWidth(opening[1] ?? '');
   const ordered = ORDERED_MARKER.test(at(from));
   const start = ordered ? Number(ORDERED_MARKER.exec(at(from))?.[2] ?? 1) : 0;
   // `1.` and `1)` are two different lists to a markdown parser. Sharing one
@@ -154,7 +165,7 @@ function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
   /** Whether `line` opens an item of *this* list rather than some other one. */
   const startsThisItem = (line: string): boolean => {
     const marker = LIST_MARKER.exec(line);
-    if (marker === null || (marker[1] ?? '').length > baseIndent) {
+    if (marker === null || indentWidth(marker[1] ?? '') > baseIndent) {
       return false;
     }
     return ORDERED_MARKER.test(line) === ordered && markerDelimiter(line) === delimiter;
@@ -162,7 +173,7 @@ function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
 
   /** Indented past the marker, so it belongs to the item above. */
   const isIndentedContinuation = (line: string): boolean =>
-    line.trim() !== '' && (/^[ \t]*/.exec(line)?.[0].length ?? 0) > baseIndent;
+    line.trim() !== '' && indentWidth(line) > baseIndent;
 
   /**
    * A *lazy* continuation: an unindented line directly under an item's text,

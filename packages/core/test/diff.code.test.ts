@@ -9,7 +9,7 @@
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { diffMarkdown, hasMarkdownChanges } from '../src/diff';
+import { diffMarkdown, hasMarkdownChanges, splitBlocks } from '../src/diff';
 
 /** Added and removed block counts, so a "detected" claim is checked end to end. */
 function counts(before: string, after: string): { added: number; removed: number } {
@@ -117,5 +117,53 @@ describe('diff — code bytes survive key assembly', () => {
 
   test('given prose with trailing spaces removed, then it is still a hard-break change', () => {
     assert.strictEqual(hasMarkdownChanges('one  \ntwo\n', 'one\ntwo\n'), true);
+  });
+});
+
+describe('diff — tabs under an indented parent', () => {
+  test('given a tab fence under a space-indented item, then its literal is preserved', () => {
+    const before = '  - x\n\t```\n\tconst s = "a b";\n\t```\n';
+    const after = '  - x\n\t```\n\tconst s = "a  b";\n\t```\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a tab-indented code line under a space-indented item, then it is preserved', () => {
+    const before = '  - x\n\n\t\tconst s = "a b";\n';
+    const after = '  - x\n\n\t\tconst s = "a  b";\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given a fence opened with a tab, then it is recognised as a fence', () => {
+    const before = '\t```\n\tconst s = "a b";\n\t```\n';
+    const after = '\t```\n\tconst s = "a  b";\n\t```\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+});
+
+describe('diff — list nesting measured in columns', () => {
+  test('given a tab-nested child under a space-indented parent, then it nests', () => {
+    const items = splitBlocks('  - parent\n\t- child\n').filter((b) => b.kind === 'listItem');
+    assert.strictEqual(
+      items.length,
+      1,
+      'a tab is four columns, so the child is nested under the parent, not its sibling',
+    );
+    assert.ok(items[0]?.text.includes('child'));
+  });
+
+  test('given a space-nested child, then it still nests', () => {
+    const items = splitBlocks('  - parent\n    - child\n').filter((b) => b.kind === 'listItem');
+    assert.strictEqual(items.length, 1);
+  });
+
+  test('given a sibling at the same column, then it is a sibling', () => {
+    const items = splitBlocks('  - parent\n  - sibling\n').filter((b) => b.kind === 'listItem');
+    assert.strictEqual(items.length, 2);
+  });
+
+  test('given a tab-indented list with a tab-nested child, then it nests', () => {
+    const items = splitBlocks('\t- parent\n\t\t- child\n').filter((b) => b.kind === 'listItem');
+    assert.strictEqual(items.length, 1);
   });
 });
