@@ -206,3 +206,45 @@ describe('diff — ownership when code resembles a list, and on the way back out
     );
   });
 });
+
+describe('diff — a paragraph continuation is not a return to the parent', () => {
+  test('given a lazy continuation under a child item, then the child still owns its fence', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n  continued\n\n      ```js\n    const s = "a b";\n      ```\n',
+    );
+    assert.strictEqual(
+      hasMarkdownChanges(before, after),
+      true,
+      'an unindented continuation is still the child’s paragraph, not the parent’s',
+    );
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a tab-indented fence after a lazy continuation, then its body is still code', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n  continued\n\n\t```js\n\tconst s = "a b";\n\t```\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a lazy continuation three levels deep, then the innermost item keeps its fence', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n\n    - deepest\n    continued\n\n        ```js\n      const s = "a b";\n        ```\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a blank line before the outdented line, then the parent context is restored', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n\n  back to outer\n\n      const s = "a b";\n',
+    );
+    assert.strictEqual(
+      hasMarkdownChanges(before, after),
+      true,
+      'the blank line ends the child’s paragraph, so this one is a genuine return',
+    );
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+});

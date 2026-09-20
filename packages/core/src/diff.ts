@@ -179,12 +179,7 @@ function takeList(lines: string[], from: number, out: MarkdownBlock[]): number {
    * which markdown folds into that item. Ending the item at the newline instead
    * lifts the text out of its `<li>` and into a paragraph of its own.
    */
-  const isLazyContinuation = (line: string): boolean =>
-    line.trim() !== '' &&
-    !startsThisItem(line) &&
-    LIST_MARKER.exec(line) === null &&
-    fenceMarkerAt(line) === undefined &&
-    !/^ {0,3}(#{1,6}\s|>|\s*$)/.test(line);
+  const isLazyContinuation = (line: string): boolean => line.trim() !== '' && !opensNewBlock(line);
 
   let i = from;
   let position = 0;
@@ -273,6 +268,22 @@ function closesFence(line: string, marker: string, maxIndent = 3): boolean {
 }
 
 /**
+ * Whether `line` opens a new block rather than continuing the paragraph above
+ * it: a list marker, a fence, an ATX heading or a block quote.
+ *
+ * Markdown folds a less-indented line sitting directly under paragraph text
+ * back into that paragraph — a *lazy* continuation — unless it opens one of
+ * these. Indentation alone cannot tell the two apart.
+ */
+function opensNewBlock(line: string): boolean {
+  return (
+    LIST_MARKER.exec(line) !== null ||
+    fenceMarkerAt(line) !== undefined ||
+    /^ {0,3}(#{1,6}\s|>)/.test(line)
+  );
+}
+
+/**
  * Identity used for matching blocks across the two sides.
  *
  * Reflowing a paragraph is not an edit, so whitespace *within a line of prose*
@@ -315,6 +326,9 @@ export function blockKey(block: MarkdownBlock): string {
   let inFence = false;
   let fenceMarker = '';
   let fenceMargin = margins[0] as number;
+  // Whether the line above was paragraph text, and so can absorb a
+  // less-indented line below it instead of yielding to the parent container.
+  let inParagraph = false;
 
   let key = '';
   for (let i = 0; i < lines.length; i++) {
@@ -331,9 +345,14 @@ export function blockKey(block: MarkdownBlock): string {
       } else if (line.trim() !== '') {
         const indent = indentWidth(line);
         // Back out to whichever container this line actually sits in. A blank
-        // line says nothing about nesting, so it never pops.
-        while (margins.length > 1 && indent < (margins[margins.length - 1] as number)) {
-          margins.pop();
+        // line says nothing about nesting, so it never pops — and neither does
+        // a lazy continuation, which is still the child's paragraph however
+        // little it is indented. Only a line that opens a new block, or one
+        // that follows a blank, is a genuine return to the parent.
+        if (!inParagraph || opensNewBlock(line)) {
+          while (margins.length > 1 && indent < (margins[margins.length - 1] as number)) {
+            margins.pop();
+          }
         }
         const margin = margins[margins.length - 1] as number;
 
@@ -364,6 +383,10 @@ export function blockKey(block: MarkdownBlock): string {
         }
       }
     }
+
+    // Only unfenced prose can absorb the line below it. Code, a fence and a
+    // blank line all close the paragraph.
+    inParagraph = line.trim() !== '' && !isCode;
 
     // Prose lines join with a space — a soft wrap is not content. Code lines
     // keep their newline, because the line break is the program.
