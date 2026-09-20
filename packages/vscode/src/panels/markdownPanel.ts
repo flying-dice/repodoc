@@ -1,10 +1,5 @@
-import {
-  type GitPort,
-  hasMarkdownChanges,
-  parseFrontmatter,
-  type RepoDocStore,
-  statusByPath,
-} from '@repodoc/core';
+import { type GitPort, parseFrontmatter, type RepoDocStore, statusByPath } from '@repodoc/core';
+import { frontmatterDataChanged, hasMarkdownChanges } from '@repodoc/core/diff';
 import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
 import { renderMarkdownWithDiagrams } from './diagrams';
@@ -220,7 +215,10 @@ export class MarkdownPanel {
   private renderBody(body: string): RenderedBody {
     const head = this.headBody();
     const canDiffAgainstHead = head !== undefined && hasMarkdownChanges(head, body);
-    const metadataOnly = !canDiffAgainstHead && this.fileChanged();
+    // Only claim "metadata changed" when the frontmatter really did. Inferring
+    // it from "git says changed, body says not" turns any block-matching false
+    // negative into a confident lie about what moved.
+    const metadataOnly = !canDiffAgainstHead && this.fileChanged() && this.frontmatterMoved();
     if (this.state.mode === 'diff' && head !== undefined && canDiffAgainstHead) {
       // Timing is reported in the top bar, so it is measured here, at the call
       // site, rather than baked into the renderer.
@@ -251,6 +249,25 @@ export class MarkdownPanel {
       return false;
     }
     return statusByPath(this.git.status()).has(this.sourcePath());
+  }
+
+  /**
+   * Whether this file's frontmatter differs from `HEAD`. The record already
+   * carries its parsed frontmatter, so only the `HEAD` side needs parsing.
+   */
+  private frontmatterMoved(): boolean {
+    if (!this.git.isRepo()) {
+      return false;
+    }
+    const head = this.git.readAtHead(this.sourcePath());
+    if (head === undefined) {
+      return false; // not in HEAD at all: a new file, not a metadata edit
+    }
+    const working =
+      this.state.kind === 'doc'
+        ? this.store.readDoc(this.state.target)?.frontmatter
+        : this.store.getDecision(this.state.target)?.frontmatter;
+    return frontmatterDataChanged(parseFrontmatter(head).data, working ?? {});
   }
 
   /** Body of this file at `HEAD`, or `undefined` outside a repository. */

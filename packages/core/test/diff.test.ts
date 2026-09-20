@@ -1,208 +1,222 @@
+/**
+ * The shape of a diff: what is compared, what is aligned, and what a caller is
+ * handed to render.
+ *
+ * Structure comes from the reading view's own parser, so there are no tests
+ * here for where a fence ends or which item owns a nested list — those are
+ * Marked's answers, and asserting them again would be testing the library.
+ * What is asserted is RepoDoc's part: the comparison policy, the alignment and
+ * the runs.
+ */
+
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import type { DiffBlock } from '../src/diff';
-import { blockKey, diffMarkdown, groupRuns, hasChanges, runSource, splitBlocks } from '../src/diff';
-import { required } from './helpers';
+import {
+  diffMarkdown,
+  hasChanges,
+  hasMarkdownChanges,
+  lexMarkdown,
+  projectTokens,
+} from '../src/diff';
+import { counts, projection, render, shape } from './diffHelpers';
 
-/** Compact rendering of a diff for assertions: `+`/`-`/` ` then the first line. */
-function shape(blocks: DiffBlock[]): string[] {
-  const sign = { same: ' ', add: '+', del: '-' } as const;
-  return blocks.map((b) => `${sign[b.op]}${b.block.text.split('\n')[0]}`);
-}
-
-describe('diff.splitBlocks', () => {
-  test('paragraphs separated by blank lines are separate blocks', () => {
-    const blocks = splitBlocks('First para.\n\nSecond para.\n');
+describe('diff.lexMarkdown', () => {
+  test('blank lines are separators, not blocks', () => {
     assert.deepStrictEqual(
-      blocks.map((b) => b.text),
-      ['First para.', 'Second para.'],
+      lexMarkdown('First para.\n\nSecond para.\n').tokens.map((t) => t.type),
+      ['paragraph', 'paragraph'],
     );
   });
 
-  test('a multi-line paragraph stays one block', () => {
-    const blocks = splitBlocks('Line one\nline two\n');
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(required(blocks[0], 'block').text, 'Line one\nline two');
+  test('a multi-line paragraph is one block', () => {
+    assert.strictEqual(lexMarkdown('Line one\nline two\n').tokens.length, 1);
   });
 
-  test('each list item is its own block', () => {
-    const blocks = splitBlocks('- alpha\n- beta\n- gamma\n');
+  test('a whole list is one block, its items inside it', () => {
+    const tokens = lexMarkdown('- alpha\n- beta\n- gamma\n').tokens;
     assert.deepStrictEqual(
-      blocks.map((b) => b.text),
-      ['- alpha', '- beta', '- gamma'],
-    );
-    assert.ok(blocks.every((b) => b.kind === 'listItem'));
-  });
-
-  test('continuation lines and nested items stay with their item', () => {
-    const blocks = splitBlocks('- alpha\n  wrapped text\n  - nested\n- beta\n');
-    assert.deepStrictEqual(
-      blocks.map((b) => b.text),
-      ['- alpha\n  wrapped text\n  - nested', '- beta'],
-    );
-  });
-
-  test('ordered list items carry their position', () => {
-    const blocks = splitBlocks('1. one\n2. two\n3. three\n');
-    assert.deepStrictEqual(
-      blocks.map((b) => b.ordinal),
-      [1, 2, 3],
-    );
-  });
-
-  test('a fenced block is atomic, blank lines and markers inside included', () => {
-    const source = 'intro\n\n```ts\nconst a = 1;\n\n- not a list\n```\n\nouttro\n';
-    const blocks = splitBlocks(source);
-    assert.deepStrictEqual(
-      blocks.map((b) => b.kind),
-      ['prose', 'fence', 'prose'],
-    );
-    assert.strictEqual(
-      required(blocks[1], 'block').text,
-      '```ts\nconst a = 1;\n\n- not a list\n```',
-    );
-  });
-
-  test('an unterminated fence runs to the end of the document', () => {
-    const blocks = splitBlocks('```\nunclosed\n');
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(required(blocks[0], 'block').kind, 'fence');
-    assert.strictEqual(required(blocks[0], 'block').text, '```\nunclosed');
-  });
-
-  test('a fence closes only on a matching marker of at least equal length', () => {
-    const blocks = splitBlocks('````\n```\nstill inside\n````\n');
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(required(blocks[0], 'block').text, '````\n```\nstill inside\n````');
-  });
-
-  test('a fence immediately after a paragraph ends the paragraph', () => {
-    const blocks = splitBlocks('para\n```\ncode\n```\n');
-    assert.deepStrictEqual(
-      blocks.map((b) => b.kind),
-      ['prose', 'fence'],
+      tokens.map((t) => t.type),
+      ['list'],
     );
   });
 
   test('empty input yields no blocks', () => {
-    assert.deepStrictEqual(splitBlocks(''), []);
-    assert.deepStrictEqual(splitBlocks('\n\n   \n'), []);
+    assert.deepStrictEqual(lexMarkdown('').tokens, []);
+    assert.deepStrictEqual(lexMarkdown('\n\n   \n').tokens, []);
   });
 
   test('CRLF input is normalized', () => {
-    const blocks = splitBlocks('one\r\n\r\ntwo\r\n');
     assert.deepStrictEqual(
-      blocks.map((b) => b.text),
+      lexMarkdown('one\r\n\r\ntwo\r\n').tokens.map((t) => t.raw.trim()),
       ['one', 'two'],
     );
   });
+
+  test('reference definitions are read as definitions, not as prose', () => {
+    const doc = lexMarkdown('See [g][guide].\n\n[guide]: https://example.invalid "T"\n');
+    assert.deepStrictEqual(doc.definitions, [
+      { label: 'guide', href: 'https://example.invalid', title: 'T' },
+    ]);
+  });
 });
 
-describe('diff.blockKey', () => {
-  test('whitespace runs collapse so reflowing is not a change', () => {
-    const a = required(splitBlocks('a   b')[0], 'block');
-    const b = required(splitBlocks('a\nb')[0], 'block');
-    assert.strictEqual(blockKey(a), blockKey(b));
+describe('diff — the comparison policy', () => {
+  test('reflowing a paragraph is not a change', () => {
+    assert.strictEqual(hasMarkdownChanges('a   b', 'a\nb'), false);
   });
 
-  test('renumbering an ordered list is not a change', () => {
-    const a = required(splitBlocks('3. same text')[0], 'block');
-    const b = required(splitBlocks('7. same text')[0], 'block');
-    assert.strictEqual(blockKey(a), blockKey(b));
+  test('a code payload is compared exactly', () => {
+    assert.strictEqual(hasMarkdownChanges('```\na b\n```\n', '```\na  b\n```\n'), true);
   });
 
-  test('blocks of different kinds never match', () => {
-    const a = required(splitBlocks('- text')[0], 'block');
-    const b = required(splitBlocks('text')[0], 'block');
-    assert.notStrictEqual(blockKey(a), blockKey(b));
+  test('inline code is compared exactly', () => {
+    assert.strictEqual(hasMarkdownChanges('use `a b` here\n', 'use `a  b` here\n'), true);
+  });
+
+  test('a link destination is part of the content', () => {
+    assert.strictEqual(
+      hasMarkdownChanges('[text](https://a.invalid)\n', '[text](https://b.invalid)\n'),
+      true,
+    );
+  });
+
+  test('an image title is part of the content', () => {
+    assert.strictEqual(hasMarkdownChanges('![a](x.png)\n', '![a](x.png "T")\n'), true);
+  });
+
+  test('heading depth is structure', () => {
+    assert.strictEqual(hasMarkdownChanges('# Title\n', '## Title\n'), true);
+  });
+
+  test('a task checkbox state is structure', () => {
+    assert.strictEqual(hasMarkdownChanges('- [ ] job\n', '- [x] job\n'), true);
+  });
+
+  test('table alignment is structure', () => {
+    const left = '| a |\n| :-- |\n| 1 |\n';
+    const right = '| a |\n| --: |\n| 1 |\n';
+    assert.strictEqual(hasMarkdownChanges(left, right), true);
+  });
+
+  test('raw html is compared as written, not as prose', () => {
+    assert.strictEqual(
+      hasMarkdownChanges('<div data-x="1">\ntext\n</div>\n', '<div data-x="2">\ntext\n</div>\n'),
+      true,
+    );
+  });
+
+  test('a renumbered list that renders differently is a change', () => {
+    // `<ol start="5">` and `<ol start="1">` are different documents.
+    assert.strictEqual(hasMarkdownChanges('5. a\n6. b\n', '1. a\n2. b\n'), true);
+  });
+
+  test('a list renumbered into the same rendering is not a change', () => {
+    // Markdown takes the numbering from the first marker, so both render 1, 2.
+    assert.strictEqual(hasMarkdownChanges('1. a\n2. b\n', '1. a\n7. b\n'), false);
+    assert.strictEqual(render('1. a\n2. b\n'), render('1. a\n7. b\n'));
   });
 });
 
 describe('diff.diffMarkdown', () => {
   test('identical documents are all unchanged', () => {
     const doc = '# Title\n\n- one\n- two\n';
-    const blocks = diffMarkdown(doc, doc);
-    assert.ok(blocks.every((b) => b.op === 'same'));
-    assert.strictEqual(hasChanges(blocks), false);
+    const diff = diffMarkdown(doc, doc);
+    assert.ok(diff.runs.every((run) => run.op === 'same'));
+    assert.strictEqual(hasChanges(diff), false);
   });
 
-  test('a reworded bullet reads as a removal then an addition, in place', () => {
-    const before = '- keep\n- old wording\n- tail\n';
-    const after = '- keep\n- new wording\n- tail\n';
-    assert.deepStrictEqual(shape(diffMarkdown(before, after)), [
-      ' - keep',
-      '-- old wording',
-      '+- new wording',
-      ' - tail',
+  test('a reworded paragraph reads as a removal then an addition, in place', () => {
+    const before = 'keep\n\nold wording\n\ntail\n';
+    const after = 'keep\n\nnew wording\n\ntail\n';
+    assert.deepStrictEqual(shape(before, after), ['same', 'del', 'add', 'same']);
+  });
+
+  test('a reworded bullet replaces its whole list', () => {
+    // The deliberate granularity: a list is one block, so one edited item marks
+    // the list. Coarser than an item-level diff, and the item is still rendered
+    // inside its own list, from its own tokens.
+    const before = '- keep\n- old wording\n';
+    const after = '- keep\n- new wording\n';
+    assert.deepStrictEqual(shape(before, after), ['del', 'add']);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('a purely inserted block produces no removal', () => {
+    assert.deepStrictEqual(shape('one\n\nthree\n', 'one\n\ntwo\n\nthree\n'), [
+      'same',
+      'add',
+      'same',
     ]);
   });
 
-  test('a purely inserted bullet produces no removal', () => {
-    const before = '- one\n- three\n';
-    const after = '- one\n- two\n- three\n';
-    assert.deepStrictEqual(shape(diffMarkdown(before, after)), [' - one', '+- two', ' - three']);
-  });
-
-  test('a deleted bullet produces no addition', () => {
-    const blocks = diffMarkdown('- one\n- two\n- three\n', '- one\n- three\n');
-    assert.deepStrictEqual(shape(blocks), [' - one', '-- two', ' - three']);
+  test('a deleted block produces no addition', () => {
+    assert.deepStrictEqual(shape('one\n\ntwo\n\nthree\n', 'one\n\nthree\n'), [
+      'same',
+      'del',
+      'same',
+    ]);
   });
 
   test('an empty baseline makes the whole document an addition', () => {
-    const blocks = diffMarkdown('', '# New\n\nBody.\n');
-    assert.deepStrictEqual(shape(blocks), ['+# New', '+Body.']);
+    assert.deepStrictEqual(shape('', '# New\n\nBody.\n'), ['add']);
   });
 
   test('an emptied document makes the whole baseline a removal', () => {
-    const blocks = diffMarkdown('# Gone\n\nBody.\n', '');
-    assert.deepStrictEqual(shape(blocks), ['-# Gone', '-Body.']);
+    assert.deepStrictEqual(shape('# Gone\n\nBody.\n', ''), ['del']);
   });
 
   test('moving a block reads as one removal and one addition', () => {
-    const blocks = diffMarkdown('- a\n- b\n- c\n', '- b\n- c\n- a\n');
-    assert.deepStrictEqual(shape(blocks), ['-- a', ' - b', ' - c', '+- a']);
+    assert.deepStrictEqual(shape('a\n\nb\n\nc\n', 'b\n\nc\n\na\n'), ['del', 'same', 'add']);
   });
 
   test('a changed fence is replaced whole, not line by line', () => {
     const before = '```ts\nconst a = 1;\nconst b = 2;\n```\n';
     const after = '```ts\nconst a = 1;\nconst b = 3;\n```\n';
-    const blocks = diffMarkdown(before, after);
-    assert.deepStrictEqual(
-      blocks.map((b) => b.op),
-      ['del', 'add'],
-    );
+    assert.deepStrictEqual(shape(before, after), ['del', 'add']);
+  });
+
+  test('removals come before additions, so the old text reads above the new', () => {
+    const ops = diffMarkdown('old\n', 'new\n').runs.map((run) => run.op);
+    assert.deepStrictEqual(ops, ['del', 'add']);
   });
 });
 
-describe('diff.groupRuns and runSource', () => {
-  test('contiguous blocks of one op collapse into a single run', () => {
-    const runs = groupRuns(diffMarkdown('- a\n', '- a\n- b\n- c\n'));
+describe('diff — runs carry their own side of the document', () => {
+  test('a removed block renders as the old document rendered it', () => {
+    const before = '1. one\n2. two\n3. three\n';
+    const after = '1. one\n2. two changed\n3. three\n';
+    assert.strictEqual(projection(before, after, 'old'), render(before));
+    assert.strictEqual(projection(before, after, 'new'), render(after));
+  });
+
+  test('a matched run keeps the old side too, spelling and all', () => {
+    // Equivalent, not identical: the paragraph matches, so one run covers
+    // both, and that run must still be able to produce the old document.
+    const before = 'plain paragraph text';
+    const after = 'plain\nparagraph    text';
+    assert.strictEqual(hasMarkdownChanges(before, after), false);
+    assert.deepStrictEqual(shape(before, after), ['same']);
+    assert.strictEqual(projection(before, after, 'old'), render(before));
+    assert.strictEqual(projection(before, after, 'new'), render(after));
+    assert.notStrictEqual(render(before), render(after), 'the two spellings do differ as text');
+  });
+
+  test('a matched run keeps the old side when alignment is refused', () => {
+    const before = 'plain paragraph text\n\nsecond block';
+    const after = 'plain\nparagraph    text\n\nsecond block';
+    const diff = diffMarkdown(before, after, { budgetCells: 1 });
+    assert.strictEqual(diff.coarse, true);
     assert.deepStrictEqual(
-      runs.map((r) => [r.op, r.blocks.length]),
-      [
-        ['same', 1],
-        ['add', 2],
-      ],
+      projectTokens(diff, 'old').map((t) => t.raw),
+      lexMarkdown(before).tokens.map((t) => t.raw),
     );
   });
 
-  test('a run of list items rejoins without blank lines so it stays one list', () => {
-    const runs = groupRuns(diffMarkdown('', '- a\n- b\n'));
-    assert.strictEqual(runSource(required(runs[0], 'run')), '- a\n- b');
-  });
-
-  test('a run of paragraphs rejoins with blank lines', () => {
-    const runs = groupRuns(diffMarkdown('', 'one\n\ntwo\n'));
-    assert.strictEqual(runSource(required(runs[0], 'run')), 'one\n\ntwo');
-  });
-
-  test('ordered numbering is restored when a list renders in pieces', () => {
-    const before = '1. one\n2. two\n3. three\n';
-    const after = '1. one\n2. changed\n3. three\n';
-    const runs = groupRuns(diffMarkdown(before, after));
-    const tail = required(runs[runs.length - 1], 'last run');
-    assert.strictEqual(tail.op, 'same');
-    // The trailing item keeps its original position rather than restarting.
-    assert.strictEqual(runSource(tail), '3. three');
+  test('a run is rendered from tokens, never rebuilt from markdown', () => {
+    const before = '- a\n';
+    const after = '- a\n- b\n';
+    const added = diffMarkdown(before, after).runs.find((run) => run.op === 'add');
+    assert.ok(added !== undefined);
+    assert.strictEqual(added.tokens[0]?.type, 'list');
   });
 });

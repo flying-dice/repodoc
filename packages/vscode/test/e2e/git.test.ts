@@ -254,3 +254,162 @@ suite('RepoDoc e2e — git awareness', () => {
     );
   });
 });
+
+/**
+ * These deliberately never call `api.git.invalidate()`.
+ *
+ * Every other test in this file does, which makes them tests of the adapter
+ * rather than of the extension: they would all pass with no file watcher at
+ * all. #24 asked for the opposite — drive a real git event and wait for the
+ * extension to notice by itself.
+ */
+suite('RepoDoc e2e — git events reach the extension', () => {
+  let api: RepoDocApi;
+  let root: string;
+
+  /** Polls until `fn` holds; the watcher is debounced, so this is not instant. */
+  async function eventually(fn: () => boolean, timeoutMs = 15000): Promise<boolean> {
+    const start = Date.now();
+    while (!fn()) {
+      if (Date.now() - start > timeoutMs) {
+        return false;
+      }
+      await delay(200);
+    }
+    return true;
+  }
+
+  suiteSetup(async () => {
+    root = workspaceRoot();
+    const ext = vscode.extensions.getExtension<RepoDocApi>(EXTENSION_ID);
+    assert.ok(ext);
+    api = await ext.activate();
+    api.git.invalidate(); // once, to pick up the repository this suite created
+  });
+
+  test('given an edit on disk, when nothing calls invalidate, then the extension notices', async () => {
+    write(root, 'docs/01-handbook.md', '# Handbook\n\n- one\n- two watched\n');
+
+    const noticed = await eventually(() =>
+      api.git.status().some((e) => e.path === 'docs/01-handbook.md'),
+    );
+    assert.ok(noticed, 'the content watcher must invalidate the cache without being asked');
+
+    git(root, 'checkout', '--', '.');
+    await eventually(() => api.git.status().length === 0);
+  });
+
+  test('given a commit outside the editor, when nothing calls invalidate, then the baseline moves', async () => {
+    const before = api.git.headSha();
+    write(root, 'docs/01-handbook.md', '# Handbook\n\n- one\n- committed elsewhere\n');
+    git(root, 'commit', '-am', 'committed outside the editor');
+
+    const moved = await eventually(() => api.git.headSha() !== before);
+    assert.ok(moved, 'a commit moves HEAD and the refs; the metadata watcher must see it');
+    assert.strictEqual(
+      api.git.readAtHead('docs/01-handbook.md'),
+      '# Handbook\n\n- one\n- committed elsewhere\n',
+      'the baseline is the new commit, not the one cached before it',
+    );
+  });
+
+  test('given a soft reset, when nothing calls invalidate, then the baseline moves back', async () => {
+    const before = api.git.headSha();
+    // A soft reset rewrites the branch ref and leaves HEAD and the index alone,
+    // which is exactly what the old `.git/{HEAD,index}` watcher could not see.
+    git(root, 'reset', '--soft', 'HEAD~1');
+
+    const moved = await eventually(() => api.git.headSha() !== before);
+    assert.ok(moved, 'the refs are watched, so a branch move is an event');
+  });
+
+  test('the metadata paths the extension watches all exist', () => {
+    const paths = api.git.metadataPaths();
+    assert.ok(paths.length > 0, 'a repository must offer something to watch');
+    for (const p of paths) {
+      assert.ok(path.isAbsolute(p), `${p} is not absolute`);
+    }
+    assert.ok(
+      paths.some((p) => p.endsWith('refs')),
+      'refs must be among them or a soft reset goes unnoticed',
+    );
+  });
+});
+
+/**
+ * The repository a workspace belongs to can change after the window opened.
+ *
+ * Metadata watchers were registered once, during activation, and never revised.
+ * So whichever repository was resolved then kept being watched — and a
+ * repository created later had its content watched and its baseline never.
+ *
+ * The fixture workspace lives inside RepoDoc's own checkout, so it always
+ * resolves to *some* repository; what changes here is *which*. That is the same
+ * reconciliation: the watched set has to follow.
+ *
+ * This suite runs last and leaves the fixture as it found it.
+ */
+suite('RepoDoc e2e — the repository changes after activation', () => {
+  let api: RepoDocApi;
+  let root: string;
+
+  async function eventually(fn: () => boolean, timeoutMs = 15000): Promise<boolean> {
+    const start = Date.now();
+    while (!fn()) {
+      if (Date.now() - start > timeoutMs) {
+        return false;
+      }
+      await delay(200);
+    }
+    return true;
+  }
+
+  suiteSetup(async () => {
+    root = workspaceRoot();
+    const ext = vscode.extensions.getExtension<RepoDocApi>(EXTENSION_ID);
+    assert.ok(ext);
+    api = await ext.activate();
+  });
+
+  test('given a new repository appears, then the watched metadata follows it', async () => {
+    // Fall back to the outer checkout, so the adapter is pointed somewhere else
+    // entirely before the new repository is created.
+    fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
+    api.git.invalidate();
+    const outerPaths = api.git.metadataPaths();
+    assert.ok(outerPaths.length > 0, 'premise: resolves to the surrounding checkout');
+    assert.strictEqual(
+      outerPaths.some((p) => p.startsWith(root)),
+      false,
+      'premise: the watched metadata is outside the workspace folder',
+    );
+
+    git(root, 'init', '--initial-branch=main');
+    git(root, 'config', 'user.email', 'test@example.invalid');
+    git(root, 'config', 'user.name', 'RepoDoc Test');
+    git(root, 'config', 'commit.gpgsign', 'false');
+    write(root, '.gitignore', '.vscode/\n');
+    write(root, 'docs/late.md', '# Late\n\n- one\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-m', 'created after activation');
+
+    // A content write is what the extension can already see; it must use that
+    // to re-resolve the repository and start watching the new metadata.
+    write(root, 'docs/late.md', '# Late\n\n- one\n- two\n');
+
+    const moved = await eventually(() => api.git.metadataPaths().some((p) => p.startsWith(root)));
+    assert.ok(
+      moved,
+      'the watched set must be reconciled, not fixed at whatever activation resolved',
+    );
+
+    const before = api.git.headSha();
+    assert.ok(before, 'premise: HEAD resolves in the new repository');
+
+    // A metadata-only change: nothing under the content directories moves.
+    git(root, 'commit', '--allow-empty', '-m', 'metadata only');
+
+    const followed = await eventually(() => api.git.headSha() !== before);
+    assert.ok(followed, 'the new repository must have its metadata watched');
+  });
+});

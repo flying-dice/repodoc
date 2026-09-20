@@ -1,5 +1,23 @@
 # Change Log
 
+## [Unreleased]
+
+- **The diff no longer parses markdown itself.** Block comparison ran on a
+  markdown classifier written for the purpose — its own fence rules, list-marker
+  patterns, tab arithmetic, indentation stack and paragraph-state machine —
+  which disagreed with the parser the reading views actually render with. The
+  disagreements collapsed whitespace that mattered: a literal space inside code
+  owned by a list item, a fence under a lazy continuation, or backticks inside
+  indented code, each of which could report a real edit as *no changes* and then
+  claim *metadata changed*. Structure now comes from Marked, the reading view's
+  own parser, and alignment from jsdiff; what remains is the comparison policy
+  and the rendering. Each run is rendered from the tokens of its own side, so
+  nothing is rebuilt from a markdown fragment and given a second interpretation.
+  A reference-definition change — including one nothing links to — is now
+  reported rather than rendering to nothing. One trade-off comes with it: a list,
+  table or blockquote is one block, so editing a single item marks its whole
+  list. See `decisions/11-the-reading-view-s-parser-owns-markdown-structure-the-diff-owns-policy.md`.
+
 ## [0.9.2] — 2026-09-17
 
 - **Fixed: the diff view showed no changes.** The `HEAD → working tree` toggle reported its counts and timing in the top bar, and the document rendered both the old and the new text — with no marking on either. A merge had left the whole git block nested inside another rule, in `base.css` inside `.filecrumb-link:hover` and in `board.css` inside `.scenario-notice.error`, so `.diff-add`, `.diff-del` and the card-face change badges only applied inside those rules and never matched. Nested CSS is valid, so nothing flagged it. The rules are back at the top level, and a test now reads each stylesheet and asserts they stay there.

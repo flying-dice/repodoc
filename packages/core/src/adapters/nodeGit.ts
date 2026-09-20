@@ -32,6 +32,7 @@ export class NodeGitAdapter implements GitPort {
   private readonly headCache = new Map<string, string | undefined>();
   /** `undefined` = not looked up yet; `null` = looked up, no commit. */
   private headShaCache: string | null | undefined;
+  private metadataCache: { dir: string | undefined; common: string | undefined } | undefined;
 
   constructor(private readonly root: string) {}
 
@@ -52,7 +53,7 @@ export class NodeGitAdapter implements GitPort {
    * `HEAD`. Cached: `isRepo()` gates nearly every call into this adapter, so an
    * uncached lookup here would spawn a `git` process per question asked.
    */
-  private headSha(): string | undefined {
+  headSha(): string | undefined {
     if (this.prefix === undefined) {
       return undefined;
     }
@@ -62,8 +63,19 @@ export class NodeGitAdapter implements GitPort {
     return this.headShaCache ?? undefined;
   }
 
+  /**
+   * The path `HEAD` holds this file under. A staged rename moved it, and
+   * `HEAD` still knows only the old name.
+   */
+  baselinePathOf(relPath: string): string {
+    const renamed = this.status().find(
+      (entry) => entry.path === relPath && entry.originalPath !== undefined,
+    );
+    return renamed?.originalPath ?? relPath;
+  }
+
   readAtHead(relPath: string): string | undefined {
-    const repoPath = this.toRepoPath(relPath);
+    const repoPath = this.toRepoPath(this.baselinePathOf(relPath));
     if (repoPath === undefined) {
       return undefined;
     }
@@ -99,8 +111,53 @@ export class NodeGitAdapter implements GitPort {
     return this.statusCache;
   }
 
+  /**
+   * Git's own metadata directory for this workspace — `.git` at the root, but
+   * not always: a subfolder workspace has none beside it, and in a linked
+   * worktree `.git` is a pointer file to a private directory elsewhere. Asking
+   * git is the only reliable way to know.
+   */
+  metadataDir(): string | undefined {
+    return this.metadata().dir;
+  }
+
+  /**
+   * Absolute paths whose change means the baseline moved.
+   *
+   * `HEAD` and `index` are not enough. A soft reset rewrites the *branch ref*
+   * and leaves both untouched, and in a linked worktree the refs are shared
+   * through the common directory rather than the private one — so both
+   * directories contribute, and refs are watched alongside HEAD and the index.
+   */
+  metadataPaths(): string[] {
+    const { dir, common } = this.metadata();
+    const roots = [...new Set([dir, common].filter((d): d is string => d !== undefined))];
+    return roots.flatMap((root) => [
+      path.join(root, 'HEAD'),
+      path.join(root, 'index'),
+      path.join(root, 'packed-refs'),
+      path.join(root, 'refs'),
+    ]);
+  }
+
+  /** `--git-dir` and `--git-common-dir`, resolved once and absolute. */
+  private metadata(): { dir: string | undefined; common: string | undefined } {
+    if (this.metadataCache === undefined) {
+      const read = (flag: string): string | undefined => {
+        const out = this.git(['rev-parse', '--path-format=absolute', flag])?.trim();
+        return out ? out : undefined;
+      };
+      this.metadataCache =
+        this.prefix === undefined
+          ? { dir: undefined, common: undefined }
+          : { dir: read('--git-dir'), common: read('--git-common-dir') };
+    }
+    return this.metadataCache;
+  }
+
   invalidate(): void {
     this.prefixCache = undefined;
+    this.metadataCache = undefined;
     this.statusCache = undefined;
     this.headShaCache = undefined;
     this.headCache.clear();
@@ -121,8 +178,10 @@ export class NodeGitAdapter implements GitPort {
       const index = record[0] ?? '';
       const worktree = record[1] ?? '';
       const repoPath = record.slice(3);
+      let originalRepoPath: string | undefined;
       if (index === 'R' || index === 'C') {
-        i++; // a rename record is followed by the path it came from
+        // A rename record is followed by the path it came from.
+        originalRepoPath = fields[++i];
       }
       const status = classify(index, worktree);
       if (!status) {
@@ -132,7 +191,13 @@ export class NodeGitAdapter implements GitPort {
       if (workspacePath === undefined) {
         continue; // outside the workspace folder
       }
-      entries.push({ path: workspacePath, status });
+      const originalPath =
+        originalRepoPath === undefined ? undefined : this.toWorkspacePath(originalRepoPath);
+      entries.push({
+        path: workspacePath,
+        status,
+        ...(originalPath === undefined ? {} : { originalPath }),
+      });
     }
     return entries;
   }
