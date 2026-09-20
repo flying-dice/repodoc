@@ -127,3 +127,57 @@ describe('diff — the document key is a structure too', () => {
     assert.deepStrictEqual(control, []);
   });
 });
+
+describe('diff — an inline element edge is not a block edge', () => {
+  test('given a trailing space inside a link label, then it is a change', () => {
+    assertChanged(
+      '[Hello ](/x)world',
+      '[Hello](/x)world',
+      'the space is inside the link, but it separates two words of the paragraph',
+    );
+  });
+
+  test('given a leading space inside a link label, then it is a change', () => {
+    assertChanged('Hello[ world](/x)', 'Hello[world](/x)', 'a leading label space is a boundary');
+  });
+
+  test('given the same inside a table cell, then it is a change', () => {
+    assertChanged(
+      '| a |\n| --- |\n| [Hello ](/x)world |\n',
+      '| a |\n| --- |\n| [Hello](/x)world |\n',
+      'a cell is a block, the link inside it is not',
+    );
+  });
+
+  test('given the same inside a list item, then it is a change', () => {
+    assertChanged('- [Hello ](/x)world\n', '- [Hello](/x)world\n', 'an item is a block edge');
+  });
+
+  test('given the same in a reference link, then it is a change', () => {
+    assertChanged(
+      '[Hello ][g]world\n\n[g]: /x\n',
+      '[Hello][g]world\n\n[g]: /x\n',
+      'a reference link resolves to the same token shape',
+    );
+  });
+
+  test('given the same inside emphasis, then it is a change', () => {
+    assertChanged('*Hello *world', '*Hello*world', 'emphasis is inline too');
+  });
+
+  test('given a widened space inside a link label, then it is not a change', () => {
+    assert.strictEqual(
+      hasMarkdownChanges('[Hello  ](/x)world', '[Hello ](/x)world'),
+      false,
+      'one space or two, a reader sees one separator',
+    );
+  });
+
+  test('given a label reflowed across lines, then it is not a change', () => {
+    assert.strictEqual(hasMarkdownChanges('[Hello\nthere](/x)', '[Hello there](/x)'), false);
+  });
+
+  test('given whitespace at a heading edge, then it is still not a change', () => {
+    assert.strictEqual(hasMarkdownChanges('#  Title  \n', '# Title\n'), false);
+  });
+});

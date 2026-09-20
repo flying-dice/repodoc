@@ -401,11 +401,11 @@ function keyOf(token: Token): unknown[] {
       return ['hr'];
 
     case 'heading':
-      return ['heading', (token as Tokens.Heading).depth, inlineParts(t.tokens)];
+      return ['heading', (token as Tokens.Heading).depth, blockParts(t.tokens)];
     case 'paragraph':
-      return ['paragraph', inlineParts(t.tokens)];
+      return ['paragraph', blockParts(t.tokens)];
     case 'blockquote':
-      return ['blockquote', inlineParts(t.tokens)];
+      return ['blockquote', blockParts(t.tokens)];
 
     case 'list': {
       const list = token as Tokens.List;
@@ -413,13 +413,13 @@ function keyOf(token: Token): unknown[] {
     }
     case 'list_item': {
       const item = token as Tokens.ListItem;
-      return ['item', item.task, item.checked ?? false, inlineParts(item.tokens)];
+      return ['item', item.task, item.checked ?? false, blockParts(item.tokens)];
     }
 
     case 'table': {
       const table = token as Tokens.Table;
       const row = (cells: Tokens.TableCell[]): unknown[] =>
-        cells.map((cell) => inlineParts(cell.tokens));
+        cells.map((cell) => blockParts(cell.tokens));
       return ['table', table.align, row(table.header), table.rows.map(row)];
     }
 
@@ -456,21 +456,21 @@ function keyOf(token: Token): unknown[] {
 }
 
 /**
- * A container's children, with whitespace trimmed only where it touches the
- * container's own edge.
+ * A **block's** children, with whitespace trimmed where it touches the block's
+ * own outer edge.
  *
- * Trimming every text token would erase the space in `Hello **world**`, which
- * is a word boundary rather than decoration — the parser puts it at the end of
- * a text token, not between two blocks. Leading and trailing whitespace of the
- * container as a whole is decoration, so that much is dropped.
+ * Leading and trailing whitespace of a paragraph, heading, item or cell is
+ * decoration: a reader sees `  hello  ` and `hello` identically. Whitespace
+ * anywhere else in the flow is a word boundary and is kept.
  */
-function inlineParts(tokens: Token[] | undefined): unknown[] {
+function blockParts(tokens: Token[] | undefined): unknown[] {
   const parts = (tokens ?? []).map(keyOf);
   trimEdge(parts, 0, 'leading');
   trimEdge(parts, parts.length - 1, 'trailing');
   return parts;
 }
 
+/** Drop one space where a text child meets the block's outer edge. */
 function trimEdge(parts: unknown[], index: number, edge: 'leading' | 'trailing'): void {
   const part = parts[index];
   if (!Array.isArray(part) || part[0] !== 'text' || typeof part[1] !== 'string') {
@@ -478,6 +478,19 @@ function trimEdge(parts: unknown[], index: number, edge: 'leading' | 'trailing')
   }
   const text = part[1] as string;
   parts[index] = ['text', edge === 'leading' ? text.replace(/^ /, '') : text.replace(/ $/, '')];
+}
+
+/**
+ * An **inline** container's children, trimmed nowhere.
+ *
+ * A link, emphasis or strike is not a block: its edge sits inside the
+ * surrounding text flow. Trimming it treats `[Hello ](/x)world` and
+ * `[Hello](/x)world` as one document, when a reader sees "Hello world" in the
+ * first and "Helloworld" in the second. The space belongs to the paragraph
+ * even though the parser stores it inside the link.
+ */
+function inlineParts(tokens: Token[] | undefined): unknown[] {
+  return (tokens ?? []).map(keyOf);
 }
 
 /**
