@@ -1,11 +1,10 @@
 import {
+  type DefinitionChange,
+  type DiffRun,
+  definitionSource,
   diffMarkdown,
-  groupRuns,
-  isReferenceDefinitionsOnly,
-  referenceDefinitions,
-  runSource,
-} from '@repodoc/core';
-import { renderMarkdownWithDiagrams } from './diagrams';
+} from '@repodoc/core/diff';
+import { renderMarkdownWithDiagrams, renderTokensWithDiagrams } from './diagrams';
 
 export interface DiffRenderResult {
   html: string;
@@ -20,49 +19,56 @@ export interface DiffRenderResult {
  * in order, with added and removed blocks wrapped in marker elements the
  * stylesheet colours.
  *
- * Each run of same-op blocks is rendered in one pass rather than block by
- * block, so lists and their numbering survive the split.
+ * Each run is rendered from the tokens of its own side of the document, so a
+ * removed block reads as the old document read and an added one as the new.
+ * Nothing is re-serialised to markdown and re-parsed on the way — lists keep
+ * their numbering, nested content keeps its parent, and no fragment gets a
+ * second, different interpretation.
  *
- * Every run is also given the reference definitions from the side of the
- * document it belongs to — removed runs the old ones, everything else the new.
- * A run is parsed alone, so without them `[manual][guide]` renders as literal
- * text the moment its definition lands in a different run. Definitions appended
- * this way produce no output of their own; they only resolve what is above.
+ * One comparison drives both the markers and the counts; they cannot disagree
+ * about whether the document changed.
  */
 export function renderMarkdownDiff(
   before: string,
   after: string,
   options: { plantUmlServer?: string },
 ): DiffRenderResult {
-  const blocks = diffMarkdown(before, after);
-  const oldDefinitions = referenceDefinitions(before);
-  const newDefinitions = referenceDefinitions(after);
+  const diff = diffMarkdown(before, after);
   let hasMermaid = false;
-  let added = 0;
-  let removed = 0;
 
-  const parts = groupRuns(blocks).map((run) => {
-    if (run.op === 'add') {
-      added += run.blocks.length;
-    } else if (run.op === 'del') {
-      removed += run.blocks.length;
-    }
-    const body = runSource(run);
-    // A run of nothing but definitions renders to nothing: they configure the
-    // parser, they are not prose. Shown as code so that changing only a link's
-    // destination is something a reader can actually see.
-    const visible =
-      run.op !== 'same' && isReferenceDefinitionsOnly(body) ? '```\n' + body + '\n```' : body;
-    const definitions = run.op === 'del' ? oldDefinitions : newDefinitions;
-    const source = definitions.length ? `${visible}\n\n${definitions.join('\n')}` : visible;
-    const rendered = renderMarkdownWithDiagrams(source, options);
+  const parts = diff.runs.map((run: DiffRun) => {
+    const rendered = renderTokensWithDiagrams(run.tokens, options);
     hasMermaid = hasMermaid || rendered.hasMermaid;
-    if (run.op === 'same') {
-      return rendered.html;
-    }
-    const label = run.op === 'add' ? 'added' : 'removed';
-    return `<div class="diff-run diff-${run.op}" role="group" aria-label="${label}">${rendered.html}</div>`;
+    return run.op === 'same' ? rendered.html : wrap(run.op, rendered.html);
   });
 
-  return { html: parts.join('\n'), hasMermaid, added, removed };
+  parts.push(...definitionParts(diff.definitions, options));
+
+  return { html: parts.join('\n'), hasMermaid, added: diff.added, removed: diff.removed };
+}
+
+/**
+ * Reference definitions render to no output at all — they configure the parser
+ * rather than producing prose — so a changed destination is invisible in the
+ * document itself. Changed definitions are listed as source instead, including
+ * ones nothing currently links to: an edit that the reader cannot see must
+ * still be reported.
+ */
+function definitionParts(change: DefinitionChange, options: { plantUmlServer?: string }): string[] {
+  const listing = (op: 'add' | 'del', source: string): string =>
+    wrap(op, renderMarkdownWithDiagrams(`\`\`\`\n${source}\n\`\`\``, options).html);
+
+  const parts: string[] = [];
+  if (change.removed.length > 0) {
+    parts.push(listing('del', definitionSource(change.removed)));
+  }
+  if (change.added.length > 0) {
+    parts.push(listing('add', definitionSource(change.added)));
+  }
+  return parts;
+}
+
+function wrap(op: 'add' | 'del', html: string): string {
+  const label = op === 'add' ? 'added' : 'removed';
+  return `<div class="diff-run diff-${op}" role="group" aria-label="${label}">${html}</div>`;
 }

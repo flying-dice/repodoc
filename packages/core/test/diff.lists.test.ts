@@ -1,75 +1,103 @@
 /**
  * Ordered lists must keep the numbers the author wrote.
  *
- * `splitListItems` restarted its ordinal at 1 for every blank-line-separated
- * group, and `runSource` rewrote the source markers from that count. So a list
- * starting at 5 renumbered itself to 1, and a loose list — blank lines between
- * items — restarted at every group.
+ * The old splitter cut a list into items and rebuilt the markers when a run
+ * rendered, so a list starting at five renumbered itself to one and a loose
+ * list restarted at every blank line. Nothing is rebuilt now — a list is one
+ * parsed block, rendered from its own tokens — so these cases are asserted
+ * against the ordinary rendering, which is what the reader actually sees.
  */
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { diffMarkdown, groupRuns, runSource, splitBlocks } from '../src/diff';
+import { hasMarkdownChanges } from '../src/diff';
+import { projection, render } from './diffHelpers';
 
-/** The markers a document's blocks carry once split. */
-function markers(source: string): string[] {
-  return splitBlocks(source)
-    .map((b) => /^\s*(\d+)[.)]/.exec(b.text)?.[1])
-    .filter((m): m is string => m !== undefined);
-}
-
-/** Every run rejoined, as the renderer would receive it. */
-function rendered(before: string, after: string): string {
-  return groupRuns(diffMarkdown(before, after))
-    .map((run) => runSource(run))
-    .join('\n\n');
+/** Both projections of a diff must reproduce their own side's rendering. */
+function assertPreserved(before: string, after: string): void {
+  assert.strictEqual(projection(before, after, 'old'), render(before), 'old side reinterpreted');
+  assert.strictEqual(projection(before, after, 'new'), render(after), 'new side reinterpreted');
 }
 
 describe('diff — ordered list numbering', () => {
-  test('given a list starting at five, when split, then the numbers are kept', () => {
-    assert.deepStrictEqual(markers('5. five\n6. six\n7. seven\n'), ['5', '6', '7']);
-  });
-
-  test('given a list starting at zero, when split, then zero is kept', () => {
-    assert.deepStrictEqual(markers('0. zero\n1. one\n'), ['0', '1']);
-  });
-
-  test('given a five-list with an edited middle item, when rendered, then numbering survives', () => {
+  test('given a list starting at five, when diffed, then the numbers are kept', () => {
     const before = '5. five\n6. six\n7. seven\n';
     const after = '5. five\n6. six changed\n7. seven\n';
-    const out = rendered(before, after);
-    assert.ok(out.includes('5. five'), `lost the start number:\n${out}`);
-    assert.ok(out.includes('7. seven'), `lost the tail number:\n${out}`);
-    assert.strictEqual(out.includes('1. five'), false, 'a 5/6/7 list must not become 1/2/3');
+    assert.ok(render(before).includes('start="5"'), 'the reading view starts the list at five');
+    assertPreserved(before, after);
+    assert.ok(projection(before, after, 'old').includes('start="5"'));
+    assert.ok(projection(before, after, 'new').includes('start="5"'));
+  });
+
+  test('given a list starting at zero, when diffed, then zero is kept', () => {
+    const before = '0. zero\n1. one\n';
+    assertPreserved(before, before.replace('one', 'ONE'));
+    assert.ok(projection(before, before.replace('one', 'ONE'), 'old').includes('start="0"'));
   });
 
   test('given a loose list split by a change, when rendered, then it does not restart', () => {
     const before = '1. one\n\n2. two\n\n3. three\n';
     const after = '1. one\n\n2. two changed\n\n3. three\n';
-    const out = rendered(before, after);
-    assert.ok(out.includes('3. three'), `the tail restarted:\n${out}`);
+    assertPreserved(before, after);
+    assert.ok(projection(before, after, 'new').includes('three'));
   });
 
-  test('given an item inserted into a loose list, when rendered, then later numbers hold', () => {
+  test('given an item inserted into a loose list, when rendered, then the list is intact', () => {
     const before = '1. one\n\n2. three\n';
     const after = '1. one\n\n2. two\n\n3. three\n';
-    const out = rendered(before, after);
-    assert.ok(out.includes('3. three'), `insertion renumbered the tail:\n${out}`);
+    assertPreserved(before, after);
   });
 
-  test('given a multi-paragraph item, when split, then the paragraphs stay with it', () => {
-    const blocks = splitBlocks('1. first\n\n   still first\n\n2. second\n');
-    const first = blocks.find((b) => b.text.startsWith('1.'));
-    assert.ok(first?.text.includes('still first'), 'an indented paragraph belongs to its item');
+  test('given a multi-paragraph item, then the paragraphs stay with it', () => {
+    const before = '1. first\n\n   still first\n\n2. second\n';
+    assertPreserved(before, before.replace('second', 'SECOND'));
   });
 
-  test('given a fenced block inside an item, when split, then it stays with the item', () => {
-    const source = '1. run this\n\n   ```sh\n   npm test\n   ```\n\n2. then this\n';
-    const blocks = splitBlocks(source);
-    const owner = blocks.find((b) => b.text.includes('npm test'));
+  test('given a fenced block inside an item, then it stays with the item', () => {
+    const before = '1. run this\n\n   ```sh\n   npm test\n   ```\n\n2. then this\n';
+    const after = before.replace('npm test', 'npm  test');
+    assert.strictEqual(hasMarkdownChanges(before, after), true, 'the fence is code, not prose');
+    assertPreserved(before, after);
+  });
+
+  test('given two lists with different delimiters, then editing one leaves the other alone', () => {
+    const before = '1. alpha\n2. beta\n\n5) gamma\n6) delta\n';
+    const after = '1. ALPHA\n2. beta\n\n5) gamma\n6) delta\n';
+    assertPreserved(before, after);
     assert.ok(
-      owner?.text.startsWith('1.'),
-      `the fence was detached from its item:\n${blocks.map((b) => b.text).join('\n---\n')}`,
+      projection(before, after, 'new').includes('start="5"'),
+      'editing one list must not renumber a different one',
     );
+  });
+});
+
+describe('diff — lazy list continuations', () => {
+  const before = '- alpha\ncontinued\n- omega\n';
+  const after = '- ALPHA\ncontinued\n- omega\n';
+
+  test('given a lazy continuation, then it stays inside its item', () => {
+    assertPreserved(before, after);
+    assert.ok(
+      render(before).includes('alpha\ncontinued'),
+      'the parser folds the continuation into the item; the diff must not undo that',
+    );
+  });
+
+  test('given the first line edited, then the continuation moves with it', () => {
+    const removed = projection(before, after, 'old');
+    const added = projection(before, after, 'new');
+    assert.ok(removed.includes('continued'), 'old item lost its continuation');
+    assert.ok(added.includes('continued'), 'new item lost its continuation');
+    assert.strictEqual(
+      added.includes('<p>continued</p>'),
+      false,
+      'the continuation must never become a paragraph outside the list',
+    );
+  });
+
+  test('given a blank line then unindented prose, then it is NOT a continuation', () => {
+    const doc = '- alpha\n\nA new paragraph.\n';
+    assertPreserved(doc, doc.replace('alpha', 'ALPHA'));
+    assert.ok(render(doc).includes('<p>A new paragraph.</p>'));
   });
 });

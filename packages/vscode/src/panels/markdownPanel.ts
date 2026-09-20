@@ -1,11 +1,5 @@
-import {
-  frontmatterDataChanged,
-  type GitPort,
-  hasMarkdownChanges,
-  parseFrontmatter,
-  type RepoDocStore,
-  statusByPath,
-} from '@repodoc/core';
+import { type GitPort, parseFrontmatter, type RepoDocStore, statusByPath } from '@repodoc/core';
+import { frontmatterDataChanged, hasMarkdownChanges } from '@repodoc/core/diff';
 import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
 import { renderMarkdownWithDiagrams } from './diagrams';

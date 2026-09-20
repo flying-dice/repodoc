@@ -1,24 +1,17 @@
 /**
  * Code content must survive block matching wherever it sits.
  *
- * The first fix byte-preserved only top-level `fence` blocks. That left two
- * kinds of code still being normalised as prose: a standalone indented code
- * block, which is a `prose` block, and a fence nested inside a list item,
- * which is part of a `listItem`. Both lost indentation and literal spacing.
+ * These reproductions predate the parser-backed comparison: each one was a
+ * defect in RepoDoc's own markdown classifier, which decided from indentation
+ * and regular expressions what the parser already knew. They are kept exactly
+ * as they were — a rewrite that quietly dropped its predecessor's failing
+ * inputs would be proving nothing.
  */
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { diffMarkdown, hasMarkdownChanges, splitBlocks } from '../src/diff';
-
-/** Added and removed block counts, so a "detected" claim is checked end to end. */
-function counts(before: string, after: string): { added: number; removed: number } {
-  const blocks = diffMarkdown(before, after);
-  return {
-    added: blocks.filter((b) => b.op === 'add').length,
-    removed: blocks.filter((b) => b.op === 'del').length,
-  };
-}
+import { diffMarkdown, hasMarkdownChanges } from '../src/diff';
+import { counts, projection, render } from './diffHelpers';
 
 describe('diff — code content, wherever it lives', () => {
   test('given an indented code block with a changed literal, then it is a change', () => {
@@ -141,67 +134,77 @@ describe('diff — tabs under an indented parent', () => {
   });
 });
 
-describe('diff — list nesting measured in columns', () => {
+describe('diff — list nesting, as the parser reads it', () => {
   test('given a tab-nested child under a space-indented parent, then it nests', () => {
-    const items = splitBlocks('  - parent\n\t- child\n').filter((b) => b.kind === 'listItem');
+    // A tab is four columns, so the child belongs to the parent. Asserted
+    // through the rendering rather than through a block split: what matters is
+    // that the diff agrees with the document the reader sees.
+    assert.ok(render('  - parent\n\t- child\n').includes('<ul>\n<li>parent<ul>'));
     assert.strictEqual(
-      items.length,
-      1,
-      'a tab is four columns, so the child is nested under the parent, not its sibling',
+      projection('  - parent\n\t- child\n', '  - parent\n\t- child\n', 'new'),
+      render('  - parent\n\t- child\n'),
     );
-    assert.ok(items[0]?.text.includes('child'));
   });
 
-  test('given a space-nested child, then it still nests', () => {
-    const items = splitBlocks('  - parent\n    - child\n').filter((b) => b.kind === 'listItem');
-    assert.strictEqual(items.length, 1);
+  test('given a child outdented to a sibling, then it is a change', () => {
+    assert.strictEqual(hasMarkdownChanges('- parent\n  - child\n', '- parent\n- child\n'), true);
   });
 
-  test('given a sibling at the same column, then it is a sibling', () => {
-    const items = splitBlocks('  - parent\n  - sibling\n').filter((b) => b.kind === 'listItem');
-    assert.strictEqual(items.length, 2);
-  });
-
-  test('given a tab-indented list with a tab-nested child, then it nests', () => {
-    const items = splitBlocks('\t- parent\n\t\t- child\n').filter((b) => b.kind === 'listItem');
-    assert.strictEqual(items.length, 1);
+  test('given a sibling at the same column, then respacing its prose is not a change', () => {
+    assert.strictEqual(
+      hasMarkdownChanges(
+        '  - parent\n  - sibling\n',
+        '  - parent\n  - sibling  text\n'.replace('  text', ''),
+      ),
+      false,
+    );
   });
 });
 
 describe('diff — indented code is not a document fence', () => {
-  test('given indented code starting with fence ticks, then it is not a fence', () => {
-    // Broadening FENCE_OPEN to any indent made `    ```…` open a document fence.
-    // Closing still required 0–3 spaces, so the false fence swallowed later blocks.
-    const source = '    code before\n    ```not-a-fence\n    code after\n';
-    const blocks = splitBlocks(source);
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(blocks[0]?.kind, 'prose');
-    assert.ok(blocks[0]?.text.includes('```not-a-fence'));
+  test('given indented code starting with fence ticks, then its content is protected', () => {
+    // Broadening the old fence pattern to any indent made `    ```…` open a
+    // document fence, which then swallowed later blocks.
+    const before = '    code before\n    ```not-a-fence\n    code "a b"\n';
+    const after = before.replace('"a b"', '"a  b"');
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
   });
 
   test('given a destination-only ref edit beside indented fence ticks, then only the def changes', () => {
     const before =
       'See [doc][ref].\n\n    code before\n    ```not-a-fence\n    code after\n\n[ref]: https://example.invalid/old\n';
-    const after =
-      'See [doc][ref].\n\n    code before\n    ```not-a-fence\n    code after\n\n[ref]: https://example.invalid/new\n';
+    const after = before.replace('/old', '/new');
     assert.strictEqual(hasMarkdownChanges(before, after), true);
-    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
-    const changed = diffMarkdown(before, after).filter((b) => b.op !== 'same');
-    assert.strictEqual(changed.length, 2);
-    assert.ok(changed.every((b) => b.block.text.includes('[ref]:')));
-    assert.ok(changed.every((b) => !b.block.text.includes('```not-a-fence')));
+    const diff = diffMarkdown(before, after);
+    assert.deepStrictEqual(
+      diff.definitions.removed.map((d) => d.href),
+      ['https://example.invalid/old'],
+    );
+    assert.deepStrictEqual(
+      diff.definitions.added.map((d) => d.href),
+      ['https://example.invalid/new'],
+    );
+    // The definition itself, plus the paragraph whose link now points
+    // somewhere else — that paragraph really does render differently.
+    assert.deepStrictEqual(counts(before, after), { added: 2, removed: 2 });
+    const changed = diff.runs.filter((run) => run.op !== 'same');
+    assert.strictEqual(
+      changed.every((run) => run.tokens.every((token) => token.raw.includes('[doc][ref]'))),
+      true,
+      'the indented code beside the definition did not move',
+    );
   });
 
   test('given unchanged indented code with fence ticks, then nothing is marked changed', () => {
     const source = '    line1\n    ```not-a-fence\n    line3\n';
     assert.strictEqual(hasMarkdownChanges(source, source), false);
     assert.deepStrictEqual(counts(source, source), { added: 0, removed: 0 });
-    assert.strictEqual(splitBlocks(source).length, 1);
   });
 
   test('given a real fence at three columns, then it still opens', () => {
-    const blocks = splitBlocks('   ```\ncode\n```\n');
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(blocks[0]?.kind, 'fence');
+    const before = '   ```\nconst s = "a b";\n```\n';
+    assert.ok(render(before).includes('<pre>'), 'three columns still opens a fence');
+    assert.strictEqual(hasMarkdownChanges(before, before.replace('"a b"', '"a  b"')), true);
   });
 });

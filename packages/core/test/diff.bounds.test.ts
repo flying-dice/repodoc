@@ -1,17 +1,18 @@
 /**
- * The diff must not allocate without limit.
+ * The diff must not allocate or run without limit.
  *
- * `lcs` builds an `Int32Array` of `(old + 1) * (new + 1)` cells synchronously on
- * the extension host. At ten thousand blocks a side that table alone is about
- * 400 MB, and nothing stopped it being asked for.
- *
- * The bound must never hide that a document changed — reporting "no changes"
- * because the document was large would be worse than the allocation.
+ * Alignment is jsdiff's now, and a library does not make every workload cheap:
+ * its table is still quadratic in the block counts, so the budget and the
+ * timeout both stay. jsdiff returns `undefined` when a limit is hit, which
+ * means *fine-grained comparison unavailable* — never *unchanged*. Reporting
+ * "no changes" because the document was large would be worse than the
+ * allocation it avoided.
  */
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
 import { DIFF_BUDGET_CELLS, diffMarkdown, hasChanges, hasMarkdownChanges } from '../src/diff';
+import { projection, render } from './diffHelpers';
 
 /** A document of `n` distinct paragraphs. */
 function doc(n: number, tag = 'a'): string {
@@ -22,9 +23,13 @@ describe('diff — allocation budget', () => {
   test('given an ordinary document, when diffed, then it is aligned block by block', () => {
     const before = doc(50);
     const after = `${doc(50)}\n\nappended`;
-    const blocks = diffMarkdown(before, after);
-    assert.strictEqual(blocks.filter((b) => b.op === 'add').length, 1);
-    assert.strictEqual(blocks.filter((b) => b.op === 'same').length, 50);
+    const diff = diffMarkdown(before, after);
+    assert.strictEqual(diff.added, 1);
+    assert.strictEqual(diff.coarse, false);
+    assert.strictEqual(
+      diff.runs.filter((run) => run.op === 'same').reduce((n, run) => n + run.tokens.length, 0),
+      50,
+    );
   });
 
   test('given a document past the budget, when diffed, then it still reports the change', () => {
@@ -33,12 +38,15 @@ describe('diff — allocation budget', () => {
     const before = doc(side, 'x');
     const after = doc(side, 'y');
 
-    const blocks = diffMarkdown(before, after);
-    assert.ok(hasChanges(blocks), 'refusing to align is not the same as claiming nothing changed');
+    const diff = diffMarkdown(before, after);
+    assert.strictEqual(diff.coarse, true, 'past the budget alignment is refused, not attempted');
+    assert.ok(hasChanges(diff), 'refusing to align is not the same as claiming nothing changed');
     assert.ok(
-      blocks.some((b) => b.op === 'del') && blocks.some((b) => b.op === 'add'),
+      diff.runs.some((run) => run.op === 'del') && diff.runs.some((run) => run.op === 'add'),
       'the reader must still see the old content and the new',
     );
+    assert.strictEqual(projection(before, after, 'old'), render(before));
+    assert.strictEqual(projection(before, after, 'new'), render(after));
   });
 
   test('given identical documents past the budget, when compared, then they are equal', () => {
@@ -63,9 +71,9 @@ describe('diff — allocation budget', () => {
     const side = Math.floor(Math.sqrt(DIFF_BUDGET_CELLS)) - 10;
     const before = doc(side, 'x');
     const after = `${doc(side, 'x')}\n\ntail`;
-    const blocks = diffMarkdown(before, after);
+    const diff = diffMarkdown(before, after);
     assert.strictEqual(
-      blocks.filter((b) => b.op === 'same').length,
+      diff.runs.filter((run) => run.op === 'same').reduce((n, run) => n + run.tokens.length, 0),
       side,
       'under the budget nothing changes about how the diff behaves',
     );

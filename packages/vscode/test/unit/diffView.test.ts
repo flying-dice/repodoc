@@ -1,6 +1,6 @@
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { hasMarkdownChanges } from '@repodoc/core';
+import { hasMarkdownChanges } from '@repodoc/core/diff';
 import { renderMarkdownDiff } from '../../src/panels/diffView';
 
 /**
@@ -48,9 +48,15 @@ describe('diffView.renderMarkdownDiff', () => {
   });
 
   test('counts every block in a run, not just the runs', () => {
-    const result = renderMarkdownDiff('- keep\n', '- keep\n- one\n- two\n', NO_DIAGRAMS);
+    const result = renderMarkdownDiff('keep\n', 'keep\n\none\n\ntwo\n', NO_DIAGRAMS);
     assert.strictEqual(result.added, 2);
     assert.strictEqual(result.removed, 0);
+  });
+
+  test('a list is one block, so editing an item marks the list', () => {
+    const result = renderMarkdownDiff('- keep\n', '- keep\n- one\n', NO_DIAGRAMS);
+    assert.strictEqual(result.added, 1);
+    assert.strictEqual(result.removed, 1);
   });
 
   test('a run of added list items renders as one list', () => {
@@ -70,11 +76,12 @@ describe('diffView.renderMarkdownDiff', () => {
     assert.strictEqual(result.hasMermaid, true);
   });
 
-  test('an ordered list split by a change keeps its numbering', () => {
-    const before = '1. one\n2. two\n3. three\n';
-    const after = '1. one\n2. changed\n3. three\n';
+  test('an edited ordered list keeps the numbering on both sides', () => {
+    const before = '5. five\n6. six\n7. seven\n';
+    const after = '5. five\n6. changed\n7. seven\n';
     const result = renderMarkdownDiff(before, after, NO_DIAGRAMS);
-    // The unchanged tail must not restart at 1.
-    assert.ok(result.html.includes('<ol start="3">'), result.html);
+    // Each side is rendered from its own tokens, so neither restarts at one.
+    assert.strictEqual((result.html.match(/<ol start="5">/g) ?? []).length, 2, result.html);
+    assert.strictEqual(result.html.includes('<ol start="1">'), false, result.html);
   });
 });

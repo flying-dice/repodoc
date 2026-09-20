@@ -38,20 +38,6 @@ export {
 export type { CardEntry } from './cardParse';
 export { findChecklist, findComments, findGates, parseCard } from './cardParse';
 export { DECISION_STATUSES, DecisionStore } from './decisions';
-export type { BlockKind, DiffBlock, DiffOp, DiffRun, MarkdownBlock } from './diff';
-export {
-  blockKey,
-  diffMarkdown,
-  frontmatterChanged,
-  frontmatterDataChanged,
-  groupRuns,
-  hasChanges,
-  hasMarkdownChanges,
-  isReferenceDefinitionsOnly,
-  referenceDefinitions,
-  runSource,
-  splitBlocks,
-} from './diff';
 export { DocStore } from './docs';
 export type { Eol } from './eol';
 export { applyEol, detectEol, normalizeEol } from './eol';

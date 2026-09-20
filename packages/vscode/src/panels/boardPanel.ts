@@ -3,10 +3,10 @@ import {
   type CustomFieldValue,
   type GitFileStatus,
   type GitPort,
-  hasMarkdownChanges,
   statusByPath,
   storeErrorMessage,
 } from '@repodoc/core';
+import { hasMarkdownChanges } from '@repodoc/core/diff';
 import * as vscode from 'vscode';
 import { openRepoFile } from '../repoFiles';
 import type { BoardSource } from './boardSource';

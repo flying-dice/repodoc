@@ -1,26 +1,20 @@
 /**
- * Fence and code ownership is measured from the **container's content margin**,
- * not from the leading indentation of the line that opens the block.
+ * Ownership: which container a fence, an indented literal or a line of code
+ * belongs to.
  *
- * A list marker shifts the margin: in `- example` the item's content starts at
- * column two, so a fence at column four is a nested fence, not a document one.
- * Gating on the marker's own indent rejected it, `inFence` stayed false, and
- * the string literal inside was collapsed as prose.
+ * Every case here failed at some point in RepoDoc's own markdown classifier,
+ * each one a margin, fence or continuation rule disagreeing with the real
+ * parser about what owned a line. They are kept verbatim now that the parser
+ * answers the question, because the point of the rewrite is that these inputs
+ * stay fixed.
  */
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { diffMarkdown, hasMarkdownChanges, splitBlocks } from '../src/diff';
+import { diffMarkdown, hasMarkdownChanges } from '../src/diff';
+import { counts, projection, render } from './diffHelpers';
 
-function counts(before: string, after: string): { added: number; removed: number } {
-  const blocks = diffMarkdown(before, after);
-  return {
-    added: blocks.filter((b) => b.op === 'add').length,
-    removed: blocks.filter((b) => b.op === 'del').length,
-  };
-}
-
-/** Both sides of a literal-space edit inside a fence owned by a list item. */
+/** Both sides of a literal-space edit inside code owned by a list item. */
 function literalEdit(before: string): [string, string] {
   return [before, before.replace('"a b"', '"a  b"')];
 }
@@ -64,36 +58,40 @@ describe('diff — fence depth from the content margin', () => {
 });
 
 describe('diff — top-level indented backticks stay indented code', () => {
-  const doc = (dest: string) =>
+  const doc = (dest: string): string =>
     `Read [manual][guide].\n\n    \`\`\`\n    literal ticks\n    \`\`\`\n\n[guide]: https://example.invalid/${dest}\n`;
 
   test('given literal backticks in indented code, then they do not open a fence', () => {
-    const blocks = splitBlocks(doc('old'));
-    assert.strictEqual(
-      blocks.some((b) => b.kind === 'fence'),
-      false,
+    assert.ok(
+      render(doc('old')).includes('literal ticks'),
       'four-space backticks are code content, not a document fence',
     );
+    const [before, after] = [doc('old'), doc('old').replace('literal ticks', 'literal  ticks')];
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
   });
 
   test('given a destination-only edit past indented backticks, then refs survive', () => {
-    const blocks = diffMarkdown(doc('old'), doc('new'));
-    const changed = blocks.filter((b) => b.op !== 'same');
-    assert.strictEqual(changed.length, 2, 'only the definition moved');
-    for (const block of changed) {
-      assert.ok(
-        block.block.text.includes('example.invalid'),
-        `the false fence swallowed later blocks again: ${block.block.text}`,
-      );
-    }
+    const diff = diffMarkdown(doc('old'), doc('new'));
+    assert.deepStrictEqual(
+      [diff.definitions.removed.length, diff.definitions.added.length],
+      [1, 1],
+      'the definition change is reported even though it renders to nothing',
+    );
+    assert.strictEqual(
+      diff.runs.every(
+        (run) => run.op === 'same' || run.tokens.every((t) => !t.raw.includes('```')),
+      ),
+      true,
+      'the false fence swallowed later blocks again',
+    );
+    assert.strictEqual(projection(doc('old'), doc('new'), 'old'), render(doc('old')));
   });
 
   test('given a tab-indented literal backtick block, then it is not a fence', () => {
-    const blocks = splitBlocks('\t```\n\tliteral\n\t```\n');
-    assert.strictEqual(
-      blocks.some((b) => b.kind === 'fence'),
-      false,
-    );
+    const before = '\t```\n\tliteral "a b"\n\t```\n';
+    const [b, a] = literalEdit(before);
+    assert.strictEqual(hasMarkdownChanges(b, a), true);
+    assert.ok(render(before).includes('```'), 'the ticks are content, so they are still visible');
   });
 });
 
@@ -246,5 +244,42 @@ describe('diff — a paragraph continuation is not a return to the parent', () =
       'the blank line ends the child’s paragraph, so this one is a genuine return',
     );
     assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+});
+
+describe('diff — structure the hand-written classifier never saw', () => {
+  test('given a heading inside a child item, then the parent still owns its code', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n    # Inner heading\n\n  Parent prose.\n\n      const s = "a b";\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+    assert.strictEqual(projection(before, after, 'old'), render(before));
+    assert.strictEqual(projection(before, after, 'new'), render(after));
+  });
+
+  test('given a horizontal rule between list-owned code, then the code is still code', () => {
+    const [before, after] = literalEdit('- outer\n\n  ---\n\n      const s = "a b";\n');
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.strictEqual(projection(before, after, 'new'), render(after));
+  });
+
+  test('given a setext heading above indented code, then the code is still code', () => {
+    const [before, after] = literalEdit('Title\n=====\n\n    const s = "a b";\n');
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a blockquote holding a fence, then its literal is preserved', () => {
+    const [before, after] = literalEdit('> quote\n>\n> ```js\n> const s = "a b";\n> ```\n');
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.strictEqual(projection(before, after, 'old'), render(before));
+  });
+
+  test('given a table cell respaced, then the rendering decides', () => {
+    const before = '| a | b |\n| --- | --- |\n| 1 | 2 |\n';
+    const after = '| a  |  b |\n| --- | --- |\n| 1 | 2 |\n';
+    assert.strictEqual(render(before), render(after), 'the reader sees the same table');
+    assert.strictEqual(hasMarkdownChanges(before, after), false);
   });
 });

@@ -1,40 +1,47 @@
 /**
- * Reference definitions may span lines. The one-line pattern missed them, so a
- * document the ordinary renderer resolves correctly rendered as literal
- * `[manual][guide]` in a diff, with the destination change invisible.
+ * Reference definitions may span lines. RepoDoc's own one-line pattern missed
+ * them, so a document the ordinary renderer resolves correctly rendered as
+ * literal `[manual][guide]` in a diff, with the destination change invisible.
+ *
+ * The parser resolves them now, against the whole document, so these cases are
+ * asserted through the rendered diff rather than against a collector.
  */
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { isReferenceDefinitionsOnly, referenceDefinitions } from '@repodoc/core';
+import { diffMarkdown, lexMarkdown } from '@repodoc/core/diff';
 import { renderMarkdownDiff } from '../../src/panels/diffView';
 
 const NO_DIAGRAMS = { plantUmlServer: '' };
 
 describe('reference definitions — spanning lines', () => {
-  test('given a destination on the next line, when collected, then it is complete', () => {
-    const defs = referenceDefinitions(
-      'Read [manual][guide].\n\n[guide]:\n  https://example.invalid/old\n',
-    );
-    assert.strictEqual(defs.length, 1);
-    assert.ok(defs[0]?.includes('https://example.invalid/old'), `incomplete: ${defs[0]}`);
+  test('given a destination on the next line, when parsed, then it is complete', () => {
+    const doc = lexMarkdown('Read [manual][guide].\n\n[guide]:\n  https://example.invalid/old\n');
+    assert.deepStrictEqual(doc.definitions, [
+      { label: 'guide', href: 'https://example.invalid/old', title: '' },
+    ]);
   });
 
-  test('given a title on a continuation line, when collected, then it is included', () => {
-    const defs = referenceDefinitions('[guide]: https://example.invalid/a\n  "The guide"\n');
-    assert.strictEqual(defs.length, 1);
-    assert.ok(defs[0]?.includes('The guide'), `title dropped: ${defs[0]}`);
+  test('given a title on a continuation line, when parsed, then it is included', () => {
+    const doc = lexMarkdown('[guide]: https://example.invalid/a\n  "The guide"\n');
+    assert.strictEqual(doc.definitions[0]?.title, 'The guide');
   });
 
-  test('given a multiline definition alone, then it counts as definitions only', () => {
-    assert.strictEqual(
-      isReferenceDefinitionsOnly('[guide]:\n  https://example.invalid/old\n'),
-      true,
+  test('given a definition inside a fence, when parsed, then it is code', () => {
+    assert.deepStrictEqual(
+      lexMarkdown('```\n[guide]: https://example.invalid/x\n```\n').definitions,
+      [],
     );
-    assert.strictEqual(isReferenceDefinitionsOnly('Some prose.\n'), false);
-    assert.strictEqual(
-      isReferenceDefinitionsOnly('[guide]:\n  https://example.invalid/old\n\nProse.\n'),
-      false,
+  });
+
+  test('given a multiline definition alone, when diffed, then the change is reported', () => {
+    const before = '[guide]:\n  https://example.invalid/old\n';
+    const after = '[guide]:\n  https://example.invalid/new\n';
+    const diff = diffMarkdown(before, after);
+    assert.deepStrictEqual(
+      [diff.definitions.removed.length, diff.definitions.added.length],
+      [1, 1],
+      'a document of nothing but definitions renders to nothing and must still report',
     );
   });
 
@@ -54,10 +61,8 @@ describe('reference definitions — spanning lines', () => {
     const after = 'Read [manual][guide].\n\n[guide]:\n  https://example.invalid/new\n';
     const { html } = renderMarkdownDiff(before, after, NO_DIAGRAMS);
 
-    const removed = /<div class="diff-run diff-del"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] ?? '';
-    const added = /<div class="diff-run diff-add"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] ?? '';
-    assert.ok(removed.includes('example.invalid/old'), `removed container was empty:\n${html}`);
-    assert.ok(added.includes('example.invalid/new'), `added container was empty:\n${html}`);
+    assert.ok(html.includes('example.invalid/old'), `the old destination vanished:\n${html}`);
+    assert.ok(html.includes('example.invalid/new'), `the new destination vanished:\n${html}`);
   });
 
   test('given a multiline image definition, when diffed, then it resolves', () => {
@@ -65,12 +70,5 @@ describe('reference definitions — spanning lines', () => {
     const after = '![shot][img]\n\nMore.\n\n[img]:\n  https://example.invalid/a.png\n';
     const { html } = renderMarkdownDiff(before, after, NO_DIAGRAMS);
     assert.ok(html.includes('src="https://example.invalid/a.png"'), `image lost:\n${html}`);
-  });
-
-  test('given a definition inside a fence, when collected, then it is ignored', () => {
-    assert.deepStrictEqual(
-      referenceDefinitions('```\n[guide]: https://example.invalid/x\n```\n'),
-      [],
-    );
   });
 });
