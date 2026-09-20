@@ -72,6 +72,24 @@ const equivalentPair = fc.constantFrom<[string, string]>(
   ['| a | b |\n| --- | --- |\n| 1 | 2 |', '| a  |  b |\n| --- | --- |\n| 1 | 2 |'],
 );
 
+/**
+ * A document, or the same document respelled block by block into something a
+ * reader cannot tell apart. Preservation has to hold across *matched* blocks,
+ * and blocks only match when they are equivalent without being identical —
+ * generating documents from fixed blocks alone never produces that case.
+ */
+const documentOrReflow = fc
+  .tuple(
+    fc.array(
+      fc.oneof(
+        block,
+        equivalentPair.map(([, b]) => b),
+      ),
+      { minLength: 1, maxLength: 6 },
+    ),
+  )
+  .map(([blocks]) => blocks.join('\n\nseparator\n\n'));
+
 /** A document's reference definitions, as the parser resolved them. */
 function definitions(source: string): string {
   return definitionSource(lexMarkdown(source).definitions);
@@ -80,7 +98,7 @@ function definitions(source: string): string {
 describe('diff — preservation', () => {
   test('projecting a comparison onto either side reproduces that side', () => {
     fc.assert(
-      fc.property(document, document, (before, after) => {
+      fc.property(documentOrReflow, documentOrReflow, (before, after) => {
         assert.strictEqual(projection(before, after, 'old'), render(before));
         assert.strictEqual(projection(before, after, 'new'), render(after));
       }),
@@ -152,6 +170,11 @@ describe('diff — detection', () => {
         );
         assert.strictEqual(definitions(before), definitions(after));
         assert.strictEqual(hasMarkdownChanges(before, after), false);
+        // Equivalent is not identical. A matched run must still be able to
+        // show the old side as the old side actually was, or a diff of a
+        // reflowed document reconstructs a document nobody wrote.
+        assert.strictEqual(projection(before, after, 'old'), render(before));
+        assert.strictEqual(projection(before, after, 'new'), render(after));
       }),
       { numRuns: 400 },
     );

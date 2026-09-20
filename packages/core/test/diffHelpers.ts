@@ -8,7 +8,7 @@
  */
 
 import { Marked } from 'marked';
-import { diffMarkdown, MARKDOWN_OPTIONS } from '../src/diff';
+import { diffMarkdown, MARKDOWN_OPTIONS, projectTokens } from '../src/diff';
 
 const marked = new Marked(MARKDOWN_OPTIONS);
 
@@ -26,11 +26,7 @@ export function render(source: string): string {
  * the diff may annotate a document, never reinterpret it.
  */
 export function projection(before: string, after: string, side: 'old' | 'new'): string {
-  const wanted = side === 'old' ? 'del' : 'add';
-  const tokens = diffMarkdown(before, after)
-    .runs.filter((run) => run.op === 'same' || run.op === wanted)
-    .flatMap((run) => run.tokens);
-  return marked.parser(tokens);
+  return marked.parser(projectTokens(diffMarkdown(before, after), side));
 }
 
 /** Blocks reported added and removed, definition changes included. */

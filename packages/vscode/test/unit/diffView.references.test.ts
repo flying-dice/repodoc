@@ -66,3 +66,36 @@ describe('diffView — reference definitions', () => {
     assert.ok(html.includes('<h1>B</h1>'));
   });
 });
+
+describe('diffView — definition listings are data, not markdown', () => {
+  test('given a multiline title holding fence ticks, when listed, then it stays literal', () => {
+    // A listing used to be built by wrapping the text in a fence and parsing
+    // it again. A title may span lines, so one carrying its own ``` line
+    // closed that generated fence and the rest escaped into the document:
+    // `# old` came out as a heading instead of as definition source.
+    const title = 'line1\n```\n# old\n```\nline2';
+    const before = `Read [manual][guide].\n\n[guide]: https://example.invalid/a "${title}"\n`;
+    const after = before.replace('/a', '/b');
+    const { html } = renderMarkdownDiff(before, after, NO_DIAGRAMS);
+
+    assert.strictEqual(html.includes('<h1>old</h1>'), false, `title parsed as markdown:\n${html}`);
+    assert.ok(html.includes('# old'), `the literal title vanished:\n${html}`);
+    assert.ok(html.includes('example.invalid/a'), `the old destination vanished:\n${html}`);
+  });
+
+  test('given html in a destination, when listed, then it is escaped', () => {
+    const before = 'prose\n\n[g]: https://example.invalid/a\n';
+    const after = 'prose\n\n[g]: https://example.invalid/<script>\n';
+    const { html } = renderMarkdownDiff(before, after, NO_DIAGRAMS);
+    assert.strictEqual(html.includes('<script>'), false, `unescaped listing:\n${html}`);
+    assert.ok(html.includes('&lt;script&gt;'));
+  });
+
+  test('given an unused definition changed, when rendered, then it is still shown', () => {
+    const before = 'prose only\n\n[unused]: https://example.invalid/a\n';
+    const after = before.replace('/a', '/b');
+    const { html } = renderMarkdownDiff(before, after, NO_DIAGRAMS);
+    assert.ok(html.includes('example.invalid/a'), `the old definition vanished:\n${html}`);
+    assert.ok(html.includes('example.invalid/b'), `the new definition vanished:\n${html}`);
+  });
+});

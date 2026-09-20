@@ -4,7 +4,7 @@ import {
   definitionSource,
   diffMarkdown,
 } from '@repodoc/core/diff';
-import { renderMarkdownWithDiagrams, renderTokensWithDiagrams } from './diagrams';
+import { renderTokensWithDiagrams } from './diagrams';
 
 export interface DiffRenderResult {
   html: string;
@@ -53,10 +53,20 @@ export function renderMarkdownDiff(
  * document itself. Changed definitions are listed as source instead, including
  * ones nothing currently links to: an edit that the reader cannot see must
  * still be reported.
+ *
+ * The listing is handed to the renderer as a code *token*, not as a fenced
+ * markdown string. Wrapping the text in backticks and parsing it again lets
+ * the data close the fence it was put inside — a title holding its own
+ * ``` line would escape into the document and be read as markdown, so a
+ * literal `# old` would come out as a heading. It is data; it is never parsed.
  */
 function definitionParts(change: DefinitionChange, options: { plantUmlServer?: string }): string[] {
   const listing = (op: 'add' | 'del', source: string): string =>
-    wrap(op, renderMarkdownWithDiagrams(`\`\`\`\n${source}\n\`\`\``, options).html);
+    wrap(
+      op,
+      renderTokensWithDiagrams([{ type: 'code', raw: source, text: source, lang: '' }], options)
+        .html,
+    );
 
   const parts: string[] = [];
   if (change.removed.length > 0) {

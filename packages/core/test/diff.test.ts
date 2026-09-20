@@ -11,7 +11,13 @@
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { diffMarkdown, hasChanges, hasMarkdownChanges, lexMarkdown } from '../src/diff';
+import {
+  diffMarkdown,
+  hasChanges,
+  hasMarkdownChanges,
+  lexMarkdown,
+  projectTokens,
+} from '../src/diff';
 import { counts, projection, render, shape } from './diffHelpers';
 
 describe('diff.lexMarkdown', () => {
@@ -181,6 +187,29 @@ describe('diff — runs carry their own side of the document', () => {
     const after = '1. one\n2. two changed\n3. three\n';
     assert.strictEqual(projection(before, after, 'old'), render(before));
     assert.strictEqual(projection(before, after, 'new'), render(after));
+  });
+
+  test('a matched run keeps the old side too, spelling and all', () => {
+    // Equivalent, not identical: the paragraph matches, so one run covers
+    // both, and that run must still be able to produce the old document.
+    const before = 'plain paragraph text';
+    const after = 'plain\nparagraph    text';
+    assert.strictEqual(hasMarkdownChanges(before, after), false);
+    assert.deepStrictEqual(shape(before, after), ['same']);
+    assert.strictEqual(projection(before, after, 'old'), render(before));
+    assert.strictEqual(projection(before, after, 'new'), render(after));
+    assert.notStrictEqual(render(before), render(after), 'the two spellings do differ as text');
+  });
+
+  test('a matched run keeps the old side when alignment is refused', () => {
+    const before = 'plain paragraph text\n\nsecond block';
+    const after = 'plain\nparagraph    text\n\nsecond block';
+    const diff = diffMarkdown(before, after, { budgetCells: 1 });
+    assert.strictEqual(diff.coarse, true);
+    assert.deepStrictEqual(
+      projectTokens(diff, 'old').map((t) => t.raw),
+      lexMarkdown(before).tokens.map((t) => t.raw),
+    );
   });
 
   test('a run is rendered from tokens, never rebuilt from markdown', () => {
