@@ -1,6 +1,6 @@
 {
   "name": "@repodoc/core",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": true,
   "description": "Host-agnostic RepoDoc domain: boards, cards, gates, decisions, docs \u2014 over a filesystem port.",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@repodoc/ui",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": true,
   "description": "The webview's atomic-design components, and the Storybook that renders every one of them.",
   "type": "module",
