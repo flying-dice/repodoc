@@ -96,3 +96,62 @@ describe('diff — top-level indented backticks stay indented code', () => {
     );
   });
 });
+
+describe('diff — ownership follows the nesting, not the outer block', () => {
+  test('given a fence owned by a child list item, then its literal is preserved', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n\n      ```js\n    const s = "a b";\n      ```\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a mixed-tab fence owned by a child item, then its literal is preserved', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n\n\t  ```js\n\tconst s = "a b";\n\t  ```\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given three levels of nesting, then the innermost fence still owns its code', () => {
+    const [before, after] = literalEdit(
+      '- a\n\n  - b\n\n    - c\n\n        ```js\n      const s = "a b";\n        ```\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+});
+
+describe('diff — indented code that looks like a list', () => {
+  test('given four-space indented YAML, then its literal is preserved', () => {
+    const before = '    - name: "a b"\n';
+    const after = '    - name: "a  b"\n';
+    assert.strictEqual(
+      hasMarkdownChanges(before, after),
+      true,
+      'four columns in, this is a code block whatever its first character is',
+    );
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given tab-indented YAML, then its literal is preserved', () => {
+    const before = '\t- name: "a b"\n';
+    const after = '\t- name: "a  b"\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given indented code starting with an ordered marker, then it is preserved', () => {
+    const before = '    1. step "a b"\n';
+    const after = '    1. step "a  b"\n';
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given an ordinary list item respaced, then it is still not a change', () => {
+    assert.strictEqual(
+      hasMarkdownChanges('- name: "a b"\n', '- name: "a  b"\n'),
+      false,
+      'a real list item is prose; respacing it must stay a non-change',
+    );
+  });
+});

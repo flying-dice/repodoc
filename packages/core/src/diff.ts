@@ -294,91 +294,87 @@ export function blockKey(block: MarkdownBlock): string {
   const source =
     block.ordinal === undefined ? block.text : block.text.replace(ORDERED_MARKER, '$1');
   const lines = source.split('\n');
-  // Everything below is measured from the block's **content margin**, not from
-  // the indentation of the line that opens it. A list marker shifts the margin:
-  // in `- example` the item's content begins at column two, so a fence at four
-  // is a nested fence and a body line at two is inside it. Measuring from the
-  // marker's own indent rejected both.
-  //
-  // The margin comes from `block.text`, not `source`: an ordered marker has
-  // already been stripped out of `source` to keep renumbering from reading as a
-  // change, which would leave the marker's width unaccounted for.
-  const contentMargin = contentMarginOf(block);
-  // A block whose content begins four columns in is an indented code block in
-  // its entirety — its first line sits *at* the margin, not past it, so the
-  // per-line rule below would miss exactly that line. List items are excluded:
-  // a deeply nested item is still a list item, not code.
-  const wholeBlockIsCode =
-    block.kind === 'fence' || (block.kind !== 'listItem' && contentMargin >= 4);
 
-  // CommonMark opens a fence within three columns of its container's margin.
-  const maxFenceIndent = contentMargin + 3;
+  // A block whose opening line sits four columns in is an indented code block,
+  // whatever its first character happens to be. `    - name: "a b"` is code,
+  // not a list, and the splitter's regex-derived `kind` cannot tell the
+  // difference — so this is decided on the indentation alone rather than by
+  // trusting that classification.
+  const wholeBlockIsCode = block.kind === 'fence' || indentWidth(lines[0] ?? '') >= 4;
+
+  // Ownership is tracked line by line, not once for the block. `takeList` keeps
+  // child lists inside their parent's item, so one margin taken from the first
+  // line is the *outer* item's, and a fence owned by a child gets measured
+  // against the wrong container. Each list marker encountered moves the margin
+  // to that item's content.
+  let margin = contentMarginOf(block);
   let inFence = false;
   let fenceMarker = '';
-  const normalized = lines.map((line) => {
-    const fence = fenceMarkerAt(line, maxFenceIndent);
-    if (fence !== undefined) {
-      if (!inFence) {
-        inFence = true;
-        fenceMarker = fence;
-        return line; // the opening fence is code too — its info string matters
-      }
-      if (closesFence(line, fenceMarker, maxFenceIndent)) {
-        inFence = false;
-      }
-      return line;
-    }
-    // Code is compared byte for byte wherever it sits: inside a fence at any
-    // nesting, or indented four past the block's own indent, which is how an
-    // indented code block is written both standalone and inside a list item.
-    if (wholeBlockIsCode || inFence || indentWidth(line) >= contentMargin + 4) {
-      return line;
-    }
-    // Prose: reflowing is not an edit, so whitespace within a line collapses.
-    // Leading indentation and a two-space hard break are kept — the first says
-    // what owns the line, the second is a `<br>`.
-    const indent = /^[ \t]*/.exec(line)?.[0] ?? '';
-    return (
-      indent +
-      line
-        .replace(/[ \t]{2,}$/, HARD_BREAK)
-        .replace(/[ \t]$/, '')
-        .trim()
-        .replace(/[ \t]+/g, ' ')
-    );
-  });
+  let fenceMargin = margin;
 
-  // Prose lines join with a space — a soft wrap is not content. Code lines keep
-  // their newline, because the line break is the program.
   let key = '';
-  inFence = false;
-  fenceMarker = '';
-  for (let i = 0; i < normalized.length; i++) {
-    const raw = lines[i] ?? '';
-    const fence = fenceMarkerAt(raw, maxFenceIndent);
-    const isCode =
-      wholeBlockIsCode || inFence || fence !== undefined || indentWidth(raw) >= contentMargin + 4;
-    if (fence !== undefined) {
-      if (!inFence) {
-        inFence = true;
-        fenceMarker = fence;
-      } else if (closesFence(raw, fenceMarker, maxFenceIndent)) {
-        inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    // Computed before the fence state is advanced, so a closing fence counts as
+    // code like the rest of its block.
+    let isCode = wholeBlockIsCode || inFence;
+
+    if (!wholeBlockIsCode) {
+      if (inFence) {
+        if (closesFence(line, fenceMarker, fenceMargin + 3)) {
+          inFence = false;
+        }
+      } else {
+        const marker = LIST_MARKER.exec(line);
+        if (marker?.[0] !== undefined) {
+          margin = columnsOf(marker[0]);
+        }
+        const fence = fenceMarkerAt(line, margin + 3);
+        if (fence !== undefined) {
+          inFence = true;
+          fenceMarker = fence;
+          fenceMargin = margin;
+          isCode = true;
+        } else if (indentWidth(line) >= margin + 4) {
+          isCode = true;
+        }
       }
     }
+
+    // Prose lines join with a space — a soft wrap is not content. Code lines
+    // keep their newline, because the line break is the program.
     if (i > 0) {
-      key += isCode || /\n$/.test(key) ? '\n' : ' ';
+      key += isCode || key.endsWith('\n') ? '\n' : ' ';
     }
-    key += normalized[i] ?? '';
+    key += isCode ? line : normalizeProseLine(line);
     if (isCode) {
       key += '\n';
     }
   }
+
   // No tidying pass here. Stripping whitespace before newlines would reach
-  // inside the code that was just preserved line by line — trailing spaces in a
-  // multiline string literal are part of its value. Prose lines are already
-  // trimmed individually, so there is nothing left to tidy.
+  // inside the code just preserved — trailing spaces in a multiline string
+  // literal are part of its value. Prose lines are already trimmed.
   return `${block.kind}:${key}`;
+}
+
+/**
+ * One line of prose, with the whitespace that carries no meaning removed.
+ *
+ * Leading indentation says what owns the line and two trailing spaces are a
+ * hard break; everything between collapses, because reflowing prose is not an
+ * edit.
+ */
+function normalizeProseLine(line: string): string {
+  const indent = /^[ \t]*/.exec(line)?.[0] ?? '';
+  return (
+    indent +
+    line
+      .replace(/[ \t]{2,}$/, HARD_BREAK)
+      .replace(/[ \t]$/, '')
+      .trim()
+      .replace(/[ \t]+/g, ' ')
+  );
 }
 
 /**
