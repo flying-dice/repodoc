@@ -11,8 +11,13 @@
 
 import { describe, test } from 'bun:test';
 import * as assert from 'node:assert';
-import { DIFF_BUDGET_CELLS, diffMarkdown, hasChanges, hasMarkdownChanges } from '../src/diff';
-import { projection, render } from './diffHelpers';
+import {
+  DIFF_BUDGET_CELLS,
+  diffMarkdown,
+  hasChanges,
+  hasMarkdownChanges,
+  lexMarkdown,
+} from '../src/diff';
 
 /** A document of `n` distinct paragraphs. */
 function doc(n: number, tag = 'a'): string {
@@ -45,8 +50,16 @@ describe('diff — allocation budget', () => {
       diff.runs.some((run) => run.op === 'del') && diff.runs.some((run) => run.op === 'add'),
       'the reader must still see the old content and the new',
     );
-    assert.strictEqual(projection(before, after, 'old'), render(before));
-    assert.strictEqual(projection(before, after, 'new'), render(after));
+    // Preservation on the coarse path, checked without rendering a document
+    // this size twice: each side is handed back whole, in order, as parsed.
+    assert.deepStrictEqual(
+      diff.runs.flatMap((run) => (run.op === 'del' ? run.tokens.map((t) => t.raw) : [])),
+      lexMarkdown(before).tokens.map((t) => t.raw),
+    );
+    assert.deepStrictEqual(
+      diff.runs.flatMap((run) => (run.op === 'add' ? run.tokens.map((t) => t.raw) : [])),
+      lexMarkdown(after).tokens.map((t) => t.raw),
+    );
   });
 
   test('given identical documents past the budget, when compared, then they are equal', () => {
