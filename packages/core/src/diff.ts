@@ -304,13 +304,17 @@ export function blockKey(block: MarkdownBlock): string {
 
   // Ownership is tracked line by line, not once for the block. `takeList` keeps
   // child lists inside their parent's item, so one margin taken from the first
-  // line is the *outer* item's, and a fence owned by a child gets measured
-  // against the wrong container. Each list marker encountered moves the margin
-  // to that item's content.
-  let margin = contentMarginOf(block);
+  // line is the *outer* item's.
+  //
+  // The margins form a stack rather than a single value: entering a child list
+  // pushes its content margin, and a line that returns to a shallower column
+  // pops back. Keeping only the innermost margin left a paragraph after a child
+  // list still measured against the child, so the parent's own indented code
+  // read as prose.
+  const margins: number[] = [contentMarginOf(block)];
   let inFence = false;
   let fenceMarker = '';
-  let fenceMargin = margin;
+  let fenceMargin = margins[0] as number;
 
   let key = '';
   for (let i = 0; i < lines.length; i++) {
@@ -324,19 +328,39 @@ export function blockKey(block: MarkdownBlock): string {
         if (closesFence(line, fenceMarker, fenceMargin + 3)) {
           inFence = false;
         }
-      } else {
-        const marker = LIST_MARKER.exec(line);
-        if (marker?.[0] !== undefined) {
-          margin = columnsOf(marker[0]);
+      } else if (line.trim() !== '') {
+        const indent = indentWidth(line);
+        // Back out to whichever container this line actually sits in. A blank
+        // line says nothing about nesting, so it never pops.
+        while (margins.length > 1 && indent < (margins[margins.length - 1] as number)) {
+          margins.pop();
         }
-        const fence = fenceMarkerAt(line, margin + 3);
-        if (fence !== undefined) {
-          inFence = true;
-          fenceMarker = fence;
-          fenceMargin = margin;
+        const margin = margins[margins.length - 1] as number;
+
+        // Indentation is checked BEFORE the marker. Four columns past the
+        // container's margin is code, and code may perfectly well begin with a
+        // `-` or a `1.` — reading that as a new list moved the margin deeper
+        // and then collapsed the literal it was meant to protect.
+        if (indent >= margin + 4) {
           isCode = true;
-        } else if (indentWidth(line) >= margin + 4) {
-          isCode = true;
+        } else {
+          const marker = LIST_MARKER.exec(line);
+          if (marker?.[0] !== undefined) {
+            const itemMargin = columnsOf(marker[0]);
+            if (itemMargin > margin) {
+              margins.push(itemMargin);
+            } else {
+              margins[margins.length - 1] = itemMargin;
+            }
+          }
+          const current = margins[margins.length - 1] as number;
+          const fence = fenceMarkerAt(line, current + 3);
+          if (fence !== undefined) {
+            inFence = true;
+            fenceMarker = fence;
+            fenceMargin = current;
+            isCode = true;
+          }
         }
       }
     }

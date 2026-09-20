@@ -155,3 +155,54 @@ describe('diff — indented code that looks like a list', () => {
     );
   });
 });
+
+describe('diff — ownership when code resembles a list, and on the way back out', () => {
+  test('given list-owned indented code starting with a marker, then it is code', () => {
+    const [before, after] = literalEdit('- outer\n\n      - name: "a b"\n');
+    assert.strictEqual(
+      hasMarkdownChanges(before, after),
+      true,
+      'indented four past the item margin, a leading dash is code content, not a new list',
+    );
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given the same with a tab indent, then it is code', () => {
+    const [before, after] = literalEdit('- outer\n\n\t  - name: "a b"\n');
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given list-owned indented code starting with a number, then it is code', () => {
+    const [before, after] = literalEdit('- outer\n\n      1. step "a b"\n');
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given a return to the parent after a child list, then the parent margin is restored', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n\n  back to outer\n\n      const s = "a b";\n',
+    );
+    assert.strictEqual(
+      hasMarkdownChanges(before, after),
+      true,
+      'leaving a child list must not leave its deeper margin behind',
+    );
+    assert.deepStrictEqual(counts(before, after), { added: 1, removed: 1 });
+  });
+
+  test('given a return past two child levels, then the outermost margin is restored', () => {
+    const [before, after] = literalEdit(
+      '- outer\n\n  - inner\n\n    - deepest\n\n  back to outer\n\n      const s = "a b";\n',
+    );
+    assert.strictEqual(hasMarkdownChanges(before, after), true);
+  });
+
+  test('given a child list still in scope, then its own deeper code is still code', () => {
+    const [before, after] = literalEdit('- outer\n\n  - inner\n\n        const s = "a b";\n');
+    assert.strictEqual(
+      hasMarkdownChanges(before, after),
+      true,
+      'popping on the way out must not pop while the child is still the container',
+    );
+  });
+});
