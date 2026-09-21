@@ -2,7 +2,7 @@
   "name": "repodoc",
   "displayName": "RepoDoc",
   "description": "Task boards, decision records, and documentation stored as plain files in your repository",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "publisher": "flying-dice",
   "license": "MIT",
   "repository": {

@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [0.9.3] — 2026-09-20
 
 - **The diff no longer parses markdown itself.** Block comparison ran on a
   markdown classifier written for the purpose — its own fence rules, list-marker
